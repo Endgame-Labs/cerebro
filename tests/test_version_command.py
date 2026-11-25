@@ -65,7 +65,7 @@ def test_a_checkout_run_in_place_names_its_live_commit() -> None:
                                capture_output=True, text=True, check=False).stdout.strip()
     if not described:
         pytest.skip("not a git checkout")
-    assert described in CliRunner().invoke(main, ["version"]).output
+    assert CliRunner().invoke(main, ["version"]).output.endswith(f" ({described})\n")
 
 
 def _repo(root: Path) -> None:
