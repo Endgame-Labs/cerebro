@@ -61,11 +61,11 @@ def test_a_checkout_run_in_place_names_its_live_commit() -> None:
 
     from cerebro import cli
 
-    head = subprocess.run(["git", "-C", str(Path(cli.__file__).parent), "rev-parse", "--short=8", "HEAD"],
-                          capture_output=True, text=True, check=False).stdout.strip()
-    if not head:
+    described = subprocess.run(["git", "-C", str(Path(cli.__file__).parent), "describe", "--tags", "--always", "--dirty"],
+                               capture_output=True, text=True, check=False).stdout.strip()
+    if not described:
         pytest.skip("not a git checkout")
-    assert head[:7] in CliRunner().invoke(main, ["version"]).output
+    assert CliRunner().invoke(main, ["version"]).output.endswith(f" ({described})\n")
 
 
 def _repo(root: Path) -> None:
