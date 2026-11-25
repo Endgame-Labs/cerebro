@@ -18,11 +18,11 @@ uv tool install .
 cerebro init ~/wikis/team-wiki
 ```
 
-`init` asks you for a template, your models and keys, your sources and your AI tools, then runs a first pass. Connect a source, or drop a note in `local/`, so the first pass has something to read. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
+`init` asks a few questions, from a template and a daily budget to your model keys, sources and AI tools, then runs a first pass. If it has nothing to read yet, drop a note in the workspace's `local/` folder or connect a source with `cerebro connect`, then run `cerebro serve --once` from the workspace. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
 
 ## Status
 
-Cerebro is at 0.1. Before 1.0, an update can change how a workspace is stored. When that happens, Cerebro tells you what to do, and the workspace starts over from the same sources. Cerebro never changes your sources, but what you told it, the decisions you made and what your apps saved don't carry over.
+Cerebro is at 0.1. Before 1.0, an update can change how a workspace is stored. When that happens, Cerebro stops and tells you what to do. It never changes your sources, but what you told it, the decisions you made and what your apps saved don't carry over.
 
 ## Docs
 
