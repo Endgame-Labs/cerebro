@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/art/cerebro.dark.gif">
+    <img width="627" alt="An encyclopedia lying open at a drawing of a brain that spans both pages, its pages turning." src="docs/art/cerebro.light.gif">
+  </picture>
+</p>
+
 # Cerebro
 
 Cerebro builds a wiki from your sources and keeps it current. You keep it in a workspace, a folder of plain files. Agents you write in markdown turn your notes, mail, calls and tickets into articles where every sentence cites the fact behind it, and Claude, Cursor or any MCP client can read them.
