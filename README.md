@@ -18,7 +18,7 @@ uv tool install .
 cerebro init ~/wikis/team-wiki
 ```
 
-`init` asks a few questions, from a template and a daily budget to your model keys, sources and AI tools, then runs a first pass. If it has nothing to read yet, drop a note in the workspace's `local/` folder or connect a source with `cerebro connect`, then run `cerebro serve --once` from the workspace. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
+`init` asks a few questions, from a template and a daily budget to your model keys, sources and AI tools, then runs a first pass. If it has nothing to read yet, go to the workspace with `cd ~/wikis/team-wiki`. Drop a note in `local/` or connect a source with `cerebro connect`, then run `cerebro serve --once`. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
 
 ## Status
 
