@@ -1,5 +1,5 @@
 """A run by hand: `agents run` and `compile` on an agent a person just wrote, over facts the wiki took in before it
-existed, as the README's steps and the `agents new` skeleton lead a person to do."""
+existed."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ OTTER_NOTE = "Project: Otter\nDate: 2026-11-10\n\nThe Otter launch moved to Marc
 
 
 def _fill(workspace: Path, id: str) -> None:
-    """Fill the skeleton `agents new` wrote with the README's words, its heartbeat left as the skeleton has it."""
+    """Fill the skeleton `agents new` wrote, its heartbeat left as the skeleton has it."""
     path = workspace / "agents" / f"{id}.md"
     text = path.read_text()
     assert "facts: { window: last_90_days }" in text and "heartbeat: [manual]" in text
