@@ -1,0 +1,80 @@
+{
+  "1000000000000937895": {
+    "at": "2026-10-08T10:00:00-07:00",
+    "url": "https://gong.example/call?id=1000000000000937895",
+    "keys": {
+      "gong_call_id": ["1000000000000937895"],
+      "email": ["art.vandelay@mail.vandelay.example", "jane.doe@acme.example", "priya.natarajan@acme.example"],
+      "domain": ["acme.example", "vandelay.example"],
+      "salesforce_id": ["001SAMPLE000AC1"]
+    },
+    "carried": ["email", "domain", "salesforce_id"],
+    "links": ["001SAMPLE000AC1", "006SAMPLE0001"],
+    "fields": {
+      "title": "Acme QBR",
+      "ends": "2026-10-08T10:30:30-07:00",
+      "attendees": ["Sam Rivera <sam.rivera@quillmoor.example>", "Jane Doe <jane.doe@acme.example>",
+        "Priya Natarajan <PRIYA.NATARAJAN@acme.example>", "Art Vandelay <art.vandelay@mail.vandelay.example>", "Dial-in user"],
+      "ours": ["Sam Rivera"]
+    },
+    "body": [
+      "Acme QBR",
+      "Started: 2026-10-08T10:00:00-07:00",
+      "Attendees: Sam Rivera <sam.rivera@quillmoor.example>, Jane Doe <jane.doe@acme.example>, Priya Natarajan <PRIYA.NATARAJAN@acme.example>, Art Vandelay <art.vandelay@mail.vandelay.example>, Dial-in user",
+      "",
+      "[0:13] Jane Doe <jane.doe@acme.example> (their side): The routing pilot paid for itself. I am signing off on the rollout.",
+      "",
+      "[1:02:05] Priya Natarajan <PRIYA.NATARAJAN@acme.example> (their side): We have to get through security before the board meets.",
+      "",
+      "[1:02:08] Speaker s9: Can everyone hear me?"
+    ]
+  },
+  "1000000000000937901": {
+    "at": "2026-11-02T15:30:00Z",
+    "url": "https://gong.example/call?id=1000000000000937901",
+    "keys": {
+      "gong_call_id": ["1000000000000937901"],
+      "email": ["bo-example@gmail.com", "tomas.alvarez@globex.co.example"],
+      "domain": ["globex.co.example"],
+      "calendar_event_id": ["evt-sample-0001#20261102"]
+    },
+    "carried": ["email", "domain"],
+    "links": [],
+    "fields": {
+      "calendar_event_id": "evt-sample-0001",
+      "title": "Globex intro",
+      "ends": "2026-11-02T15:45:00Z",
+      "attendees": ["Morgan Lee <morgan.lee@quillmoor.example>", "Tomas Alvarez <tomas.alvarez@globex.co.example>",
+        "Vikram Sondhi <bo-example@gmail.com>", "Sam Rivera <So@home.example>"],
+      "ours": ["Morgan Lee", "Sam Rivera"]
+    },
+    "body": [
+      "Globex intro",
+      "Started: 2026-11-02T15:30:00Z",
+      "Attendees: Morgan Lee <morgan.lee@quillmoor.example>, Tomas Alvarez <tomas.alvarez@globex.co.example>, Vikram Sondhi <bo-example@gmail.com>, Sam Rivera <So@home.example>",
+      "",
+      "[0:02] Morgan Lee <morgan.lee@quillmoor.example> (our side): Thanks for making time.",
+      "",
+      "[1:05] Tomas Alvarez <tomas.alvarez@globex.co.example> (their side): We run routing in three regions. Two more next year.",
+      "",
+      "[2:05] Vikram Sondhi <bo-example@gmail.com> (their side): Can you send the pricing sheet?"
+    ]
+  },
+  "1000000000000937912": {
+    "at": "2026-11-16T09:00:00+01:00",
+    "url": "https://gong.example/call?id=1000000000000937912",
+    "keys": {"gong_call_id": ["1000000000000937912"]},
+    "links": [],
+    "fields": {
+      "title": "Team standup",
+      "ends": "2026-11-16T09:10:00+01:00",
+      "attendees": ["Sam Rivera <sam.rivera@quillmoor.example>", "Lee Moss <lee.moss@quillmoor.example>"],
+      "ours": ["Sam Rivera", "Lee Moss"]
+    },
+    "body": [
+      "Team standup",
+      "Started: 2026-11-16T09:00:00+01:00",
+      "Attendees: Sam Rivera <sam.rivera@quillmoor.example>, Lee Moss <lee.moss@quillmoor.example>"
+    ]
+  }
+}

@@ -1,0 +1,129 @@
+{
+ "about": "What the connector gives for the meetings in meetings.json inside a 90-day window, bodies included: the expected output. Synthetic.",
+ "records": [
+  {
+   "id": "notes:44444444-4444-4444-8444-444444444444",
+   "source": "granola",
+   "revision": "sha256:9a44c60f390d13dabae9d9e8a2ba6c688c59bf0f95e042d69f250dfcf67aa3d5",
+   "at": "2026-11-15T11:00:00Z",
+   "url": "https://notes.granola.ai/d/44444444-4444-4444-8444-444444444444",
+   "keys": {
+    "granola_meeting_id": [
+     "44444444-4444-4444-8444-444444444444"
+    ],
+    "email": [
+     "tomas.alvarez@globex.example"
+    ],
+    "domain": [
+     "globex.example"
+    ]
+   },
+   "carried": [
+    "email",
+    "domain"
+   ],
+   "links": [],
+   "fields": {
+    "title": "Globex security review",
+    "part": "notes",
+    "starts": "2026-11-15T11:00:00Z",
+    "attendees": [
+     "tomas.alvarez@globex.example",
+     "sam.rivera@quillmoor.example"
+    ],
+    "outside": [
+     "tomas.alvarez@globex.example"
+    ]
+   },
+   "body": "Globex security review\nStarted: 2026-11-15T11:00:00Z\nAttendees: Tomas Alvarez <tomas.alvarez@globex.example>, Sam Rivera <sam.rivera@quillmoor.example>\n\nSummary:\nGlobex wants a review.",
+   "extract": "facts",
+   "into": "calls"
+  },
+  {
+   "id": "notes:11111111-1111-4111-8111-111111111111",
+   "source": "granola",
+   "revision": "granola-updated:2026-11-12T16:00:00Z",
+   "at": "2026-11-12T15:00:00Z",
+   "url": "https://notes.granola.ai/d/11111111-1111-4111-8111-111111111111",
+   "keys": {
+    "granola_meeting_id": [
+     "11111111-1111-4111-8111-111111111111"
+    ],
+    "email": [
+     "jane.doe@acme.example"
+    ],
+    "domain": [
+     "acme.example"
+    ],
+    "calendar_event_id": [
+     "cal-acme-1#20261112"
+    ]
+   },
+   "carried": [
+    "email",
+    "domain"
+   ],
+   "links": [],
+   "fields": {
+    "title": "Acme renewal",
+    "part": "notes",
+    "starts": "2026-11-12T15:00:00Z",
+    "attendees": [
+     "sam.rivera@quillmoor.example",
+     "jane.doe@acme.example"
+    ],
+    "outside": [
+     "jane.doe@acme.example"
+    ],
+    "calendar_event_id": "cal-acme-1"
+   },
+   "body": "Acme renewal\nStarted: 2026-11-12T15:00:00Z\nAttendees: Sam Rivera <sam.rivera@quillmoor.example>, Jane Doe <jane.doe@acme.example>\n\nSummary:\nAcme will renew in November.\n\nYour notes:\nSend the order form.",
+   "extract": "facts",
+   "into": "calls"
+  },
+  {
+   "id": "transcript:11111111-1111-4111-8111-111111111111",
+   "source": "granola",
+   "revision": "sha256:b5219b2b69aae56ca0945ae020c8f590d7c5c6af8f32cd70e3748969e652c5c6",
+   "at": "2026-11-12T15:00:00Z",
+   "url": "https://notes.granola.ai/d/11111111-1111-4111-8111-111111111111",
+   "keys": {
+    "granola_meeting_id": [
+     "11111111-1111-4111-8111-111111111111"
+    ],
+    "email": [
+     "jane.doe@acme.example"
+    ],
+    "domain": [
+     "acme.example"
+    ],
+    "calendar_event_id": [
+     "cal-acme-1#20261112"
+    ]
+   },
+   "carried": [
+    "email",
+    "domain"
+   ],
+   "links": [
+    "notes:11111111-1111-4111-8111-111111111111"
+   ],
+   "fields": {
+    "title": "Acme renewal",
+    "part": "transcript",
+    "starts": "2026-11-12T15:00:00Z",
+    "attendees": [
+     "sam.rivera@quillmoor.example",
+     "jane.doe@acme.example"
+    ],
+    "outside": [
+     "jane.doe@acme.example"
+    ],
+    "calendar_event_id": "cal-acme-1"
+   },
+   "body": "Acme renewal\nStarted: 2026-11-12T15:00:00Z\nAttendees: Sam Rivera <sam.rivera@quillmoor.example>, Jane Doe <jane.doe@acme.example>\n\n[0:05] Jane Doe: We will renew the contract in November.\n\n[1:10] Sam Rivera: I will send the order form on Friday.",
+   "extract": "facts",
+   "into": "calls"
+  }
+ ]
+}

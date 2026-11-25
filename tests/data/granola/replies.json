@@ -1,0 +1,25 @@
+{
+  "about": "Meeting replies and what each reads as. Synthetic. A want of null means the reply does not read.",
+  "cases": [
+    {"name": "tagged text with detail and a listing row",
+     "reply": "<meetings_data count=\"2\">\n<meeting id=\"aaaa\" title=\"Renewal &amp; terms\" date=\"2026-10-06T15:00:00Z\" updated_at=\"2026-10-06T16:00:00Z\" calendar_event_id=\"cal-1\">\n<known_participants>\nSam Rivera (note creator) from Quillmoor <sam.rivera@quillmoor.example>\nJane Doe <JANE.DOE@acme.example>, Wren Alone\nbare@globex.example\n</known_participants>\n<summary>\nIt went well &lt;3.\n</summary>\n<private_notes>\nSend the form.\n</private_notes>\n</meeting>\n<meeting id=\"bbbb\" title=\"Listed only\" date=\"Oct 7, 2026 2:00 PM\"/>\n</meetings_data>",
+     "want": [{"id": "aaaa", "title": "Renewal & terms", "start": "2026-10-06T15:00:00Z", "updated": "2026-10-06T16:00:00Z", "calendar_event_id": "cal-1",
+               "people": [["Sam Rivera", "sam.rivera@quillmoor.example"], ["Jane Doe", "jane.doe@acme.example"], ["Wren Alone", ""], ["", "bare@globex.example"]],
+               "summary": "It went well <3.", "notes": "Send the form."},
+              {"id": "bbbb", "title": "Listed only", "start": "2026-10-07T14:00:00Z", "updated": "", "calendar_event_id": "", "people": [], "summary": "", "notes": ""}]},
+    {"name": "json with attendees as objects",
+     "reply": "{\"meetings\": [{\"id\": \"cccc\", \"title\": \"From JSON\", \"date\": \"2026-10-08T09:30:00-04:00\", \"private_notes\": \"n\", \"summary\": \"s\", \"attendees\": [{\"name\": \"Jane Doe\", \"email\": \"Jane.Doe@acme.example\"}, {\"name\": \"No Mail\"}]}]}",
+     "want": [{"id": "cccc", "title": "From JSON", "start": "2026-10-08T13:30:00Z", "updated": "", "calendar_event_id": "", "people": [["Jane Doe", "jane.doe@acme.example"], ["No Mail", ""]], "summary": "s", "notes": "n"}]},
+    {"name": "the list shape with elements and attachments",
+     "reply": "<requested_range from=\"2026-10-01\" to=\"2026-10-08\"/>\n<meetings_data from=\"2026-10-02T10:00:00Z\" to=\"2026-10-07T10:00:00Z\" count=\"2\">\n<meeting id=\"not_AbCdEfGhIjKlMn\" title=\"Plain\" date=\"2026-10-02T10:00:00Z\" screenshot_count=\"1\" url=\"https://notes.example/x\" mystery=\"1\"/>\n<meeting note_id='uuid-2'>\n<title>Elements</title>\n<date>2026-10-07T10:00:00Z</date>\n<mystery>ignored</mystery>\n<attachments>\n<attachment type=\"screenshot\" id=\"s1\">A slide that mentions the plan and notes.</attachment>\n</attachments>\n<private_notes>Real notes.</private_notes>\n</meeting>\n</meetings_data>",
+     "want": [{"id": "not_AbCdEfGhIjKlMn", "title": "Plain", "start": "2026-10-02T10:00:00Z", "updated": "", "calendar_event_id": "", "people": [], "summary": "", "notes": ""},
+              {"id": "uuid-2", "title": "Elements", "start": "2026-10-07T10:00:00Z", "updated": "", "calendar_event_id": "", "people": [], "summary": "", "notes": "Real notes."}]},
+    {"name": "a reply escaped twice",
+     "reply": "<meetings_data count=\"1\"><meeting id=\"a\" title=\"Renewal &amp;amp; terms\" date=\"2026-10-13T10:00:00-07:00\"><known_participants>Jane Doe &amp;lt;jane.doe@acme.example&amp;gt;, Sam Rivera &amp;lt;sam.rivera@quillmoor.example&amp;gt;</known_participants></meeting></meetings_data>",
+     "want": [{"id": "a", "title": "Renewal & terms", "start": "2026-10-13T17:00:00Z", "updated": "", "calendar_event_id": "", "people": [["Jane Doe", "jane.doe@acme.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]], "summary": "", "notes": ""}]},
+    {"name": "an empty element", "reply": "<meetings_data count=\"0\"/>", "want": []},
+    {"name": "no meetings said in words", "reply": "No meetings found in this range.", "want": []},
+    {"name": "a reply that does not read", "reply": "Something went sideways, try later.", "want": null},
+    {"name": "a meeting with no id", "reply": "<meeting title=\"x\" date=\"2026-10-06\"/>", "want": null}
+  ]
+}

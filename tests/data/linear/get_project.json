@@ -1,0 +1,47 @@
+{
+  "id": "P-ENG-13",
+  "uuid": "00000000-0000-4000-8000-000000000014",
+  "icon": null,
+  "color": "#bec2c8",
+  "name": "name 16",
+  "summary": "summary 36",
+  "description": "",
+  "url": "https://linear.app/acme/project/page-4",
+  "resourceCount": 0,
+  "createdAt": "2026-02-12T17:00:00.000Z",
+  "updatedAt": "2026-05-22T20:10:00.000Z",
+  "startedAt": "2026-03-11T01:00:00.000Z",
+  "completedAt": null,
+  "canceledAt": "2026-05-22T20:00:00.000Z",
+  "startDate": "2026-03-11",
+  "startDateResolution": null,
+  "targetDate": null,
+  "targetDateResolution": null,
+  "priority": {
+    "value": 0,
+    "name": "No priority"
+  },
+  "labels": [],
+  "initiatives": [],
+  "lead": {
+    "id": "00000000-0000-4000-8000-000000000034",
+    "name": "name 37"
+  },
+  "leadTeam": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "displayName 1",
+    "key": "T1"
+  },
+  "status": {
+    "id": "00000000-0000-4000-8000-000000000035",
+    "name": "Canceled",
+    "type": "canceled"
+  },
+  "teams": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "displayName 1",
+      "key": "T1"
+    }
+  ]
+}

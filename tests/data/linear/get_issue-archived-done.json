@@ -1,0 +1,106 @@
+{
+  "id": "ENG-101",
+  "uuid": "00000000-0000-4000-8000-000000000049",
+  "title": "title 7",
+  "description": "description 74",
+  "priority": {
+    "value": 0,
+    "name": "No priority"
+  },
+  "url": "https://linear.app/acme/issue/ENG-101/page-9",
+  "gitBranchName": "user2/eng-branch-2",
+  "createdAt": "2026-03-30T21:00:00.000Z",
+  "updatedAt": "2026-07-02T07:10:00.000Z",
+  "archivedAt": "2026-07-02T07:00:00.000Z",
+  "completedAt": "2026-04-01T21:00:00.000Z",
+  "startedAt": "2026-03-31T16:00:00.000Z",
+  "canceledAt": null,
+  "dueDate": null,
+  "slaStartedAt": null,
+  "slaMediumRiskAt": null,
+  "slaHighRiskAt": null,
+  "slaBreachesAt": null,
+  "status": "Done",
+  "statusType": "completed",
+  "labels": [
+    "labels 75"
+  ],
+  "attachments": [
+    {
+      "id": "00000000-0000-4000-8000-000000000050",
+      "title": "title 76",
+      "subtitle": null,
+      "url": "https://example.com/path-3"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000051",
+      "title": "title 77",
+      "subtitle": "subtitle 78",
+      "url": "https://example.com/path-4"
+    }
+  ],
+  "documents": [],
+  "stateHistory": [
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000052",
+        "name": "Backlog",
+        "type": "backlog"
+      },
+      "startedAt": "2026-03-30T21:00:00.000Z",
+      "endedAt": "2026-03-30T21:10:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "name": "Backlog",
+        "type": "backlog"
+      },
+      "startedAt": "2026-03-30T21:10:00.000Z",
+      "endedAt": "2026-03-31T16:10:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000053",
+        "name": "In Progress",
+        "type": "started"
+      },
+      "startedAt": "2026-03-31T16:10:00.000Z",
+      "endedAt": "2026-03-31T22:00:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000054",
+        "name": "name 79",
+        "type": "started"
+      },
+      "startedAt": "2026-03-31T22:00:00.000Z",
+      "endedAt": "2026-03-31T22:10:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000053",
+        "name": "In Progress",
+        "type": "started"
+      },
+      "startedAt": "2026-03-31T22:10:00.000Z",
+      "endedAt": "2026-04-01T21:10:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000055",
+        "name": "Done",
+        "type": "completed"
+      },
+      "startedAt": "2026-04-01T21:10:00.000Z",
+      "endedAt": null
+    }
+  ],
+  "customerNeeds": [],
+  "createdBy": "createdBy 80",
+  "createdById": "00000000-0000-4000-8000-000000000056",
+  "assignee": "assignee 81",
+  "assigneeId": "00000000-0000-4000-8000-000000000057",
+  "team": "displayName 1",
+  "teamId": "00000000-0000-4000-8000-000000000001"
+}

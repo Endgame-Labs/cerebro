@@ -1,0 +1,24 @@
+# One workspace served from the image Dockerfile builds. See docs/deploy.md. From deploy/:
+#   cp cerebro.env.example cerebro.env       then fill in the keys
+#   docker compose build
+#   docker compose run --rm workspace init /workspace
+#   docker compose run --rm workspace tokens new desk-agent
+#   docker compose up -d
+services:
+  workspace:
+    build:
+      context: ..
+    image: cerebro:local
+    init: true                   # reaps the processes an evidence script starts, and passes on SIGTERM
+    restart: unless-stopped
+    stop_grace_period: 10s
+    env_file: cerebro.env
+    ports:
+      - "127.0.0.1:4747:4747"    # this host alone: a TLS proxy on it is what the world reaches
+    volumes:
+      - workspace:/workspace     # the workspace folder: definitions, the SQLite store, tokens, Factoid's store
+      - config:/config           # outside the workspace: the secrets file and the list of trusted folders
+
+volumes:
+  workspace:
+  config:

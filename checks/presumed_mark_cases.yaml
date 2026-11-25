@@ -1,0 +1,184 @@
+note: 'Cases on how the presumed mark is read, run by checks/presumed_eval.py --cases checks/presumed_mark_cases.yaml:
+  a mark names one key exactly as written (fx01, fx02), a list of several keys goes (fx03, fx04), presumed: true names the
+  one value that could be a guess or buys nothing (fx05 to fx08), and two marks spelled the same go (fx09). Every case was
+  labelled by hand before anything ran against it, and no case is edited once run. supported-in-other-words: the item should
+  land; truly-unsupported: it should go.'
+today: '2026-11-15'
+context: Synthetic workspaces of a lab, a law practice, a codebase and a clinic, for an eval of grounding.
+labels: ''
+facts:
+- id: f_p101
+  text: Hana Brecht runs the sequencing core at Saltmarsh Lab and books every run on its two sequencers.
+  subject: Saltmarsh Lab
+  at: '2026-11-02T09:00:00Z'
+  source: local:file:local/notes/2026-11-02-saltmarsh-core.md
+  quote: I run the core, and every run on both sequencers goes through my booking sheet.
+  speaker: Hana Brecht
+- id: f_p201
+  text: Celia Ferrow, senior partner at Ferrow & Pike, reviews every settlement offer in the Dunmore matter.
+  subject: Ferrow & Pike
+  at: '2026-10-28T15:00:00Z'
+  source: local:file:local/notes/2026-10-28-dunmore-team.md
+  quote: Every offer in Dunmore comes across my desk before it goes anywhere.
+  speaker: Celia Ferrow
+- id: f_p301
+  text: Ada Voss wrote most of the quarry repository's storage layer and reviews changes to it.
+  subject: quarry
+  at: '2026-11-01T12:00:00Z'
+  source: local:file:local/notes/2026-11-01-quarry-storage.md
+  quote: Most of the storage layer is my code, and I review what touches it.
+  speaker: Ada Voss
+- id: f_p302
+  text: Kiran Holt said the quarry 2.0 release branch was cut on 2026-11-09.
+  subject: quarry
+  at: '2026-11-09T16:00:00Z'
+  source: local:file:local/notes/2026-11-09-quarry-branch.md
+  quote: I cut the 2.0 release branch this afternoon.
+  speaker: Kiran Holt
+- id: f_p401
+  text: Mara Ellison is the medical director of Elmbrook Clinic and chairs its weekly staff meeting.
+  subject: Elmbrook Clinic
+  at: '2026-11-03T08:00:00Z'
+  source: local:file:local/notes/2026-11-03-elmbrook-staff.md
+  quote: As medical director I chair the staff meeting every Monday.
+  speaker: Mara Ellison
+- id: f_p501
+  text: Tomas Wren leads the assay team at the Halden lab and signs off its protocols.
+  subject: Halden lab
+  at: '2026-11-03T10:00:00Z'
+  source: local:file:local/notes/2026-11-03-halden-team.md
+  quote: Tomas signs off every protocol before it runs.
+  speaker: Rhea Osei
+- id: f_p502
+  text: Rhea Osei said the assay protocol needs a sign-off before the trial starts.
+  subject: Halden lab
+  at: '2026-11-04T10:00:00Z'
+  source: local:file:local/notes/2026-11-04-halden-trial.md
+  quote: We need a sign-off on the protocol first.
+  speaker: Rhea Osei
+- id: f_p503
+  text: Tomas Wren works at the Halden lab.
+  subject: Halden lab
+  at: '2026-11-03T10:00:00Z'
+  source: local:file:local/notes/2026-11-03-halden-staff.md
+  quote: Tomas Wren works at the lab.
+  speaker: Rhea Osei
+cases:
+- id: fx01
+  group: case-twin
+  kind: case-twin
+  label: truly-unsupported
+  reason: 'the mark names role, and the item also holds Role, whose value no fact gives: code must not choose between them'
+  sentence: |-
+    ```yaml
+    - owner: Tomas Wren
+      role: signs off the protocol
+      Role: approves the budget
+      presumed: role
+      fact: "[^f_p501]"
+    ```
+- id: fx02
+  group: case-twin
+  kind: case-twin
+  label: truly-unsupported
+  reason: 'the mark names Role, and the item writes role: no key of it is written so'
+  sentence: |-
+    ```yaml
+    - person: Hana Brecht
+      role: approves new sequencing projects
+      presumed: Role
+      fact: "[^f_p101]"
+    ```
+- id: fx03
+  group: list-many
+  kind: list-many
+  label: truly-unsupported
+  reason: one mark names four keys, and no fact gives any of the four readings
+  sentence: |-
+    ```yaml
+    - owner: Tomas Wren
+      role: approves the budget
+      standing: the protocol is frozen
+      influence: overrules the board
+      stance: opposes the trial
+      presumed: [role, standing, influence, stance]
+      fact: "[^f_p503]"
+    ```
+- id: fx04
+  group: list-many
+  kind: list-many
+  label: truly-unsupported
+  reason: one mark names four keys of a codebase item, one a sentence that states a fact
+  sentence: |-
+    ```yaml
+    - maintainer: Ada Voss
+      role: approves every release
+      standing: the main branch is frozen
+      influence: overrules the core team
+      stance: opposes the rewrite
+      presumed: [role, standing, influence, stance]
+      fact: "[^f_p301]"
+    ```
+- id: fx05
+  group: true-cause
+  kind: true-cause
+  label: truly-unsupported
+  reason: 'presumed: true names status, the one value that could be a guess, and it states a cause no fact gives'
+  sentence: |-
+    ```yaml
+    - owner: Tomas Wren
+      status: signs off the protocol because the trial was moved up
+      presumed: true
+      fact: "[^f_p501] [^f_p502]"
+    ```
+- id: fx06
+  group: true-one
+  kind: true-one
+  label: supported-in-other-words
+  reason: 'presumed: true names role, the one value that could be a guess, and it is a reading of her part'
+  sentence: |-
+    ```yaml
+    - person: Mara Ellison
+      role: signs off clinical protocols
+      presumed: true
+      fact: "[^f_p401]"
+    ```
+- id: fx07
+  group: true-many
+  kind: true-many
+  label: truly-unsupported
+  reason: 'presumed: true on an item with two values that could be guesses buys nothing, and no fact gives either'
+  sentence: |-
+    ```yaml
+    - person: Celia Ferrow
+      role: makes the call on settling Dunmore
+      stance: wants to settle early
+      presumed: true
+      fact: "[^f_p201]"
+    ```
+- id: fx08
+  group: true-many
+  kind: true-many
+  label: supported-in-other-words
+  reason: 'presumed: true on an item with two values buys nothing, and its fact gives both'
+  sentence: |-
+    ```yaml
+    - person: Kiran Holt
+      task: cut the quarry 2.0 release branch
+      project: quarry
+      presumed: true
+      fact: "[^f_p302]"
+    ```
+- id: fx09
+  group: two-marks
+  kind: two-marks
+  label: truly-unsupported
+  reason: 'two presumed keys spelled the same: the mark cannot be read'
+  sentence: |-
+    ```yaml
+    - person: Hana Brecht
+      role: approves new sequencing projects
+      presumed: false
+      presumed: role
+      fact: "[^f_p101]"
+    ```

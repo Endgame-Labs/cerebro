@@ -1,0 +1,175 @@
+[
+ {
+  "value": "p_a,p_b",
+  "fields": [
+   "p_a",
+   "p_b"
+  ]
+ },
+ {
+  "value": "p_a, p_b",
+  "fields": [
+   "p_a",
+   " p_b"
+  ]
+ },
+ {
+  "value": "p_a,,p_b",
+  "fields": [
+   "p_a",
+   "",
+   "p_b"
+  ]
+ },
+ {
+  "value": "p_a,p_b,",
+  "fields": [
+   "p_a",
+   "p_b",
+   ""
+  ]
+ },
+ {
+  "value": ",",
+  "fields": [
+   "",
+   ""
+  ]
+ },
+ {
+  "value": " ",
+  "fields": [
+   " "
+  ]
+ },
+ {
+  "value": " , ",
+  "fields": [
+   " ",
+   " "
+  ]
+ },
+ {
+  "value": "\"p_a\",p_b",
+  "fields": [
+   "p_a",
+   "p_b"
+  ]
+ },
+ {
+  "value": "\"p_a,p_b\"",
+  "fields": [
+   "p_a,p_b"
+  ]
+ },
+ {
+  "value": "p_\"a",
+  "error": "line 1, column 3: a quote in a value that is not quoted (quote the value and double the quote: \"a \"\"b\"\" c\")"
+ },
+ {
+  "value": "\"p_a",
+  "error": "line 1, column 1: a quoted value with no closing quote (end it with \")"
+ },
+ {
+  "value": "\"p_a\"x",
+  "error": "line 1, column 5: text after a value's closing quote (put a comma after the quote, or double a quote inside the value)"
+ },
+ {
+  "value": " \"p_a\"",
+  "error": "line 1, column 2: a quote in a value that is not quoted (quote the value and double the quote: \"a \"\"b\"\" c\")"
+ },
+ {
+  "value": "\"p_a\"\"\"",
+  "fields": [
+   "p_a\""
+  ]
+ },
+ {
+  "value": "\"\"",
+  "fields": [
+   ""
+  ]
+ },
+ {
+  "value": "\"p_a\np_b\"",
+  "fields": [
+   "p_a\np_b"
+  ]
+ },
+ {
+  "value": "p_a\r\n",
+  "fields": [
+   "p_a"
+  ]
+ },
+ {
+  "value": "\r",
+  "fields": []
+ },
+ {
+  "value": "\n",
+  "fields": []
+ },
+ {
+  "value": "\"a\"\"b\",c",
+  "fields": [
+   "a\"b",
+   "c"
+  ]
+ },
+ {
+  "value": "é,ü",
+  "fields": [
+   "é",
+   "ü"
+  ]
+ },
+ {
+  "value": "a,\"b\r\nc\"",
+  "fields": [
+   "a",
+   "b\nc"
+  ]
+ },
+ {
+  "value": "\"a\"\r\n",
+  "fields": [
+   "a"
+  ]
+ },
+ {
+  "value": "\t,a",
+  "fields": [
+   "\t",
+   "a"
+  ]
+ },
+ {
+  "value": "\"a\" ",
+  "error": "line 1, column 3: text after a value's closing quote (put a comma after the quote, or double a quote inside the value)"
+ },
+ {
+  "value": "a\"",
+  "error": "line 1, column 2: a quote in a value that is not quoted (quote the value and double the quote: \"a \"\"b\"\" c\")"
+ },
+ {
+  "value": "\"",
+  "error": "line 1, column 1: a quoted value with no closing quote (end it with \")"
+ },
+ {
+  "value": "\",",
+  "error": "line 1, column 1: a quoted value with no closing quote (end it with \")"
+ },
+ {
+  "value": "a,\"",
+  "error": "line 1, column 3: a quoted value with no closing quote (end it with \")"
+ },
+ {
+  "value": "\"a\n",
+  "error": "line 1, column 1: a quoted value with no closing quote (end it with \")"
+ },
+ {
+  "value": "a,\"b\nc",
+  "error": "line 1, column 3: a quoted value with no closing quote (end it with \")"
+ }
+]

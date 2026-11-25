@@ -1,0 +1,173 @@
+{
+ "note": "A paragraph and the sentences it splits into.",
+ "cases": [
+  {
+   "name": "a citation before the period",
+   "text": "Acme is in Negotiation [^f_1]. Next step: a call on Oct 15 [^f_2].",
+   "want": [
+    "Acme is in Negotiation [^f_1].",
+    "Next step: a call on Oct 15 [^f_2]."
+   ]
+  },
+  {
+   "name": "a citation after the period",
+   "text": "Acme signed. [^f_1] Then it grew.",
+   "want": [
+    "Acme signed. [^f_1]",
+    "Then it grew."
+   ]
+  },
+  {
+   "name": "a citation flush after the period",
+   "text": "Acme signed.[^f_1] Then it grew.",
+   "want": [
+    "Acme signed.[^f_1]",
+    "Then it grew."
+   ]
+  },
+  {
+   "name": "abbreviations and initials",
+   "text": "BRACKWELL Inc. hired J. Doe in Oct. 2026. She left.",
+   "want": [
+    "BRACKWELL Inc. hired J. Doe in Oct. 2026.",
+    "She left."
+   ]
+  },
+  {
+   "name": "decimals",
+   "text": "Usage grew 3.5 times! Why? Nobody knows",
+   "want": [
+    "Usage grew 3.5 times!",
+    "Why?",
+    "Nobody knows"
+   ]
+  },
+  {
+   "name": "across lines",
+   "text": "Security must finish before\nthe board meets [^f_1]. Done.",
+   "want": [
+    "Security must finish before\nthe board meets [^f_1].",
+    "Done."
+   ]
+  },
+  {
+   "name": "a quoted end",
+   "text": "She said \"we are in.\" Then left.",
+   "want": [
+    "She said \"we are in.\"",
+    "Then left."
+   ]
+  },
+  {
+   "name": "a curly quoted end",
+   "text": "She said “we are in.” Then left.",
+   "want": [
+    "She said “we are in.”",
+    "Then left."
+   ]
+  },
+  {
+   "name": "a period inside quotes",
+   "text": "Dana wrote \"send it.\" and then called.",
+   "want": [
+    "Dana wrote \"send it.\" and then called."
+   ]
+  },
+  {
+   "name": "U.S. before a capital",
+   "text": "Acme is a U.S. Company with depots. It grew.",
+   "want": [
+    "Acme is a U.S. Company with depots.",
+    "It grew."
+   ]
+  },
+  {
+   "name": "U.S. before lowercase",
+   "text": "Acme has U.S. depots [^f_1]. It grew.",
+   "want": [
+    "Acme has U.S. depots [^f_1].",
+    "It grew."
+   ]
+  },
+  {
+   "name": "a.m. and p.m. before lowercase",
+   "text": "The call is at 9 a.m. on 2026-11-02 [^f_4b10]. Lunch is at 1 p.m. today.",
+   "want": [
+    "The call is at 9 a.m. on 2026-11-02 [^f_4b10].",
+    "Lunch is at 1 p.m. today."
+   ]
+  },
+  {
+   "name": "p.m. before a capital",
+   "text": "3 p.m. Meeting ended.",
+   "want": [
+    "3 p.m.",
+    "Meeting ended."
+   ]
+  },
+  {
+   "name": "e.g. before a capital",
+   "text": "Pick a depot, e.g. Denver. Then call.",
+   "want": [
+    "Pick a depot, e.g. Denver.",
+    "Then call."
+   ]
+  },
+  {
+   "name": "a domain at the end",
+   "text": "Mail moves to stellarway.example. It took a week.",
+   "want": [
+    "Mail moves to stellarway.example.",
+    "It took a week."
+   ]
+  },
+  {
+   "name": "a URL at the end",
+   "text": "Notes are at https://notes.example/acme. Read them.",
+   "want": [
+    "Notes are at https://notes.example/acme.",
+    "Read them."
+   ]
+  },
+  {
+   "name": "an ellipsis",
+   "text": "Wait... Then it happened.",
+   "want": [
+    "Wait...",
+    "Then it happened."
+   ]
+  },
+  {
+   "name": "numbered items",
+   "text": "1. First. 2. Second.",
+   "want": [
+    "1. First.",
+    "2. Second."
+   ]
+  },
+  {
+   "name": "a digit after a period",
+   "text": "The renewal is due Nov. 2 at the latest. Then the board meets.",
+   "want": [
+    "The renewal is due Nov. 2 at the latest.",
+    "Then the board meets."
+   ]
+  },
+  {
+   "name": "CRLF line ends",
+   "text": "Acme signed [^f_1].\r\nIt grew.\r\n",
+   "want": [
+    "Acme signed [^f_1].",
+    "It grew."
+   ]
+  },
+  {
+   "name": "a citation after CRLF",
+   "text": "Acme signed.\r\n[^f_1] It grew.",
+   "want": [
+    "Acme signed.\r\n[^f_1]",
+    "It grew."
+   ]
+  }
+ ]
+}

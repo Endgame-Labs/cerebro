@@ -1,0 +1,20 @@
+{
+  "about": "A synthetic Granola account. Every name and address is made up, at .example domains.",
+  "now": "2026-11-17T12:00:00Z",
+  "folders": [{"id": "fold-customers", "title": "Customers"}, {"id": "fold-internal", "title": "Internal"}],
+  "meetings": [
+    {"id": "11111111-1111-4111-8111-111111111111", "title": "Acme renewal", "start": "2026-11-12T15:00:00Z",
+     "updated": "2026-11-12T16:00:00Z", "calendar_event_id": "cal-acme-1",
+     "attendees": [["Sam Rivera", "sam.rivera@quillmoor.example"], ["Jane Doe", "jane.doe@acme.example"]],
+     "summary": "Acme will renew in November.", "notes": "Send the order form.",
+     "transcript": [["Jane Doe", 5, "We will renew the contract in November."],
+                    ["Sam Rivera", 70, "I will send the order form on Friday."]],
+     "folders": ["fold-customers"]},
+    {"id": "44444444-4444-4444-8444-444444444444", "title": "Globex security review", "start": "2026-11-15T11:00:00Z",
+     "attendees": [["Tomas Alvarez", "tomas.alvarez@globex.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]],
+     "summary": "Globex wants a review.", "withheld": true, "folders": ["fold-customers"]},
+    {"id": "55555555-5555-4555-8555-555555555555", "title": "Old Acme call", "start": "2026-08-09T09:00:00Z",
+     "attendees": [["Jane Doe", "jane.doe@acme.example"]], "summary": "Too old.",
+     "transcript": [["Jane Doe", 5, "We will renew the contract in November."]], "folders": ["fold-customers"]}
+  ]
+}

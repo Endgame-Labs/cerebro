@@ -1,0 +1,33 @@
+{
+  "about": "Participants blocks and the attendees each reads as, roles read and the name stopped at the address. Synthetic.",
+  "cases": [
+    ["a role with a comma", "Jane Doe (VP, Sales) from Acme <jane.doe@acme.example>, Sam Rivera <sam.rivera@quillmoor.example>", [["Jane Doe", "jane.doe@acme.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]]],
+    ["a role in square brackets with a comma", "Lee [Ops, West] <lee@acme.example>", [["Lee", "lee@acme.example"]]],
+    ["a tag in square brackets before the name", "[EXT] Jane Doe <jane.doe@acme.example>", [["Jane Doe", "jane.doe@acme.example"]]],
+    ["a tag in parentheses before the name", "(Guest) Jane Doe <jane.doe@acme.example>", [["Jane Doe", "jane.doe@acme.example"]]],
+    ["several tags before the name", "[EXT] (Guest) Jane Doe <jane.doe@acme.example>", [["Jane Doe", "jane.doe@acme.example"]]],
+    ["an unclosed square bracket", "Lee [Ops <lee@acme.example>, Sam Rivera <sam.rivera@quillmoor.example>", [["Lee", "lee@acme.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]]],
+    ["an unclosed parenthesis", "Lee (Ops <lee@acme.example>, Sam Rivera <sam.rivera@quillmoor.example>", [["Lee", "lee@acme.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]]],
+    ["a name alone after an unclosed parenthesis", "Lee (Ops <lee@acme.example>, Wren Alone; Kit", [["Lee", "lee@acme.example"], ["Wren Alone", ""], ["Kit", ""]]],
+    ["a name alone after an unclosed square bracket", "Lee [Ops <lee@acme.example>; Wren Alone (Ops, EMEA)", [["Lee", "lee@acme.example"], ["Wren Alone", ""]]],
+    ["a name alone between addresses after an unclosed parenthesis", "Lee (Ops <lee@acme.example>, Wren Alone, Sam Rivera <sam.rivera@quillmoor.example>", [["Lee", "lee@acme.example"], ["Wren Alone", ""], ["Sam Rivera", "sam.rivera@quillmoor.example"]]],
+    ["a role closed after the address", "Lee (Ops <lee@acme.example>, West)", [["Lee", "lee@acme.example"]]],
+    ["words after a role closed after the address", "Lee (Ops <lee@acme.example>, West) from Acme", [["Lee", "lee@acme.example"]]],
+    ["words after a role closed after the address, then a name alone", "Lee (Ops <lee@acme.example>, West) and team; Wren Alone", [["Lee", "lee@acme.example"], ["Wren Alone", ""]]],
+    ["a role closed after the address, then the next address's name", "Lee (Ops <lee@acme.example>, West) Sam Rivera <sam.rivera@quillmoor.example>", [["Lee", "lee@acme.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]]],
+    ["words after a role closed after the address, then the next address's name", "Lee (Ops <lee@acme.example>, West) from Acme, Sam Rivera <sam.rivera@quillmoor.example>", [["Lee", "lee@acme.example"], ["Sam Rivera", "sam.rivera@quillmoor.example"]]],
+    ["a role closed after the address, then a name alone", "Lee (Ops <lee@acme.example>, West); Wren Alone", [["Lee", "lee@acme.example"], ["Wren Alone", ""]]],
+    ["a role after the address", "Lee <lee@acme.example> (Ops, West)", [["Lee", "lee@acme.example"]]],
+    ["words after the address", "Lee <lee@acme.example> from Acme", [["Lee", "lee@acme.example"]]],
+    ["an unclosed role with a comma and no address", "Jane (VP, Sales", [["Jane", ""]]],
+    ["a full stop after the address", "Jane <jane.doe@acme.example>.", [["Jane", "jane.doe@acme.example"]]],
+    ["a full stop after a bare address", "Jane jane.doe@acme.example.", [["Jane", "jane.doe@acme.example"]]],
+    ["a role with a comma and a bare address", "Jane Doe (VP, Sales) jane.doe@acme.example; Wren Alone (Ops, EMEA)", [["Jane Doe", "jane.doe@acme.example"], ["Wren Alone", ""]]],
+    ["punctuation alone is no one", "Jane <jane.doe@acme.example>\n.\n -- \n(VP)", [["Jane", "jane.doe@acme.example"]]],
+    ["an ampersand ends an address", "jane.doe@acme.example&sam.rivera@quillmoor.example", [["", "jane.doe@acme.example"], ["", "sam.rivera@quillmoor.example"]]],
+    ["a semicolon inside angle brackets ends an address", "Jane <jane.doe@acme.example;x>", [["Jane", "jane.doe@acme.example"]]],
+    ["an ampersand inside angle brackets ends an address", "Jane <jane.doe@acme.example&x>", [["Jane", "jane.doe@acme.example"]]],
+    ["a semicolon inside parentheses ends a bare address", "Jane (jane.doe@acme.example;sam.rivera@quillmoor.example)", [["Jane", "jane.doe@acme.example"], ["", "sam.rivera@quillmoor.example"]]],
+    ["escaped brackets read once unescaped", "Jane Doe (Account Executive) Jane Doe <jane.doe@quillmoor.example>, Sam Rivera <sam@quillmoor.example>", [["Jane Doe", "jane.doe@quillmoor.example"], ["Sam Rivera", "sam@quillmoor.example"]]]
+  ]
+}

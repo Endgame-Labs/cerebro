@@ -1,0 +1,202 @@
+{
+ "User": [
+  {
+   "Id": "005000000000001AAA",
+   "Name": "Jane Doe",
+   "Email": "jane.doe@vandelay.example",
+   "Username": "jane.doe@vandelay.example",
+   "Title": "Account Executive",
+   "SystemModstamp": "2025-09-06T12:00:00.000+0000"
+  },
+  {
+   "Id": "005000000000002AAA",
+   "Name": "John Roe",
+   "Email": "john.roe@vandelay.example",
+   "Username": "john.roe@vandelay.example",
+   "Title": "Regional Director",
+   "SystemModstamp": "2025-12-15T12:00:00.000+0000"
+  }
+ ],
+ "Account": [
+  {
+   "Id": "001000000000001AAA",
+   "Name": "Acme Corp",
+   "OwnerId": "005000000000001AAA",
+   "Industry": "Manufacturing",
+   "Website": "https://www.acme.example/",
+   "LastActivityDate": "2026-10-01",
+   "LastModifiedDate": "2026-10-06T12:00:00.000+0000",
+   "SystemModstamp": "2026-10-06T12:00:00.000+0000"
+  },
+  {
+   "Id": "001000000000002AAA",
+   "Name": "Northwind Traders",
+   "OwnerId": "005000000000001AAA",
+   "Industry": "Retail",
+   "Website": "northwind.example",
+   "LastActivityDate": "2026-09-21",
+   "LastModifiedDate": "2026-09-01T12:00:00.000+0000",
+   "SystemModstamp": "2026-09-01T12:00:00.000+0000"
+  },
+  {
+   "Id": "001000000000003AAA",
+   "Name": "Globex",
+   "OwnerId": "005000000000001AAA",
+   "Industry": null,
+   "Website": null,
+   "LastActivityDate": "2026-03-25",
+   "LastModifiedDate": "2026-03-25T12:00:00.000+0000",
+   "SystemModstamp": "2026-03-25T12:00:00.000+0000"
+  },
+  {
+   "Id": "001000000000004AAA",
+   "Name": "Initech",
+   "OwnerId": "005000000000002AAA",
+   "Industry": "Software",
+   "Website": "http://initech.example",
+   "LastActivityDate": "2026-10-08",
+   "LastModifiedDate": "2026-10-08T12:00:00.000+0000",
+   "SystemModstamp": "2026-10-08T12:00:00.000+0000"
+  }
+ ],
+ "Opportunity": [
+  {
+   "Id": "006000000000001AAA",
+   "Name": "Acme Corp renewal",
+   "AccountId": "001000000000001AAA",
+   "OwnerId": "005000000000001AAA",
+   "CurrencyIsoCode": "USD",
+   "StageName": "Proposal/Price Quote",
+   "Amount": 50000,
+   "CloseDate": "2026-11-10",
+   "IsClosed": false,
+   "IsWon": false,
+   "Probability": 60,
+   "Type": "Existing Business",
+   "NextStep": "Send the revised quote",
+   "CreatedDate": "2026-08-12T12:00:00.000+0000",
+   "LastModifiedDate": "2026-10-09T12:00:00.000+0000",
+   "SystemModstamp": "2026-10-09T12:00:00.000+0000"
+  },
+  {
+   "Id": "006000000000002AAA",
+   "Name": "Acme Corp expansion",
+   "AccountId": "001000000000001AAA",
+   "OwnerId": "005000000000001AAA",
+   "CurrencyIsoCode": "USD",
+   "StageName": "Qualification",
+   "Amount": 120000,
+   "CloseDate": "2026-12-30",
+   "IsClosed": false,
+   "IsWon": false,
+   "CreatedDate": "2026-08-27T12:00:00.000+0000",
+   "LastModifiedDate": "2026-09-11T12:00:00.000+0000",
+   "SystemModstamp": "2026-09-11T12:00:00.000+0000"
+  },
+  {
+   "Id": "006000000000003AAA",
+   "Name": "Acme Corp pilot",
+   "AccountId": "001000000000001AAA",
+   "OwnerId": "005000000000001AAA",
+   "CurrencyIsoCode": "USD",
+   "StageName": "Closed Won",
+   "Amount": 10000,
+   "CloseDate": "2026-06-13",
+   "IsClosed": true,
+   "IsWon": true,
+   "Probability": 100,
+   "CreatedDate": "2026-03-25T12:00:00.000+0000",
+   "LastModifiedDate": "2026-06-13T12:00:00.000+0000",
+   "SystemModstamp": "2026-06-13T12:00:00.000+0000"
+  },
+  {
+   "Id": "006000000000004AAA",
+   "Name": "Initech platform",
+   "AccountId": "001000000000004AAA",
+   "OwnerId": "005000000000002AAA",
+   "CurrencyIsoCode": "USD",
+   "StageName": "Negotiation/Review",
+   "Amount": 75000,
+   "CloseDate": "2026-10-25",
+   "IsClosed": false,
+   "IsWon": false,
+   "CreatedDate": "2026-07-13T12:00:00.000+0000",
+   "LastModifiedDate": "2026-10-10T12:00:00.000+0000",
+   "SystemModstamp": "2026-10-10T12:00:00.000+0000"
+  }
+ ],
+ "Contact": [
+  {
+   "Id": "003000000000001AAA",
+   "Name": "Wile Coyote",
+   "Email": "wile@acme.example",
+   "Title": "Head of Procurement",
+   "AccountId": "001000000000001AAA",
+   "LastModifiedDate": "2026-09-26T12:00:00.000+0000",
+   "LastActivityDate": "2026-10-01",
+   "SystemModstamp": "2026-09-26T12:00:00.000+0000"
+  },
+  {
+   "Id": "003000000000002AAA",
+   "Name": "Sam Rivera",
+   "Email": "sam@initech.example",
+   "Title": "CTO",
+   "AccountId": "001000000000004AAA",
+   "LastModifiedDate": "2026-10-08T12:00:00.000+0000",
+   "LastActivityDate": "2026-10-08",
+   "SystemModstamp": "2026-10-08T12:00:00.000+0000"
+  }
+ ],
+ "Task": [
+  {
+   "Id": "00T000000000001EAA",
+   "Subject": "Call about the renewal",
+   "Status": "Completed",
+   "AccountId": "001000000000001AAA",
+   "WhoId": "003000000000001AAA",
+   "OwnerId": "005000000000001AAA",
+   "ActivityDate": "2026-10-01",
+   "Description": "Wile asked for a three-year price.",
+   "CreatedDate": "2026-09-30T12:00:00.000+0000",
+   "SystemModstamp": "2026-10-01T12:00:00.000+0000"
+  },
+  {
+   "Id": "00T000000000002EAA",
+   "Subject": "Old intro call",
+   "Status": "Completed",
+   "AccountId": "001000000000001AAA",
+   "OwnerId": "005000000000001AAA",
+   "ActivityDate": "2026-03-25",
+   "CreatedDate": "2026-03-25T12:00:00.000+0000",
+   "SystemModstamp": "2026-03-25T12:00:00.000+0000"
+  }
+ ],
+ "Event": [
+  {
+   "Id": "00U000000000001EAA",
+   "Subject": "Quarterly review",
+   "AccountId": "001000000000001AAA",
+   "WhoId": "003000000000001AAA",
+   "OwnerId": "005000000000001AAA",
+   "StartDateTime": "2026-10-06T12:00:00.000+0000",
+   "EndDateTime": "2026-10-06T13:00:00.000+0000",
+   "ActivityDate": "2026-10-06",
+   "Location": "Video call",
+   "CreatedDate": "2026-10-02T12:00:00.000+0000",
+   "SystemModstamp": "2026-10-06T12:00:00.000+0000"
+  }
+ ],
+ "EmailMessage": [
+  {
+   "Id": "02s000000000001AAA",
+   "Subject": "Re: renewal quote",
+   "FromName": "Wile Coyote",
+   "FromAddress": "wile@acme.example",
+   "ToAddress": "jane.doe@vandelay.example",
+   "MessageDate": "2026-10-08T12:00:00.000+0000",
+   "TextBody": "Three years works if the price holds.",
+   "RelatedToId": "001000000000001AAA",
+   "SystemModstamp": "2026-10-08T12:00:00.000+0000"
+  }
+ ]
+}

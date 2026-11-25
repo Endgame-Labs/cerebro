@@ -1,0 +1,8 @@
+{
+  "labels": [
+    {"id": "00000000-0000-4000-8000-000000000201", "name": "label 1", "color": "#bec2c8", "isGroup": false},
+    {"id": "00000000-0000-4000-8000-000000000202", "name": "label group 2", "color": "#bec2c8", "isGroup": true},
+    {"id": "00000000-0000-4000-8000-000000000203", "name": "label 3", "color": "#bec2c8", "isGroup": false}
+  ],
+  "hasNextPage": false
+}

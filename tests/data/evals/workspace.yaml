@@ -1,0 +1,33 @@
+note: >-
+  Synthetic. A small stand-in workspace for the evals tests: every project, team and person is invented, and every
+  domain ends in .example. Each article is an identity, its properties, and its parts, as a run would leave them.
+articles:
+  - id: projects/brightpine
+    title: Brightpine
+    keys: {alias: [Brightpine Labs], domain: [brightpine.example]}
+    properties: {owner: Mara Quill, stage: open, due: "2027-03-15"}
+    parts:
+      Overview: >-
+        Brightpine Labs is moving its archive to the new store. Mara Quill leads the move, and the cutover is set
+        for March 15, 2027.
+      Blockers: The export of the old archive is short of disk, and Ines Varga is ordering more.
+  - id: projects/kesmar
+    title: Kesmar
+    keys: {alias: [Kesmar Systems], domain: [kesmar.example]}
+    properties: {owner: Tobin Reyes, stage: paused}
+    parts:
+      Overview: >-
+        Kesmar Systems paused its search rebuild in October. Tobin Reyes owns it, and work picks up once the budget
+        for next year is set.
+  - id: projects/lumenhart
+    title: Lumenhart
+    keys: {domain: [lumenhart.example]}
+    properties: {owner: Oskar Lind, stage: closed}
+    parts:
+      Overview: Lumenhart closed its pilot in September, and the report went to Oskar Lind.
+  - id: people/mara-quill
+    title: Mara Quill
+    keys: {email: [mara@brightpine.example]}
+    properties: {team: Platform}
+    parts:
+      Overview: Mara Quill runs the platform team at Brightpine Labs and leads the archive move.

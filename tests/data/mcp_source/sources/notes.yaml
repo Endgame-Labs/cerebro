@@ -1,0 +1,6 @@
+# A server written to the contract. Its capabilities leave out incremental_since, so each listing reads it whole.
+kind: mcp
+command: notes-server --stdio
+env: [NOTES_TOKEN]
+capabilities: [enumerate_history, fetch_by_id]
+binding: contract

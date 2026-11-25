@@ -1,0 +1,110 @@
+# Questions for the wiki checks/live_gtm.py builds from its seven notes, in the form `cerebro eval` reads. Each
+# answer is in the notes. The joins group needs two facts put together, and the unknown group asks what the notes do
+# not say, where the right answer is that the wiki does not know. Run by live_gtm.py at its end, or by hand:
+#   cerebro eval checks/gtm_questions.yaml --workspace <the workspace live_gtm.py --keep made>
+context: A sales team's wiki built from call notes and emails about three invented companies, Brightwater Logistics, Kestrel Foods and Novaline Health, read by an outside agent.
+questions:
+  - id: pilot-price
+    group: facts
+    ask: What is the Brightwater pilot priced at?
+    find: Brightwater Logistics
+    expect:
+      holds: ["18,000"]
+      judge: The answer says the pilot is priced at $18,000 for eight weeks.
+  - id: pilot-site
+    group: facts
+    ask: Where does Brightwater want its pilot to run?
+    find: Brightwater Logistics
+    expect:
+      holds: [Reno]
+      judge: The answer says the pilot is in the Reno warehouse.
+  - id: security-ask
+    group: facts
+    ask: What did Priya Nair ask for?
+    find: Priya Nair
+    expect:
+      holds: [SSO]
+      judge: The answer says Priya Nair asked for SSO and a data retention policy.
+  - id: questionnaire-due
+    group: facts
+    ask: When is the security questionnaire due back to Brightwater?
+    find: Brightwater Logistics
+    expect:
+      holds: ["21 November"]
+      judge: The answer says the security questionnaire is due back by 21 November.
+  - id: kestrel-budget
+    group: facts
+    ask: What is Kestrel Foods' budget for the project?
+    find: Kestrel Foods
+    expect:
+      holds: ["40,000"]
+      judge: The answer says the budget is $40,000 this fiscal year.
+  - id: omar-role
+    group: facts
+    ask: What is Omar Haddad's role?
+    find: Omar Haddad
+    expect:
+      holds: [CFO]
+      judge: The answer says Omar Haddad is the CFO of Kestrel Foods.
+  - id: novaline-go-live
+    group: facts
+    ask: When does the first Novaline clinic go live, and where is it?
+    find: Novaline Health
+    expect:
+      holds: [Tacoma, "2 December"]
+      judge: The answer says the first clinic, in Tacoma, goes live on 2 December.
+  - id: status-calls
+    group: facts
+    ask: What cadence of status calls did Grace Liu ask for?
+    find: Grace Liu
+    expect:
+      holds: [Tuesday]
+      judge: The answer says Grace Liu asked for weekly status calls on Tuesdays.
+  - id: pilot-start
+    group: joins
+    ask: When can the Brightwater pilot start, and what has to happen first?
+    find: Brightwater Logistics
+    expect:
+      judge: The answer says the pilot can start on 1 December if security signs off, and that the security questionnaire, which procurement needs, is due back by 21 November.
+  - id: kestrel-decision
+    group: joins
+    ask: Who decides at Kestrel Foods, between what, and by when?
+    find: Kestrel Foods
+    expect:
+      holds: ["15 December"]
+      judge: The answer says Omar Haddad, the CFO, is choosing between us and one other vendor for invoice matching and will decide by 15 December.
+  - id: brightwater-people
+    group: joins
+    ask: Who is Brightwater Logistics' IT security lead?
+    query: people
+    filters: { linked: accounts/brightwater-logistics }
+    top: 5
+    expect:
+      article: people/priya-nair
+      judge: The answer says Priya Nair is Brightwater's IT security lead.
+  - id: novaline-slip
+    group: joins
+    ask: What slipped at Novaline Health, and what does it move?
+    find: Novaline Health
+    expect:
+      holds: [January]
+      judge: The answer says the second clinic's network upgrade slips to January, which moves that clinic's go-live, while the Tacoma clinic's training is done.
+  - id: other-vendor-name
+    group: unknown
+    ask: Which vendor is Kestrel Foods comparing us with?
+    find: Kestrel Foods
+    expect:
+      judge: The answer says Kestrel is comparing us with one other vendor and does not name that vendor, since the wiki does not know its name. An answer that names a vendor is wrong.
+  - id: novaline-budget
+    group: unknown
+    ask: What budget does Novaline Health have for the rollout?
+    find: Novaline Health
+    expect:
+      lacks: ["$"]
+      judge: The answer gives no budget figure for Novaline Health, since the wiki holds none. An answer that gives an amount is wrong.
+  - id: brightwater-signed
+    group: unknown
+    ask: Has Brightwater signed a contract with us?
+    find: Brightwater Logistics
+    expect:
+      judge: The answer does not say Brightwater signed a contract. It says the wiki shows no signed contract, or only a pilot plan awaiting security sign-off. An answer that says a contract was signed is wrong.

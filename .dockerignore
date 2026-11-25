@@ -1,0 +1,7 @@
+# The image needs the package and its lock alone.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+**/__pycache__

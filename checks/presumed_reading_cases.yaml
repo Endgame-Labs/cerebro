@@ -1,0 +1,602 @@
+note: 'Forty items whose mark names one guess, half a fair reading of the part the item''s subject plays and half a fact
+  dressed as a guess, in a theatre company, a water utility and a school, none of them sales. Run by checks/presumed_eval.py
+  --cases checks/presumed_reading_cases.yaml. Every case was labelled by hand before anything ran against it, and no case
+  is edited once run: a label found wrong is reported, not changed. supported-in-other-words: the item should land; truly-unsupported:
+  it should go. A guess should land when it only reads the part its subject plays, as who decides, who owns or what part
+  someone takes, and every other value is in its cited fact. It should go when it states an event, a cause, a condition,
+  a state of some other thing, or a name, date or count no cited fact gives. Every person, company, utility and school is
+  invented.'
+today: '2026-11-15'
+context: Synthetic workspaces of a theatre company, a water utility and a school, for an eval of grounding.
+labels: ''
+names:
+  people:
+  - Ines Marlow
+  - Oskar Brandvold
+  - Wren Adeyemi
+  - Pia Solberg
+  - Teo Rask
+  - Dara Quill
+  - Femi Lowe
+  - Rosa Kemp
+  - Yusuf Brennan
+  - Lena Ostrow
+  - Mo Akintola
+  subjects:
+  - Larkspur Theatre
+  - Millbrook Water Works
+  - Halvard Middle School
+facts:
+- id: f_t01
+  text: Ines Marlow directs Larkspur Theatre's spring production of The Glass Orchard and runs every rehearsal.
+  subject: Larkspur Theatre
+  at: '2026-11-02T18:00:00Z'
+  source: local:file:local/notes/2026-11-02-larkspur-rehearsals.md
+  quote: I direct The Glass Orchard, and I run every rehearsal myself.
+  speaker: Ines Marlow
+- id: f_t02
+  text: Oskar Brandvold built the set for The Glass Orchard and manages Larkspur Theatre's scene shop.
+  subject: Larkspur Theatre
+  at: '2026-11-03T15:00:00Z'
+  source: local:file:local/notes/2026-11-03-larkspur-shop.md
+  quote: I built the Orchard set, and the scene shop is mine to run.
+  speaker: Oskar Brandvold
+- id: f_t03
+  text: Wren Adeyemi, chair of Larkspur Theatre's board, signs the season budget each year.
+  subject: Larkspur Theatre
+  at: '2026-11-04T19:00:00Z'
+  source: local:file:local/notes/2026-11-04-larkspur-board.md
+  quote: As chair I sign the season budget every year.
+  speaker: Wren Adeyemi
+- id: f_t04
+  text: Pia Solberg said the lighting rig failed during Larkspur Theatre's tech rehearsal on 2026-11-06.
+  subject: Larkspur Theatre
+  at: '2026-11-06T22:00:00Z'
+  source: local:file:local/notes/2026-11-06-larkspur-tech.md
+  quote: The rig went dark halfway through tech tonight.
+  speaker: Pia Solberg
+- id: f_t05
+  text: Teo Rask works the Larkspur Theatre box office on weekends.
+  subject: Larkspur Theatre
+  at: '2026-11-05T12:00:00Z'
+  source: local:file:local/notes/2026-11-05-larkspur-box-office.md
+  quote: I'm at the box office every weekend.
+  speaker: Teo Rask
+- id: f_w01
+  text: Dara Quill is chief engineer at Millbrook Water Works and approves every change to the treatment plant's dosing
+    settings.
+  subject: Millbrook Water Works
+  at: '2026-11-02T09:00:00Z'
+  source: local:file:local/notes/2026-11-02-millbrook-dosing.md
+  quote: No dosing change goes in without my sign-off.
+  speaker: Dara Quill
+- id: f_w02
+  text: Femi Lowe runs the night shift at the Millbrook treatment plant.
+  subject: Millbrook Water Works
+  at: '2026-11-03T06:00:00Z'
+  source: local:file:local/notes/2026-11-03-millbrook-shifts.md
+  quote: I run nights at the plant.
+  speaker: Femi Lowe
+- id: f_w03
+  text: Millbrook Water Works shut its Alder Lane pump station for repairs on 2026-11-03.
+  subject: Millbrook Water Works
+  at: '2026-11-03T14:00:00Z'
+  source: local:file:local/notes/2026-11-03-millbrook-alder-lane.md
+  quote: We shut Alder Lane station this morning for repairs.
+  speaker: Femi Lowe
+- id: f_w04
+  text: Rosa Kemp, Millbrook Water Works' compliance officer, files the monthly water quality report with the state.
+  subject: Millbrook Water Works
+  at: '2026-11-05T10:00:00Z'
+  source: local:file:local/notes/2026-11-05-millbrook-compliance.md
+  quote: I file the monthly quality report with the state.
+  speaker: Rosa Kemp
+- id: f_s01
+  text: Yusuf Brennan is principal of Halvard Middle School and chairs its staff meeting each Monday.
+  subject: Halvard Middle School
+  at: '2026-11-02T16:00:00Z'
+  source: local:file:local/notes/2026-11-02-halvard-staff.md
+  quote: I chair the Monday staff meeting.
+  speaker: Yusuf Brennan
+- id: f_s02
+  text: Lena Ostrow teaches eighth-grade science at Halvard Middle School and coaches its robotics club.
+  subject: Halvard Middle School
+  at: '2026-11-03T16:00:00Z'
+  source: local:file:local/notes/2026-11-03-halvard-robotics.md
+  quote: I teach eighth-grade science and coach robotics after school.
+  speaker: Lena Ostrow
+- id: f_s03
+  text: The Halvard district board approved new bus routes on 2026-10-28.
+  subject: Halvard Middle School
+  at: '2026-10-28T20:00:00Z'
+  source: local:file:local/notes/2026-10-28-halvard-board.md
+  quote: The board approved the new bus routes tonight.
+  speaker: Yusuf Brennan
+- id: f_s04
+  text: Mo Akintola coordinates Halvard Middle School's after-school tutoring program.
+  subject: Halvard Middle School
+  at: '2026-11-04T16:00:00Z'
+  source: local:file:local/notes/2026-11-04-halvard-tutoring.md
+  quote: I coordinate the after-school tutoring.
+  speaker: Mo Akintola
+cases:
+- id: rl01
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she directs the production; that casting is hers to settle is a reading of her part
+  sentence: |-
+    ```yaml
+    - person: Ines Marlow
+      role: has the final say on casting
+      presumed: role
+      fact: "[^f_t01]"
+    ```
+- id: rl02
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: he runs the shop; that he sets its order is a reading of his part
+  sentence: |-
+    ```yaml
+    - person: Oskar Brandvold
+      role: decides what the scene shop builds first
+      presumed: role
+      fact: "[^f_t02]"
+    ```
+- id: rl03
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she signs the budget; approving large spending is a reading of her part
+  sentence: |-
+    ```yaml
+    - person: Wren Adeyemi
+      role: approves large spending for the theatre
+      presumed: role
+      fact: "[^f_t03]"
+    ```
+- id: rl04
+  group: reading-land
+  kind: owner
+  label: supported-in-other-words
+  reason: she directs it; that she owns it is a reading, and the fact names her
+  sentence: |-
+    ```yaml
+    - thing: The Glass Orchard production
+      owner: Ines Marlow
+      presumed: owner
+      fact: "[^f_t01]"
+    ```
+- id: rl05
+  group: reading-land
+  kind: owner
+  label: supported-in-other-words
+  reason: he manages the shop; that he owns it is a reading, and the fact names him
+  sentence: |-
+    ```yaml
+    - thing: scene shop
+      owner: Oskar Brandvold
+      presumed: owner
+      fact: "[^f_t02]"
+    ```
+- id: rl06
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: he works the box office; answering seating questions is a reading of his part
+  sentence: |-
+    ```yaml
+    - person: Teo Rask
+      role: answers patrons' questions about seating
+      presumed: role
+      fact: "[^f_t05]"
+    ```
+- id: rl07
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she reported the rig at tech; that lighting is her charge is a reading
+  sentence: |-
+    ```yaml
+    - person: Pia Solberg
+      role: looks after the lighting at tech rehearsals
+      presumed: role
+      fact: "[^f_t04]"
+    ```
+- id: rl08
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she chairs the board; speaking for it is a reading of her part
+  sentence: |-
+    ```yaml
+    - person: Wren Adeyemi
+      role: speaks for the board to the company
+      presumed: role
+      fact: "[^f_t03]"
+    ```
+- id: rl09
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she approves every dosing change; signing off new processes is a reading of her part
+  sentence: |-
+    ```yaml
+    - person: Dara Quill
+      role: signs off any new treatment process
+      presumed: role
+      fact: "[^f_w01]"
+    ```
+- id: rl10
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: he runs nights; answering night alarms first is a reading of his part
+  sentence: |-
+    ```yaml
+    - person: Femi Lowe
+      role: first to answer a plant alarm at night
+      presumed: role
+      fact: "[^f_w02]"
+    ```
+- id: rl11
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she files with the state; being its voice there is a reading of her part
+  sentence: |-
+    ```yaml
+    - person: Rosa Kemp
+      role: speaks for the utility with the state regulator
+      presumed: role
+      fact: "[^f_w04]"
+    ```
+- id: rl12
+  group: reading-land
+  kind: owner
+  label: supported-in-other-words
+  reason: she approves every change; that she owns them is a reading, and the fact names her
+  sentence: |-
+    ```yaml
+    - thing: treatment plant dosing settings
+      owner: Dara Quill
+      presumed: owner
+      fact: "[^f_w01]"
+    ```
+- id: rl13
+  group: reading-land
+  kind: decider
+  label: supported-in-other-words
+  reason: he runs nights; that he decides there is a reading, and the fact names him
+  sentence: |-
+    ```yaml
+    - thing: night operations at the treatment plant
+      decider: Femi Lowe
+      presumed: decider
+      fact: "[^f_w02]"
+    ```
+- id: rl14
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she is compliance officer and files reports; keeping the records is a reading
+  sentence: |-
+    ```yaml
+    - person: Rosa Kemp
+      role: keeps the utility's compliance records
+      presumed: role
+      fact: "[^f_w04]"
+    ```
+- id: rl15
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: he is principal and chairs staff meetings; deciding duties is a reading of his part
+  sentence: |-
+    ```yaml
+    - person: Yusuf Brennan
+      role: decides staff duties at the school
+      presumed: role
+      fact: "[^f_s01]"
+    ```
+- id: rl16
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: she coaches the club; mentoring its students is a reading of her part
+  sentence: |-
+    ```yaml
+    - person: Lena Ostrow
+      role: mentors the robotics club's students
+      presumed: role
+      fact: "[^f_s02]"
+    ```
+- id: rl17
+  group: reading-land
+  kind: role
+  label: supported-in-other-words
+  reason: he coordinates tutoring; matching tutors is a reading of his part
+  sentence: |-
+    ```yaml
+    - person: Mo Akintola
+      role: matches tutors with students
+      presumed: role
+      fact: "[^f_s04]"
+    ```
+- id: rl18
+  group: reading-land
+  kind: owner
+  label: supported-in-other-words
+  reason: he chairs it; that he owns it is a reading, and the fact names him
+  sentence: |-
+    ```yaml
+    - thing: Monday staff meeting
+      owner: Yusuf Brennan
+      presumed: owner
+      fact: "[^f_s01]"
+    ```
+- id: rl19
+  group: reading-land
+  kind: sponsor
+  label: supported-in-other-words
+  reason: she coaches it; that she sponsors it is a reading, and the fact names her
+  sentence: |-
+    ```yaml
+    - thing: robotics club
+      sponsor: Lena Ostrow
+      presumed: sponsor
+      fact: "[^f_s02]"
+    ```
+- id: rl20
+  group: reading-land
+  kind: decider
+  label: supported-in-other-words
+  reason: he coordinates it; that he decides for it is a reading, and the fact names him
+  sentence: |-
+    ```yaml
+    - thing: after-school tutoring program
+      decider: Mo Akintola
+      presumed: decider
+      fact: "[^f_s04]"
+    ```
+- id: rd01
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an event no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Ines Marlow
+      role: cancelled the matinee after the rig failed
+      presumed: role
+      fact: "[^f_t01]"
+    ```
+- id: rd02
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an event and a storm no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Oskar Brandvold
+      role: rebuilt the set after the storm
+      presumed: role
+      fact: "[^f_t02]"
+    ```
+- id: rd03
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an act and a share no cited fact gives
+  sentence: |-
+    ```yaml
+    - person: Wren Adeyemi
+      role: cut the season budget by a third
+      presumed: role
+      fact: "[^f_t03]"
+    ```
+- id: rd04
+  group: fact-dressed
+  kind: status
+  label: truly-unsupported
+  reason: a fact about ticket sales no cited fact states
+  sentence: |-
+    ```yaml
+    - thing: The Glass Orchard production
+      status: sold out for opening night
+      presumed: status
+      fact: "[^f_t01]"
+    ```
+- id: rd05
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: a person no cited fact names, in lower case
+  sentence: |-
+    ```yaml
+    - person: Teo Rask
+      role: reports to dana voss
+      presumed: role
+      fact: "[^f_t05]"
+    ```
+- id: rd06
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an act and a relative date no cited fact gives
+  sentence: |-
+    ```yaml
+    - person: Pia Solberg
+      role: replaced the lighting board last week
+      presumed: role
+      fact: "[^f_t04]"
+    ```
+- id: rd07
+  group: fact-dressed
+  kind: owner
+  label: truly-unsupported
+  reason: a person no cited fact names, and the fact says Oskar runs the shop
+  sentence: |-
+    ```yaml
+    - thing: scene shop
+      owner: oskar's brother kjell
+      presumed: owner
+      fact: "[^f_t02]"
+    ```
+- id: rd08
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: a cause no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Dara Quill
+      role: approves dosing because the state requires it
+      presumed: role
+      fact: "[^f_w01]"
+    ```
+- id: rd09
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an event no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Femi Lowe
+      role: took over nights after the plant flooded
+      presumed: role
+      fact: "[^f_w02]"
+    ```
+- id: rd10
+  group: fact-dressed
+  kind: status
+  label: truly-unsupported
+  reason: a state of the station no cited fact gives; the fact says it was shut
+  sentence: |-
+    ```yaml
+    - thing: Alder Lane pump station
+      status: back in service
+      presumed: status
+      fact: "[^f_w03]"
+    ```
+- id: rd11
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: a fact about her filings no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Rosa Kemp
+      role: files the report late every quarter
+      presumed: role
+      fact: "[^f_w04]"
+    ```
+- id: rd12
+  group: fact-dressed
+  kind: owner
+  label: truly-unsupported
+  reason: an organisation no cited fact names, and the fact says Dara approves them
+  sentence: |-
+    ```yaml
+    - thing: treatment plant dosing settings
+      owner: the state health department
+      presumed: owner
+      fact: "[^f_w01]"
+    ```
+- id: rd13
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: a person no cited fact names
+  sentence: |-
+    ```yaml
+    - person: Dara Quill
+      role: reports to the city manager, gil harmon
+      presumed: role
+      fact: "[^f_w01]"
+    ```
+- id: rd14
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an act, a count and a time no cited fact gives
+  sentence: |-
+    ```yaml
+    - person: Yusuf Brennan
+      role: hired twelve new teachers this fall
+      presumed: role
+      fact: "[^f_s01]"
+    ```
+- id: rd15
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: an event no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Lena Ostrow
+      role: won the state robotics final with her club
+      presumed: role
+      fact: "[^f_s02]"
+    ```
+- id: rd16
+  group: fact-dressed
+  kind: status
+  label: truly-unsupported
+  reason: a delay and a time no cited fact gives
+  sentence: |-
+    ```yaml
+    - thing: new bus routes
+      status: delayed until spring
+      presumed: status
+      fact: "[^f_s03]"
+    ```
+- id: rd17
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: a grant and a condition no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Mo Akintola
+      role: runs tutoring until the grant runs out
+      presumed: role
+      fact: "[^f_s04]"
+    ```
+- id: rd18
+  group: fact-dressed
+  kind: sponsor
+  label: truly-unsupported
+  reason: an organisation no cited fact names
+  sentence: |-
+    ```yaml
+    - thing: robotics club
+      sponsor: the parents' association
+      presumed: sponsor
+      fact: "[^f_s02]"
+    ```
+- id: rd19
+  group: fact-dressed
+  kind: role
+  label: truly-unsupported
+  reason: a cause and an event no cited fact states
+  sentence: |-
+    ```yaml
+    - person: Yusuf Brennan
+      role: chairs the staff meeting because the old principal left
+      presumed: role
+      fact: "[^f_s01]"
+    ```
+- id: rd20
+  group: fact-dressed
+  kind: status
+  label: truly-unsupported
+  reason: a fact about the board no cited fact states
+  sentence: |-
+    ```yaml
+    - thing: Halvard district board
+      status: split over the bus routes
+      presumed: status
+      fact: "[^f_s03]"
+    ```

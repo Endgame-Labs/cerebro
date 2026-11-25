@@ -1,0 +1,10 @@
+workspace <ws>
+stage     list: checking the sources
+stage     extract: reading what the sources listed into facts, and linking them
+stage     compile: 1 article due, side by side
+ran       digests/weekly: wrote articles/digests/weekly.md, $0.0000
+listed    local: 1 record
+facts     1 record read, 2 facts extracted
+due       digests/weekly: change
+wrote     digests/weekly  articles/digests/weekly.md
+Done: 1 written, 0 failed.

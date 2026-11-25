@@ -1,0 +1,167 @@
+{
+  "customers": [
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "name": "name 4",
+      "logoUrl": "https://linear.app/acme/00000000-0000-4000-8000-000000000004/00000000-0000-4000-8000-000000000005",
+      "domains": [
+        "customer1.example.com"
+      ],
+      "externalIds": [],
+      "url": "https://linear.app/acme/customer/page-1",
+      "createdAt": "2026-02-24T16:00:00.000Z",
+      "updatedAt": "2026-09-24T18:00:00.000Z",
+      "revenue": null,
+      "size": null,
+      "owner": {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "name": "user1@acme.example"
+      },
+      "status": {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "name": "name 5"
+      },
+      "needs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "body": "body 6",
+          "content": "body 6",
+          "url": null,
+          "priority": 0,
+          "createdAt": "2026-03-31T16:20:00.000Z",
+          "updatedAt": "2026-03-31T16:20:00.000Z",
+          "issue": {
+            "id": "ENG-101",
+            "title": "title 7",
+            "state": {
+              "name": "Done",
+              "type": "completed"
+            }
+          },
+          "creator": {
+            "id": "00000000-0000-4000-8000-000000000009",
+            "name": "name 8"
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "body": "body 9",
+          "content": "body 9",
+          "url": "https://example.com/path-1",
+          "priority": 0,
+          "createdAt": "2026-03-03T19:00:00.000Z",
+          "updatedAt": "2026-03-03T19:00:00.000Z",
+          "issue": {
+            "id": "ENG-102",
+            "title": "title 10",
+            "state": {
+              "name": "Done",
+              "type": "completed"
+            }
+          },
+          "creator": {
+            "id": "00000000-0000-4000-8000-000000000011",
+            "name": "name 11"
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "body": "body 12",
+          "content": "body 12",
+          "url": "https://example.com/path-2",
+          "priority": 0,
+          "createdAt": "2026-03-20T18:00:00.000Z",
+          "updatedAt": "2026-03-20T18:00:00.000Z",
+          "issue": {
+            "id": "ENG-103",
+            "title": "title 13",
+            "state": {
+              "name": "Done",
+              "type": "completed"
+            }
+          },
+          "creator": {
+            "id": "00000000-0000-4000-8000-000000000009",
+            "name": "name 8"
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "body": "body 14",
+          "content": "body 14",
+          "url": null,
+          "priority": 0,
+          "createdAt": "2026-02-24T16:10:00.000Z",
+          "updatedAt": "2026-02-25T20:00:00.000Z",
+          "issue": {
+            "id": "ENG-104",
+            "title": "title 15",
+            "state": {
+              "name": "Canceled",
+              "type": "canceled"
+            }
+          },
+          "project": {
+            "id": "00000000-0000-4000-8000-000000000014",
+            "name": "name 16",
+            "status": {
+              "name": "Canceled",
+              "type": "canceled"
+            }
+          },
+          "creator": {
+            "id": "00000000-0000-4000-8000-000000000011",
+            "name": "name 11"
+          }
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000015",
+      "name": "name 17",
+      "logoUrl": "https://linear.app/acme/00000000-0000-4000-8000-000000000016/00000000-0000-4000-8000-000000000017",
+      "domains": [
+        "customer2.example.com"
+      ],
+      "externalIds": [],
+      "url": "https://linear.app/acme/customer/page-2",
+      "createdAt": "2026-02-19T23:20:00.000Z",
+      "updatedAt": "2026-05-21T06:00:00.000Z",
+      "revenue": null,
+      "size": 10,
+      "owner": {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "name": "user2@acme.example"
+      },
+      "status": {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "name": "name 18"
+      },
+      "needs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "body": "body 19",
+          "content": "body 19",
+          "url": null,
+          "priority": 0,
+          "createdAt": "2026-02-19T23:30:00.000Z",
+          "updatedAt": "2026-02-19T23:30:00.000Z",
+          "issue": {
+            "id": "ENG-105",
+            "title": "title 20",
+            "state": {
+              "name": "Canceled",
+              "type": "canceled"
+            }
+          },
+          "creator": {
+            "id": "00000000-0000-4000-8000-000000000011",
+            "name": "name 11"
+          }
+        }
+      ]
+    }
+  ],
+  "hasNextPage": true,
+  "cursor": "00000000-0000-4000-8000-000000000015"
+}

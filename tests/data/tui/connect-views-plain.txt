@@ -1,0 +1,38 @@
+connect slack reads Slack with your own user token, from an app you create in your workspace from this manifest:
+
+display_information:
+  name: Cerebro
+oauth_config:
+  scopes:
+    user:
+      - channels:read
+      - channels:history
+      - groups:read
+      - groups:history
+      - users:read
+      - users:read.email
+settings:
+  token_rotation_enabled: false
+
+1. Create the app from this manifest: at https://api.slack.com/apps choose
+   Create New App, then From a manifest, pick your workspace and paste it.
+2. Install it to your workspace from Install App in the app's settings.
+   Where the workspace requires app approval, Slack offers Request to
+   Install instead, and the install waits on an admin.
+3. Copy the User OAuth Token, which starts with xoxp-, from OAuth & Permissions
+   in the app's settings, and paste it below.
+
+Slack user token (xoxp-...), or Enter to connect later: 
+
+-- calendar --
+
+In Google Calendar, open Settings, pick the calendar, then Integrate calendar, and copy the secret address in iCal format.
+In Outlook on the web, open Settings, Calendar, Shared calendars, publish the calendar, and copy its ICS link.
+
+Secret address: 
+
+-- linear --
+
+Sign in through the browser: Opens your browser to sign in to Linear's MCP server, waits up to ten minutes, and keeps the login in the secrets store as one item.
+Paste an API key: Reads a personal API key of yours without echo, checks it with Linear, and keeps it in the secrets store as one item.
+[b]rowser  [k]ey  > 

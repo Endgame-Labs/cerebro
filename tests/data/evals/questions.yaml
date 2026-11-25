@@ -1,0 +1,51 @@
+# Synthetic. Labelled questions about the stand-in workspace in workspace.yaml, for the evals tests. Every name is invented,
+# and every domain ends in .example.
+context: Synthetic projects and the people on them, for an eval of the wiki's articles.
+questions:
+  - id: brightpine-owner
+    group: owners
+    ask: Who leads the Brightpine archive move?
+    find: Brightpine Labs
+    expect:
+      article: projects/brightpine
+      holds: [Mara Quill]
+      fields: {owner: Mara Quill}
+      judge: The answer names Mara Quill as the one who leads the archive move.
+  - id: brightpine-cutover
+    group: dates
+    ask: When is the Brightpine cutover?
+    find: brightpine.example
+    expect:
+      article: projects/brightpine
+      holds: ["March 15, 2027"]
+      judge: The answer says the cutover is set for March 15, 2027.
+  - id: kesmar-state
+    group: owners
+    ask: Is the Kesmar search rebuild still going?
+    query: projects
+    matching: search rebuild
+    expect:
+      article: projects/kesmar
+      fields: {stage: paused}
+      lacks: [closed]
+  - id: mara-by-email
+    ask: Who is mara@brightpine.example?
+    find: mara@brightpine.example
+    expect:
+      article: people/mara-quill
+      holds: [platform team]
+  - id: lumenhart-report
+    group: dates
+    ask: Who got the Lumenhart pilot report?
+    read: projects/lumenhart
+    expect:
+      holds: [Oskar Lind, September]
+      judge: The answer says the pilot report went to Oskar Lind.
+  - id: brightpine-joined
+    group: joined
+    ask: Who leads the Brightpine archive move, and who is ordering disk for it?
+    find: Brightpine Labs
+    expect:
+      article: projects/brightpine
+      holds: [Mara Quill, Ines Varga]
+      judge: The answer names Mara Quill as leading the archive move and Ines Varga as ordering disk for it.

@@ -1,0 +1,37 @@
+Sample list
+by a made-up helper
+
+Sample collection  14 of 15
+named in your notes  (2 notes)
+  [x] Bramblecote Ltd
+      Named in 2 notes, replies both ways in 6 threads, last 2026-10-08.
+  [x] Quillfeather & Sons
+      Named in 1 note, last 2026-10-06.
+  [ ] Larkspur Mills
+      Named in 1 note on 2026-09-18, nothing since.
+
+from the files source  (local)  12 of 12
+  [x] Harbor Row 1
+      In the files source, 3 notes.
+  [x] Harbor Row 2
+      In the files source, 4 notes.
+  [x] Harbor Row 3
+      In the files source, 5 notes.
+  [x] Harbor Row 4
+      In the files source, 6 notes.
+  [x] Harbor Row 5
+      In the files source, 7 notes.
+  … 7 more
+
+Second collection  2 of 2
+spoke in your calls  (calls)
+  [x] Juniper Ward
+      Spoke in 3 calls, last 2026-10-02.
+  [x] Fenwick Ash
+      On 2 meetings, last 2026-09-29.
+
+Left out: vendor (1)
+  [ ] Otterly Goods
+
+16 of 18 selected · about $7.20 to write the checked articles
+  Left out 1: one vendor

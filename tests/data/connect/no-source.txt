@@ -1,0 +1,2 @@
+Error: connect needs a source's name: run it in a terminal to be asked, or pass <name>
+[x] Failed. Run: cerebro connect <name>

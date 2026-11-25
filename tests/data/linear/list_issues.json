@@ -1,0 +1,58 @@
+{
+  "issues": [
+    {
+      "id": "ENG-107",
+      "uuid": "00000000-0000-4000-8000-000000000038",
+      "title": "title 62",
+      "description": "description 63… (truncated, use `get_issue` for full description)",
+      "priority": {
+        "value": 4,
+        "name": "Low"
+      },
+      "url": "https://linear.app/acme/issue/ENG-107/page-5",
+      "createdAt": "2026-11-01T18:00:00.000Z",
+      "updatedAt": "2026-11-02T06:30:00.000Z",
+      "completedAt": "2026-11-02T06:28:00.000Z",
+      "startedAt": "2026-11-01T18:20:00.000Z",
+      "canceledAt": null,
+      "dueDate": null,
+      "status": "Done",
+      "statusType": "completed",
+      "labels": [],
+      "createdBy": "name 21",
+      "assignee": "name 21",
+      "project": "project 64",
+      "projectId": "00000000-0000-4000-8000-000000000039",
+      "team": "displayName 1",
+      "teamId": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "ENG-108",
+      "uuid": "00000000-0000-4000-8000-000000000040",
+      "title": "title 65",
+      "description": "description 66… (truncated, use `get_issue` for full description)",
+      "priority": {
+        "value": 4,
+        "name": "Low"
+      },
+      "url": "https://linear.app/acme/issue/ENG-108/page-6",
+      "createdAt": "2026-11-01T18:10:00.000Z",
+      "updatedAt": "2026-11-02T06:27:00.000Z",
+      "completedAt": "2026-11-02T06:26:00.000Z",
+      "startedAt": "2026-11-01T18:30:00.000Z",
+      "canceledAt": null,
+      "dueDate": null,
+      "status": "Done",
+      "statusType": "completed",
+      "labels": [],
+      "createdBy": "name 21",
+      "assignee": "name 21",
+      "project": "project 64",
+      "projectId": "00000000-0000-4000-8000-000000000039",
+      "team": "displayName 1",
+      "teamId": "00000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "hasNextPage": true,
+  "cursor": "00000000-0000-4000-8000-000000000040"
+}

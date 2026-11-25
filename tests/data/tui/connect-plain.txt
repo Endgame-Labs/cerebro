@@ -1,0 +1,35 @@
+Sources
+Pick one to connect. Come back any time with cerebro connect, or in the sources/
+folder of the workspace.
+✓ GitHub connected
+
+> GitHub        [ok] connected
+  Local files   [ok] connected
+  Slack         [x]  not connected
+  Linear        [x]  not connected
+
+  Done
+
+↑↓ move   ⏎ select   esc done
+
+-- the list --
+
+Repositories to read
+into sources/github.yaml
+
+in sources/github.yaml
+  [x] quillmoor/retired
+      in sources/github.yaml, and not among what the login can see
+
+  [x] quillmoor/handbook
+      private, pushed 2026-11-17: How the team works
+  [ ] quillmoor/site
+      pushed 2026-11-12: The public site
+  [ ] quillmoor/planner
+      private, pushed 2026-10-30
+  [ ] quillmoor/old-notes
+      archived, pushed 2025-02-01
+  [ ] quillmoor-lab/sketches
+      never pushed
+
+2 of 6 selected

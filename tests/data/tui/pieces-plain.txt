@@ -1,0 +1,46 @@
+The named styles:
+  title          title text
+  section        section text
+  label          label text
+  value          value text
+  muted          muted text
+  success        success text
+  warning        warning text
+  failure        failure text
+  hint           hint text
+  key            key text
+  strong_success strong_success text
+  strong_warning strong_warning text
+  strong_failure strong_failure text
+
+Marks
+  [..] running mark
+  [ok] done mark
+  [x] failed mark
+  [!] warning mark
+  [-] quiet mark
+  [..] the running mark a line printed once shows
+  ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏  the spinner's frames, a tenth of a second each
+
+A table
+workspace  .../sample-wiki
+articles   12 articles, 3 awaiting review
+next       run cerebro status --workspace .../sample-wiki to see them
+
+A tinted block
+  cerebro connect sample --workspace .../sample-wiki
+  kind: files
+
+A link
+  articles/sample/bramblecote-ltd.md
+
+A step
+[ok] Read 15 records from 2 sources
+    local: 12 records
+    calls: 3 records
+warning: one source is slow: run cerebro status --workspace .../sample-wiki
+cerebro: warning: a made-up warning line
+
+[x] Failed. Run: cerebro trust .../sample-wiki
+[!] Done with warnings. Check: one source is slow: run cerebro status --workspace .../sample-wiki
+[ok] Done. Next: cerebro serve --workspace .../sample-wiki

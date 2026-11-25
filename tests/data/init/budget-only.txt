@@ -1,0 +1,26 @@
+exit 0
+workspace <root>
+wrote     settings.yaml, workspace.md, AGENTS.md, 1 file under sources/
+ignored   articles/, .cerebro/ added to .gitignore
+zone      Europe/Berlin, written to settings.yaml as timezone:
+notice    made inside the git repository at <repository>: a workspace usually lives in a folder of its own, so move it out unless you mean to keep it in that repository
+key       FIREWORKS_API_KEY is not set: keep the key in the workspace's secrets store with cerebro secrets set fireworks, or export FIREWORKS_API_KEY=<your key> in the shell that runs cerebro
+key       TYPESAFE_API_KEY is not set: keep the key in the workspace's secrets store with cerebro secrets set typesafe, or export TYPESAFE_API_KEY=<your key> in the shell that runs cerebro
+mcp       add the workspace to an MCP client. For Claude Code:
+            claude mcp add --scope user cerebro-wiki -- <cerebro> mcp --workspace <root>
+          or, in a client's JSON config, such as Claude Desktop's or Cursor's:
+            {
+              "mcpServers": {
+                "cerebro-wiki": {
+                  "command": "<cerebro>",
+                  "args": [
+                    "mcp",
+                    "--workspace",
+                    "<root>"
+                  ]
+                }
+              }
+            }
+next      write a first context agent: cerebro agents new <collection>/<name> --workspace <root>
+next      or start from the gtm template: cerebro init --template gtm <a new folder>
+next      to read a source that needs a login, write sources/<name>.yaml, then cerebro connect <name> --workspace <root>

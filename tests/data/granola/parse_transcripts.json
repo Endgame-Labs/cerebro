@@ -1,0 +1,12 @@
+{
+  "about": "Transcript replies and the turns each reads as. Synthetic.",
+  "cases": [
+    ["timed", "[0:05] Jane Doe: Hello there.\n[1:02:03] Sam: Bye.", [["Jane Doe", 5, "Hello there."], ["Sam", 3723, "Bye."]]],
+    ["speaker only", "Jane Doe: Hello.\nstray words", [["Jane Doe", -1, "Hello."], ["", -1, "stray words"]]],
+    ["json", "{\"transcript\":[{\"speaker\":\"Jane\",\"start\":9,\"text\":\"Hi\"}]}", [["Jane", 9, "Hi"]]],
+    ["empty", "", []],
+    ["blocks", "<transcript>\n<block source=\"Microphone\" speaker=\"Sam Rivera\" start=\"0:05\">Hello &amp; welcome.</block>\n<block source=\"System audio\" speaker=\"\" start=\"0:09\">Voice nobody named.</block>\n<block source=\"System audio\" start=\"1:00\"><text>From a text child.</text></block>\n</transcript>", [["Sam Rivera", 5, "Hello & welcome."], ["", 9, "Voice nobody named."], ["", 60, "From a text child."]]],
+    ["source labels name no speaker", "[0:01] Microphone: Opening.\n[0:02] System audio (Jane Doe): Reply.\n[0:03] Speaker A: Mobile voice.\nSam Rivera (Microphone): Older.", [["", 1, "Opening."], ["Jane Doe", 2, "Reply."], ["Speaker A", 3, "Mobile voice."], ["Sam Rivera", -1, "Older."]]],
+    ["only markup", "<transcript></transcript>", []]
+  ]
+}

@@ -1,0 +1,19 @@
+{"cases": [
+  {"curator": "parts", "admit": true,
+   "prompt": "Keep the parts the workshop stocks, each by its part code, such as P-100.",
+   "articles": [{"id": "things/widget", "title": "Widget", "keys": {"code": ["T-1"]}}],
+   "filer": "things/curator",
+   "planted": [
+     {"id": "p_hex", "name": "Hex Bolt", "keys": {"code": ["P-100"]}, "reason": "Widget is built with it.", "thing": "bolt"},
+     {"id": "p_bolt_hex", "name": "Bolt, hex", "keys": {"code": ["P-100"]}, "reason": "Named on Widget's build sheet.", "thing": "bolt"},
+     {"id": "p_widget", "name": "Widget", "keys": {"code": ["T-1"]}, "reason": "Widget is a finished product the workshop makes and sells; Hex Bolt is one of its parts.", "thing": null},
+     {"id": "p_spring", "name": "Coil Spring", "keys": {"code": ["P-207"]}, "reason": "Widget is built with it.", "thing": "spring"}]},
+  {"curator": "things", "admit": false,
+   "prompt": "Keep the products the workshop makes, each by its product code, such as T-1.",
+   "articles": [{"id": "parts/hex-bolt", "title": "Hex Bolt", "keys": {"code": ["P-100"]}}],
+   "filer": "parts/curator",
+   "planted": [
+     {"id": "p_pump", "name": "Gear Pump", "keys": {"code": ["T-5"]}, "reason": "Hex Bolt is fitted to it.", "thing": "pump"},
+     {"id": "p_pump_gear", "name": "Pump, gear", "keys": {"code": ["T-5"]}, "reason": "Named on Hex Bolt's fit list.", "thing": "pump"},
+     {"id": "p_bolt", "name": "Hex Bolt", "keys": {"code": ["P-100"]}, "reason": "A part the workshop stocks, the bolt fitted into Gear Pump.", "thing": null}]}
+]}

@@ -1,0 +1,41 @@
+Sources
+Pick one to connect. Come back any time with [38;2;57;154;255mcerebro connect[0m, or in the [38;2;57;154;255msources/[0m
+folder of the workspace.
+✓ GitHub connected
+
+> GitHub        [38;2;52;211;153m✓[0m connected
+  Local files   [38;2;52;211;153m✓[0m connected
+  Slack         [38;2;213;89;115m✗[0m not connected
+  Linear        [38;2;213;89;115m✗[0m not connected
+
+  Done
+
+↑↓ move   ⏎ select   esc done
+
+-- the list --
+
+[1mRepositories to read[0m
+[38;2;88;114;146minto sources/github.yaml[0m
+
+[1min sources/github.yaml[0m
+[38;2;57;154;255m>[0m [38;2;88;114;146m[[0m[38;2;52;211;153mx[0m[38;2;88;114;146m][0m [1mquillmoor/retired[0m
+      [38;2;88;114;146min sources/github.yaml, and not among what the login can see[0m
+
+  [38;2;88;114;146m[[0m[38;2;52;211;153mx[0m[38;2;88;114;146m][0m quillmoor/handbook
+      [38;2;88;114;146mprivate, pushed 2026-11-17: How the team works[0m
+
+  [38;2;88;114;146m[ ][0m quillmoor/site
+      [38;2;88;114;146mpushed 2026-11-12: The public site[0m
+
+  [38;2;88;114;146m[ ][0m quillmoor/planner
+      [38;2;88;114;146mprivate, pushed 2026-10-30[0m
+
+  [38;2;88;114;146m[ ][0m quillmoor/old-notes
+      [38;2;88;114;146marchived, pushed 2025-02-01[0m
+
+  [38;2;88;114;146m[ ][0m quillmoor-lab/sketches
+      [38;2;88;114;146mnever pushed[0m
+
+2 of 6 selected
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255mspace[0m[38;2;88;114;146m toggle[0m   [38;2;57;154;255ma[0m[38;2;88;114;146m all or none[0m   [38;2;57;154;255m⏎[0m [1mWrite selected[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m Cancel and quit[0m

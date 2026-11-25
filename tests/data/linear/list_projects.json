@@ -1,0 +1,42 @@
+{
+  "projects": [
+    {
+      "id": "P-ENG-11",
+      "name": "name 29",
+      "status": {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "name": "Backlog",
+        "type": "backlog"
+      },
+      "teams": [
+        {
+          "id": "00000000-0000-4000-8000-000000000025",
+          "name": "name 30",
+          "key": "T3"
+        }
+      ],
+      "lead": null,
+      "updatedAt": "2026-10-30T21:10:00.000Z"
+    },
+    {
+      "id": "P-ENG-12",
+      "name": "name 31",
+      "status": {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "name": "Planned",
+        "type": "planned"
+      },
+      "teams": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "name": "displayName 1",
+          "key": "T1"
+        }
+      ],
+      "lead": null,
+      "updatedAt": "2026-10-30T21:00:00.000Z"
+    }
+  ],
+  "hasNextPage": true,
+  "cursor": "00000000-0000-4000-8000-000000000027"
+}

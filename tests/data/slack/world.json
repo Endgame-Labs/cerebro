@@ -1,0 +1,48 @@
+{
+  "about": "A test workspace, Quillmoor. Every user, channel and message is invented, every address is under .example, and the token is no token Slack ever issued. now is 2026-10-11T12:00:00Z.",
+  "now": 1791720000,
+  "token": "xoxp-fixture-0000-token",
+  "self": "U01ABC",
+  "team_url": "https://quillmoor.slack.example/",
+  "users": [
+    {"id": "U01ABC", "name": "sam", "real_name": "Sam Rivera", "email": "sam.rivera@quillmoor.example"},
+    {"id": "U02MORGAN", "name": "morgan", "real_name": "Morgan Lee", "email": "morgan.lee@quillmoor.example"},
+    {"id": "U03PAT", "name": "pat", "real_name": "Pat Quinn", "email": "pat.quinn@quillmoor.example"},
+    {"id": "U04ROBIN", "name": "robin", "real_name": "Robin Vale"},
+    {"id": "U05DESK", "name": "dealdesk", "real_name": "Deal Desk", "bot": true},
+    {"id": "UX1DANA", "name": "dana", "real_name": "Dana Whitfield", "email": "dana.whitfield@acme.example", "external": true},
+    {"id": "UX2MIA", "name": "mia", "real_name": "Mia Chen", "email": "mia.chen@northwind.example", "external": true},
+    {"id": "UX3VIK", "name": "vikram", "real_name": "Vikram Sondhi", "email": "vikram.sondhi@globex.example", "external": true},
+    {"id": "UX4QUENTIN", "name": "quentin", "real_name": "Quentin Outscope", "email": "quentin.outscope@vendor.example", "external": true}
+  ],
+  "channels": [
+    {"id": "C01ACMEDEAL", "name": "acme-corp-deal", "private": true, "member": true, "updated": 1791712800000},
+    {"id": "C02NWSHARED", "name": "quillmoor-northwind", "private": true, "connect": true, "member": true, "updated": 1791612000000},
+    {"id": "C03GXSHARED", "name": "shared-ops", "private": true, "connect": true, "member": true, "updated": 1791540000000},
+    {"id": "C04VENDOR", "name": "vendor-zebra-ops", "private": true, "connect": true, "member": true, "updated": 1791716400000},
+    {"id": "C05GENERAL", "name": "general", "member": true, "updated": 1791716400000},
+    {"id": "C06LUNCH", "name": "quasar-lunch-club", "member": true, "updated": 1791709200000},
+    {"id": "C07PRICING", "name": "pricing-council", "member": true, "updated": 1791702000000},
+    {"id": "C08ARCHIVE", "name": "acme-corp-archive", "member": false, "updated": 1791716400000},
+    {"id": "D09DIRECT", "name": "", "im": true, "member": true, "updated": 1791716400000}
+  ],
+  "messages": {
+    "C01ACMEDEAL": [
+      {"ts": "1783857600.000000", "user": "U02MORGAN", "text": "A message from before the window."},
+      {"ts": "1791547200.000000", "user": "U04ROBIN", "subtype": "channel_join", "text": "<@U04ROBIN> has joined the channel"},
+      {"ts": "1791633600.000000", "thread_ts": "1791633600.000000", "user": "U01ABC", "text": "Can someone confirm the *renewal* terms for <@U02MORGAN>?"},
+      {"ts": "1791637200.000001", "thread_ts": "1791633600.000000", "user": "U02MORGAN", "text": "Procurement wants net 60 terms on the renewal."},
+      {"ts": "1791640800.000002", "thread_ts": "1791633600.000000", "user": "U04ROBIN", "text": "Legal signs off on Friday."},
+      {"ts": "1791648000.000000", "user": "U05DESK", "bot_id": "B05DESK", "username": "Deal Desk", "subtype": "bot_message", "text": "Deal desk approved a 12% discount for Acme Corp."},
+      {"ts": "1791684000.000000", "user": "U02MORGAN", "text": "The quote is <https://quotes.quillmoor.example/q/7|the Q7 quote>, see `net_60` &amp; the &lt;terms&gt;.", "edited": "1791687600.000000"}
+    ],
+    "C02NWSHARED": [{"ts": "1791612000.000000", "user": "UX2MIA", "text": "I lead dispatch at Northwind and will own the rollout."}],
+    "C03GXSHARED": [{"ts": "1791540000.000000", "user": "UX3VIK", "text": "Globex will start the two-depot pilot on 2026-11-02."}],
+    "C04VENDOR": [{"ts": "1791716400.000000", "user": "UX4QUENTIN", "text": "Hello, OUTSCOPE-BODY-PHRASE-QUASAR is all this says."}],
+    "C05GENERAL": [{"ts": "1791716400.000000", "user": "U03PAT", "text": "GENERAL-PHRASE-NEVER-READ"}],
+    "C06LUNCH": [{"ts": "1791709200.000000", "user": "U03PAT", "text": "Lunch on Thursday."}],
+    "C07PRICING": [{"ts": "1791702000.000000", "user": "U03PAT", "text": "Pricing council approved the floor price."}],
+    "C08ARCHIVE": [{"ts": "1791716400.000000", "user": "U03PAT", "text": "ARCHIVE-NOT-A-MEMBER"}],
+    "D09DIRECT": [{"ts": "1791716400.000000", "user": "U03PAT", "text": "DIRECT-MESSAGE-NEVER-READ"}]
+  }
+}

@@ -1,0 +1,79 @@
+[project]
+name = "cerebro"
+version = "0.1.0"
+description = "Builds a wiki from your sources and keeps it current."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "click==8.5.1",
+    "factoid==0.1.29",  # from PyPI, pinned exactly: a release, never the repository's main
+    "httpx>=0.28.1",
+    "keyring>=25.7.0",
+    "markdown-it-py==4.3.0",
+    "mcp==2.3.0",
+    "pydantic-ai-slim[openai]==2.69.0",
+    "pyyaml==6.0.3",
+    "textual>=8.2,<9",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2,<4"]  # psycopg 3, for a database source that reads Postgres
+
+[project.scripts]
+cerebro = "cerebro.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cerebro"]
+
+[dependency-groups]
+dev = [
+    "cmarkgfm==2025.10.22",
+    "mutmut==3.8.1",
+    "pytest==9.2.0",
+    "pytest-timeout==2.4.0",
+    "pytest-xdist==3.8.0",
+    "ruff==0.17.5",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = "-n 4"  # four workers on any machine, since a worker per core swamps a laptop: -n 0 runs on one
+timeout = 30  # no test may hang: one that runs past this fails with its stack
+tmp_path_retention_policy = "failed"  # a passed test's temp folder goes as it ends: a run keeps what failed
+markers = ["untrusted: the test's temp folders are not trusted, as a cloned workspace's are not"]
+
+[tool.mutmut]
+source_paths = ["src/cerebro"]
+only_mutate = [
+    "src/cerebro/fakes.py", "src/cerebro/api.py", "src/cerebro/rerank.py", "src/cerebro/compile.py",
+    "src/cerebro/evidence.py",
+    "src/cerebro/lookup.py",
+    "src/cerebro/store.py", "src/cerebro/article.py", "src/cerebro/app.py", "src/cerebro/mcp.py",
+    "src/cerebro/identity.py", "src/cerebro/runner.py", "src/cerebro/agent.py", "src/cerebro/window.py",
+    "src/cerebro/source.py", "src/cerebro/connectors/files.py", "src/cerebro/models.py", "src/cerebro/budget.py",
+    "src/cerebro/records.py", "src/cerebro/project.py", "src/cerebro/ground.py", "src/cerebro/curate.py",
+    "src/cerebro/clock.py", "src/cerebro/prompts/__init__.py", "src/cerebro/scaffold.py", "src/cerebro/secrets.py", "src/cerebro/connectors/calendar.py",
+    "src/cerebro/connectors/calendar_ical.py", "src/cerebro/connectors/calendar_rrule.py",
+    "src/cerebro/connectors/gmail.py", "src/cerebro/connectors/gmail_imap.py",
+    "src/cerebro/connectors/gmail_text.py", "src/cerebro/connectors/gong.py", "src/cerebro/connectors/granola.py",
+    "src/cerebro/connectors/granola_parse.py", "src/cerebro/connectors/linear.py", "src/cerebro/connectors/salesforce.py",
+    "src/cerebro/connectors/mcp_source.py", "src/cerebro/connectors/mcp_source_client.py",
+    "src/cerebro/connectors/github.py", "src/cerebro/connectors/github_render.py", "src/cerebro/connectors/slack.py",
+    "src/cerebro/review.py", "src/cerebro/connectors/database.py", "src/cerebro/connectors/postgres.py",
+    "src/cerebro/fetch.py", "src/cerebro/search.py",
+    "src/cerebro/connectors/questions.py", "src/cerebro/cli.py", "src/cerebro/evals.py", "src/cerebro/connect.py",
+    "src/cerebro/connectors/mcp_oauth.py", "src/cerebro/run.py", "src/cerebro/facts.py", "src/cerebro/trust.py",
+    "src/cerebro/rendered.py", "src/cerebro/held.py", "src/cerebro/tokens.py",
+]
+also_copy = ["apps", "docs", "checks"]  # the Notes app the tests load, and the docs and checks they read
+pytest_add_cli_args_test_selection = ["tests"]
+pytest_add_cli_args = ["-n", "0"]  # mutmut runs its tests on one worker

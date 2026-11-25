@@ -1,0 +1,404 @@
+note: >-
+  The presumed cases on the same facts, with each presumed item naming its presumed value by key, as presumed: role, run by checks/presumed_eval.py --cases checks/presumed_named_cases.yaml. Every case was labelled by hand before anything ran against it, and no case is edited once run. supported-in-other-words: the item should land; truly-unsupported: it should go. An item that names its presumed value should land when its cited facts hold every other value and name each person or thing it names, and go when it names one no fact names, gives a date or figure no fact gives (a guessed date or figure included), cites nothing, names a key it lacks or every key, or cites a fact that states a different value in place of the presumed one. The plain cases pu01 to pu06 are those of checks/presumed_cases.yaml, unchanged.
+today: "2026-11-15"
+context: Synthetic workspaces of a lab, a law practice, a codebase and a clinic, for an eval of grounding.
+labels: ""
+names:
+  people: [Hana Brecht, Ezra Lund, Celia Ferrow, Paul Mendes, Ada Voss, Kiran Holt, Mara Ellison, Theo Park,
+           Nell Okri, Basil Grant]
+  subjects: [Saltmarsh Lab, Ferrow & Pike, quarry, Elmbrook Clinic]
+facts:
+  - id: f_p101
+    text: Hana Brecht runs the sequencing core at Saltmarsh Lab and books every run on its two sequencers.
+    subject: Saltmarsh Lab
+    at: "2026-11-02T09:00:00Z"
+    source: local:file:local/notes/2026-11-02-saltmarsh-core.md
+    quote: I run the core, and every run on both sequencers goes through my booking sheet.
+    speaker: Hana Brecht
+  - id: f_p102
+    text: Saltmarsh Lab's grant renewal is due to the funder on 2027-02-01, and Hana Brecht is drafting its budget.
+    subject: Saltmarsh Lab
+    at: "2026-11-05T09:00:00Z"
+    source: local:file:local/notes/2026-11-05-saltmarsh-grant.md
+    quote: The renewal goes in on the first of February, and I am drafting the budget for it.
+    speaker: Hana Brecht
+  - id: f_p201
+    text: Celia Ferrow, senior partner at Ferrow & Pike, reviews every settlement offer in the Dunmore matter.
+    subject: Ferrow & Pike
+    at: "2026-10-28T15:00:00Z"
+    source: local:file:local/notes/2026-10-28-dunmore-team.md
+    quote: Every offer in Dunmore comes across my desk before it goes anywhere.
+    speaker: Celia Ferrow
+  - id: f_p202
+    text: Paul Mendes filed the Dunmore motion to compel on 2026-10-20.
+    subject: Ferrow & Pike
+    at: "2026-10-20T17:00:00Z"
+    source: local:file:local/notes/2026-10-20-dunmore-filing.md
+    quote: The motion to compel went in today.
+    speaker: Paul Mendes
+  - id: f_p203
+    text: The court has not set a hearing for the Dunmore motion to compel.
+    subject: Ferrow & Pike
+    at: "2026-11-12T10:00:00Z"
+    source: local:file:local/notes/2026-11-12-dunmore-docket.md
+    quote: Still nothing on the docket for the motion; no hearing has been set.
+    speaker: Paul Mendes
+  - id: f_p301
+    text: Ada Voss wrote most of the quarry repository's storage layer and reviews changes to it.
+    subject: quarry
+    at: "2026-11-01T12:00:00Z"
+    source: local:file:local/notes/2026-11-01-quarry-storage.md
+    quote: Most of the storage layer is my code, and I review what touches it.
+    speaker: Ada Voss
+  - id: f_p302
+    text: Kiran Holt said the quarry 2.0 release branch was cut on 2026-11-09.
+    subject: quarry
+    at: "2026-11-09T16:00:00Z"
+    source: local:file:local/notes/2026-11-09-quarry-branch.md
+    quote: I cut the 2.0 release branch this afternoon.
+    speaker: Kiran Holt
+  - id: f_p401
+    text: Mara Ellison is the medical director of Elmbrook Clinic and chairs its weekly staff meeting.
+    subject: Elmbrook Clinic
+    at: "2026-11-03T08:00:00Z"
+    source: local:file:local/notes/2026-11-03-elmbrook-staff.md
+    quote: As medical director I chair the staff meeting every Monday.
+    speaker: Mara Ellison
+  - id: f_p402
+    text: Theo Park said Elmbrook Clinic's new intake system went live on 2026-11-04.
+    subject: Elmbrook Clinic
+    at: "2026-11-04T18:00:00Z"
+    source: local:file:local/notes/2026-11-04-elmbrook-intake.md
+    quote: The new intake system is live as of this morning.
+    speaker: Theo Park
+  - id: f_p403
+    text: Theo Park said the clinic's records vendor, not the clinic, owns the backup schedule.
+    subject: Elmbrook Clinic
+    at: "2026-11-10T11:00:00Z"
+    source: local:file:local/notes/2026-11-10-elmbrook-backups.md
+    quote: The backup schedule is the vendor's, not ours; we cannot change it.
+    speaker: Theo Park
+cases:
+  # items naming a presumed value that should land: the person or thing is in a cited fact, the presumed value is no fact's
+  - id: nl01
+    group: named-land
+    kind: role
+    label: supported-in-other-words
+    reason: she runs the core and books every run; that she approves new projects is the writer's reading
+    sentence: |-
+      ```yaml
+      - person: Hana Brecht
+        role: approves new sequencing projects
+        presumed: role
+        fact: "[^f_p101]"
+      ```
+  - id: nl02
+    group: named-land
+    kind: date-like
+    label: supported-in-other-words
+    reason: the fact gives the budget and its drafter; that it is ready ahead of the deadline is presumed
+    sentence: |-
+      ```yaml
+      - thing: grant renewal budget
+        owner: Hana Brecht
+        ready: ahead of the funder's deadline
+        presumed: ready
+        fact: "[^f_p102]"
+      ```
+  - id: nl03
+    group: named-land
+    kind: role
+    label: supported-in-other-words
+    reason: the senior partner reviews every offer; that she makes the call is the writer's reading
+    sentence: |-
+      ```yaml
+      - person: Celia Ferrow
+        role: makes the call on settling Dunmore
+        presumed: role
+        fact: "[^f_p201]"
+      ```
+  - id: nl04
+    group: named-land
+    kind: status
+    label: supported-in-other-words
+    reason: the motion was filed; that the other side opposes it is presumed, and no cited fact says otherwise
+    sentence: |-
+      ```yaml
+      - matter: Dunmore motion to compel
+        status: opposed by the other side
+        presumed: status
+        fact: "[^f_p202]"
+      ```
+  - id: nl05
+    group: named-land
+    kind: owner
+    label: supported-in-other-words
+    reason: she wrote most of it and reviews changes; that she owns it is the writer's reading
+    sentence: |-
+      ```yaml
+      - component: quarry storage layer
+        owner: Ada Voss
+        presumed: owner
+        fact: "[^f_p301]"
+      ```
+  - id: nl06
+    group: named-land
+    kind: owner
+    label: supported-in-other-words
+    reason: he cut the branch; that he manages the release is presumed
+    sentence: |-
+      ```yaml
+      - thing: quarry 2.0 release
+        manager: Kiran Holt
+        presumed: manager
+        fact: "[^f_p302]"
+      ```
+  - id: nl07
+    group: named-land
+    kind: role
+    label: supported-in-other-words
+    reason: the medical director chairs the staff meeting; that she signs off protocols is presumed by her title
+    sentence: |-
+      ```yaml
+      - person: Mara Ellison
+        role: signs off clinical protocols
+        presumed: role
+        fact: "[^f_p401]"
+      ```
+  - id: nl08
+    group: named-land
+    kind: status
+    label: supported-in-other-words
+    reason: the system went live; that it has run without trouble since is presumed
+    sentence: |-
+      ```yaml
+      - system: Elmbrook intake system
+        status: running without trouble since it went live
+        presumed: status
+        fact: "[^f_p402]"
+      ```
+  # items naming a presumed value that should go
+  - id: nd01
+    group: named-drop
+    kind: unnamed-person
+    label: truly-unsupported
+    reason: no cited fact names Nell Okri
+    sentence: |-
+      ```yaml
+      - person: Nell Okri
+        role: approves new sequencing projects
+        presumed: role
+        fact: "[^f_p101]"
+      ```
+  - id: nd02
+    group: named-drop
+    kind: unnamed-person
+    label: truly-unsupported
+    reason: no cited fact names Basil Grant
+    sentence: |-
+      ```yaml
+      - component: quarry storage layer
+        owner: Basil Grant
+        presumed: owner
+        fact: "[^f_p301]"
+      ```
+  - id: nd03
+    group: named-drop
+    kind: new-date
+    label: truly-unsupported
+    reason: no fact gives a hearing date
+    sentence: |-
+      ```yaml
+      - matter: Dunmore motion to compel
+        hearing: 2026-12-03
+        presumed: hearing
+        fact: "[^f_p202]"
+      ```
+  - id: nd04
+    group: named-drop
+    kind: new-date
+    label: truly-unsupported
+    reason: no fact gives a since date; the system went live on 2026-11-04
+    sentence: |-
+      ```yaml
+      - system: Elmbrook intake system
+        owner: Theo Park
+        since: 2026-09-01
+        presumed: owner
+        fact: "[^f_p402]"
+      ```
+  - id: nd05
+    group: named-drop
+    kind: no-citation
+    label: truly-unsupported
+    reason: it cites nothing
+    sentence: |-
+      ```yaml
+      - person: Celia Ferrow
+        role: makes the call on settling Dunmore
+        presumed: role
+      ```
+  - id: nd06
+    group: named-drop
+    kind: no-citation
+    label: truly-unsupported
+    reason: it cites nothing
+    sentence: |-
+      ```yaml
+      - thing: grant renewal budget
+        owner: Hana Brecht
+        presumed: owner
+      ```
+  - id: nd07
+    group: named-drop
+    kind: contrary
+    label: truly-unsupported
+    reason: a cited fact says no hearing has been set
+    sentence: |-
+      ```yaml
+      - matter: Dunmore motion to compel
+        status: set down for a hearing
+        presumed: status
+        fact: "[^f_p202] [^f_p203]"
+      ```
+  - id: nd08
+    group: named-drop
+    kind: contrary
+    label: truly-unsupported
+    reason: the cited fact says the records vendor owns the backup schedule
+    sentence: |-
+      ```yaml
+      - thing: clinic backup schedule
+        owner: Theo Park
+        presumed: owner
+        fact: "[^f_p403]"
+      ```
+  # the plain items of checks/presumed_cases.yaml, with a value no fact states and no mark: each should go
+  - id: pu01
+    group: plain
+    kind: role
+    label: truly-unsupported
+    reason: running the core and booking runs is not approving projects
+    sentence: |-
+      ```yaml
+      - person: Hana Brecht
+        role: approves new sequencing projects
+        fact: "[^f_p101]"
+      ```
+  - id: pu02
+    group: plain
+    kind: role
+    label: truly-unsupported
+    reason: reviewing every offer is not making the call
+    sentence: |-
+      ```yaml
+      - person: Celia Ferrow
+        role: makes the call on settling Dunmore
+        fact: "[^f_p201]"
+      ```
+  - id: pu03
+    group: plain
+    kind: owner
+    label: truly-unsupported
+    reason: cutting the branch is not managing the release
+    sentence: |-
+      ```yaml
+      - thing: quarry 2.0 release
+        manager: Kiran Holt
+        fact: "[^f_p302]"
+      ```
+  - id: pu04
+    group: plain
+    kind: role
+    label: truly-unsupported
+    reason: chairing the staff meeting is not signing off protocols
+    sentence: |-
+      ```yaml
+      - person: Mara Ellison
+        role: signs off clinical protocols
+        fact: "[^f_p401]"
+      ```
+  - id: pu05
+    group: plain
+    kind: status
+    label: truly-unsupported
+    reason: no fact says the other side opposes the motion
+    sentence: |-
+      ```yaml
+      - matter: Dunmore motion to compel
+        status: opposed by the other side
+        fact: "[^f_p202]"
+      ```
+  - id: pu06
+    group: plain
+    kind: status
+    label: truly-unsupported
+    reason: no fact says how the system has run since it went live
+    sentence: |-
+      ```yaml
+      - system: Elmbrook intake system
+        status: running without trouble since it went live
+        fact: "[^f_p402]"
+      ```
+  # drops for the guards that read the whole item, named values included
+  - id: nx01
+    group: named-guard
+    kind: unnamed-person
+    label: truly-unsupported
+    reason: the person key is the one named presumed, and no cited fact names Nell Okri
+    sentence: |-
+      ```yaml
+      - person: Nell Okri
+        role: runs the sequencing core
+        presumed: person
+        fact: "[^f_p101]"
+      ```
+  - id: nx02
+    group: named-guard
+    kind: every-key
+    label: truly-unsupported
+    reason: every value is named presumed, so nothing in it is checked
+    sentence: |-
+      ```yaml
+      - person: Hana Brecht
+        role: approves new sequencing projects
+        presumed: [person, role]
+        fact: "[^f_p101]"
+      ```
+  - id: nx03
+    group: named-guard
+    kind: missing-key
+    label: truly-unsupported
+    reason: it names owner presumed, and it has no owner
+    sentence: |-
+      ```yaml
+      - person: Celia Ferrow
+        role: makes the call on settling Dunmore
+        presumed: owner
+        fact: "[^f_p201]"
+      ```
+  - id: nx04
+    group: named-guard
+    kind: guessed-date
+    label: truly-unsupported
+    reason: a guessed date goes, named presumed or not, since no fact gives it
+    sentence: |-
+      ```yaml
+      - system: Elmbrook intake system
+        review: 2026-12-15
+        presumed: review
+        fact: "[^f_p402]"
+      ```
+  - id: nx05
+    group: named-guard
+    kind: guessed-figure
+    label: truly-unsupported
+    reason: a guessed figure goes, named presumed or not, since no fact gives it
+    sentence: |-
+      ```yaml
+      - thing: grant renewal budget
+        owner: Hana Brecht
+        amount: 240000 dollars
+        presumed: amount
+        fact: "[^f_p102]"
+      ```

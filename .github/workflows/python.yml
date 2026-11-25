@@ -1,0 +1,41 @@
+name: python
+
+on:
+  # Push only: GitHub attaches a commit's push run to the pull request that
+  # carries it, so a pull_request trigger would run the same commit twice.
+  push:
+
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run still going for the old head.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# One job: the lint, the suite and the diagram check, on what uv.lock pins,
+# with the postgres extra, so the psycopg driver test runs too. No type check
+# and no Dockerfile build run here.
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UV_PYTHON: "3.13"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # v10 has no moving major tag (the last is v7), so the pin names a release.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.32"  # the uv the lock was made with, as in the Dockerfile
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install from the lock
+        run: uv sync --locked --extra postgres
+      - name: Lint
+        run: uv run ruff check src tests checks apps
+      - name: Tests
+        run: uv run pytest
+      - name: Diagrams match their specs
+        run: uv run python docs/diagrams/build.py --check

@@ -1,0 +1,228 @@
+[
+ {
+  "id": "quillmoor/initech-connector#12",
+  "source": "github",
+  "revision": "2026-10-03T15:00:00Z",
+  "at": "2026-10-03T15:00:00Z",
+  "url": "https://github.example/quillmoor/initech-connector/pull/12",
+  "keys": {
+   "github_repos": [
+    "quillmoor/initech-connector"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 12,
+   "state": "closed",
+   "author": "jane--doe",
+   "repo": "quillmoor/initech-connector"
+  },
+  "body": "Repository: quillmoor/initech-connector\nPull request: #12 Retry failed route syncs\nState: merged into main on 2026-10-03 by Jane Doe (@jane--doe)\nBranch: change-12 into main\nChanges: 0 files, +0 -0\nAuthor: Jane Doe (@jane--doe)\nOpened: Mon, 28 Sep 2026 10:00:00 +0000\nDate: Sat, 03 Oct 2026 15:00:00 +0000\n\nRetries a route sync that timed out, up to three times.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/initech-connector#14",
+  "source": "github",
+  "revision": "2026-10-08T11:00:00Z",
+  "at": "2026-10-08T11:00:00Z",
+  "url": "https://github.example/quillmoor/initech-connector/pull/14",
+  "keys": {
+   "github_repos": [
+    "quillmoor/initech-connector"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 14,
+   "state": "open",
+   "author": "morgan--lee",
+   "repo": "quillmoor/initech-connector"
+  },
+  "body": "Repository: quillmoor/initech-connector\nPull request: #14 Map depot codes\nState: open\nBranch: change-14 into main\nChanges: 0 files, +0 -0\nAuthor: Morgan Lee (@morgan--lee)\nOpened: Tue, 06 Oct 2026 09:00:00 +0000\nDate: Thu, 08 Oct 2026 11:00:00 +0000\n\nMaps the depot codes of the dispatch system to ours.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/initech-connector@v0.4.0",
+  "source": "github",
+  "revision": "2026-10-04T12:00:00Z",
+  "at": "2026-10-04T12:00:00Z",
+  "url": "https://github.example/quillmoor/initech-connector/releases/v0.4.0",
+  "keys": {
+   "github_repos": [
+    "quillmoor/initech-connector"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "release",
+   "tag": "v0.4.0",
+   "repo": "quillmoor/initech-connector"
+  },
+  "body": "Repository: quillmoor/initech-connector\nRelease: v0.4.0 (Retries)\nAuthor: Jane Doe (@jane--doe)\nDate: Sun, 04 Oct 2026 12:00:00 +0000\n\nRoute syncs retry on a timeout.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/monorepo#880",
+  "source": "github",
+  "revision": "2026-10-07T10:00:00Z",
+  "at": "2026-10-07T10:00:00Z",
+  "url": "https://github.example/quillmoor/monorepo/pull/880",
+  "keys": {
+   "github_repos": [
+    "quillmoor/monorepo"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 880,
+   "state": "open",
+   "author": "jane--doe",
+   "repo": "quillmoor/monorepo"
+  },
+  "body": "Repository: quillmoor/monorepo\nPull request: #880 Globex depot configs for the north region\nState: open\nBranch: change-880 into main\nChanges: 0 files, +0 -0\nAuthor: Jane Doe (@jane--doe)\nOpened: Mon, 05 Oct 2026 09:00:00 +0000\nDate: Wed, 07 Oct 2026 10:00:00 +0000\n\nAdds the depot configs Globex asked for.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/monorepo#881",
+  "source": "github",
+  "revision": "2026-10-07T11:00:00Z",
+  "at": "2026-10-07T11:00:00Z",
+  "url": "https://github.example/quillmoor/monorepo/pull/881",
+  "keys": {
+   "github_repos": [
+    "quillmoor/monorepo"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 881,
+   "state": "open",
+   "author": "morgan--lee",
+   "repo": "quillmoor/monorepo"
+  },
+  "body": "Repository: quillmoor/monorepo\nPull request: #881 Acme Corp and Northwind share the route export\nState: open\nBranch: change-881 into main\nChanges: 0 files, +0 -0\nAuthor: Morgan Lee (@morgan--lee)\nOpened: Mon, 05 Oct 2026 09:00:00 +0000\nDate: Wed, 07 Oct 2026 11:00:00 +0000\n\nOne export format for both.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/monorepo#882",
+  "source": "github",
+  "revision": "2026-10-06T10:00:00Z",
+  "at": "2026-10-06T10:00:00Z",
+  "url": "https://github.example/quillmoor/monorepo/pull/882",
+  "keys": {
+   "github_repos": [
+    "quillmoor/monorepo"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 882,
+   "state": "closed",
+   "author": "jane--doe",
+   "repo": "quillmoor/monorepo"
+  },
+  "body": "Repository: quillmoor/monorepo\nPull request: #882 Bump the lint config\nState: merged into main on 2026-10-06 by Jane Doe (@jane--doe)\nBranch: change-882 into main\nChanges: 0 files, +0 -0\nAuthor: Jane Doe (@jane--doe)\nOpened: Sun, 04 Oct 2026 09:00:00 +0000\nDate: Tue, 06 Oct 2026 10:00:00 +0000\n\nUpdates the lint rules.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/platform-sdk#41",
+  "source": "github",
+  "revision": "2026-10-07T10:00:00Z",
+  "at": "2026-10-07T10:00:00Z",
+  "url": "https://github.example/quillmoor/platform-sdk/pull/41",
+  "keys": {
+   "github_repos": [
+    "quillmoor/platform-sdk"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 41,
+   "state": "open",
+   "author": "jane--doe",
+   "repo": "quillmoor/platform-sdk"
+  },
+  "body": "Repository: quillmoor/platform-sdk\nPull request: #41 Retry on a rate limit\nState: open\nBranch: change-41 into main\nChanges: 0 files, +0 -0\nAuthor: Jane Doe (@jane--doe)\nOpened: Mon, 05 Oct 2026 09:00:00 +0000\nDate: Wed, 07 Oct 2026 10:00:00 +0000\n\nThe SDK waits and retries when the API says slow down.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/route-engine#301",
+  "source": "github",
+  "revision": "2026-10-02T16:00:00Z",
+  "at": "2026-10-02T16:00:00Z",
+  "url": "https://github.example/quillmoor/route-engine/pull/301",
+  "keys": {
+   "github_repos": [
+    "quillmoor/route-engine"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 301,
+   "state": "closed",
+   "author": "jane--doe",
+   "repo": "quillmoor/route-engine"
+  },
+  "body": "Repository: quillmoor/route-engine\nPull request: #301 Faster solver warm start\nState: merged into main on 2026-10-02 by Jane Doe (@jane--doe)\nBranch: change-301 into main\nChanges: 0 files, +0 -0\nAuthor: Jane Doe (@jane--doe)\nOpened: Fri, 25 Sep 2026 10:00:00 +0000\nDate: Fri, 02 Oct 2026 16:00:00 +0000\n\nStarts the solver from yesterday's plan.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/route-engine#305",
+  "source": "github",
+  "revision": "2026-10-07T10:00:00Z",
+  "at": "2026-10-07T10:00:00Z",
+  "url": "https://github.example/quillmoor/route-engine/pull/305",
+  "keys": {
+   "github_repos": [
+    "quillmoor/route-engine"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "pull_request",
+   "number": 305,
+   "state": "open",
+   "author": "morgan--lee",
+   "repo": "quillmoor/route-engine"
+  },
+  "body": "Repository: quillmoor/route-engine\nPull request: #305 Cap the solver at ten seconds\nState: open\nBranch: change-305 into main\nChanges: 0 files, +0 -0\nAuthor: Morgan Lee (@morgan--lee)\nOpened: Mon, 05 Oct 2026 09:00:00 +0000\nDate: Wed, 07 Oct 2026 10:00:00 +0000\n\nA plan that takes longer keeps the best found so far.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "quillmoor/route-engine@v3.2.0",
+  "source": "github",
+  "revision": "2026-10-03T12:00:00Z",
+  "at": "2026-10-03T12:00:00Z",
+  "url": "https://github.example/quillmoor/route-engine/releases/v3.2.0",
+  "keys": {
+   "github_repos": [
+    "quillmoor/route-engine"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "kind": "release",
+   "tag": "v3.2.0",
+   "repo": "quillmoor/route-engine"
+  },
+  "body": "Repository: quillmoor/route-engine\nRelease: v3.2.0 (Warm start)\nAuthor: Jane Doe (@jane--doe)\nDate: Sat, 03 Oct 2026 12:00:00 +0000\n\nThe solver starts from the last plan.\n",
+  "extract": "facts",
+  "into": ""
+ }
+]

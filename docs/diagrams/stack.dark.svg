@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="688" viewBox="0 0 760 688" role="img" aria-labelledby="stack-title" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
+<title id="stack-title">Cerebro is the stack. Factoid is its facts layer.</title>
+<rect width="760" height="688" fill="#0b0b0b"/>
+<rect x="24" y="128" width="712" height="472" rx="8" fill="#10151c" stroke="#4d85de" stroke-width="2"/>
+<rect x="40" y="164" width="680" height="176" rx="8" fill="#24282d" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="40" y="356" width="680" height="120" rx="8" fill="#24282d" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="40" y="48" width="448" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="504" y="48" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="40" y="196" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="272" y="196" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="504" y="196" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="40" y="268" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="272" y="268" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="504" y="268" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="56" y="388" width="288" height="72" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="416" y="388" width="288" height="72" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="40" y="516" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<rect x="272" y="516" width="216" height="56" rx="8" fill="none" stroke="#3a3a37" stroke-width="1.25" stroke-dasharray="4 4"/>
+<rect x="24" y="624" width="712" height="40" rx="8" fill="none" stroke="#262626" stroke-width="1.25"/>
+<path d="M148 104 L148 188.5" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M148 196 L144.25 188.5 L151.75 188.5Z" fill="#3a3a37"/>
+<path d="M612 104 L612 188.5" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M612 196 L608.25 188.5 L615.75 188.5Z" fill="#3a3a37"/>
+<path d="M344 424 L408.5 424" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M416 424 L408.5 427.75 L408.5 420.25Z" fill="#3a3a37"/>
+<path d="M148 516 L148 467.5" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M148 460 L151.75 467.5 L144.25 467.5Z" fill="#3a3a37"/>
+<path d="M312.32 516 L312.32 467.5" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M312.32 460 L316.07 467.5 L308.57 467.5Z" fill="#3a3a37"/>
+<path d="M234.4 572 L234.4 586 L502.4 586 L502.4 467.5" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M502.4 460 L506.15 467.5 L498.65 467.5Z" fill="#3a3a37"/>
+<path d="M148 624 L148 579.5" fill="none" stroke="#3a3a37" stroke-width="1.25"/>
+<path d="M148 572 L151.75 579.5 L144.25 579.5Z" fill="#3a3a37"/>
+<text x="24" y="28" font-size="15" font-weight="600" fill="#f0efec">Cerebro is the stack. Factoid is its facts layer.</text>
+<text x="56" y="72" font-size="13" font-weight="600" fill="#f0efec">Outside agents</text>
+<text x="56" y="88" font-size="11.5" fill="#c3c2b8">Claude, Cursor, or Codex, over MCP</text>
+<text x="520" y="80" font-size="13" font-weight="600" fill="#f0efec">You</text>
+<text x="56" y="220" font-size="13" font-weight="600" fill="#f0efec">MCP surface</text>
+<text x="56" y="236" font-size="11.5" fill="#c3c2b8">Six tools over every kind</text>
+<text x="288" y="220" font-size="13" font-weight="600" fill="#f0efec">Human input</text>
+<text x="288" y="236" font-size="11.5" fill="#c3c2b8">tell, decide, retract, review</text>
+<text x="520" y="220" font-size="13" font-weight="600" fill="#f0efec">CLI</text>
+<text x="520" y="236" font-size="11.5" fill="#c3c2b8">Run Cerebro from a terminal</text>
+<text x="56" y="292" font-size="13" font-weight="600" fill="#f0efec">Model calls and budget</text>
+<text x="56" y="308" font-size="11.5" fill="#c3c2b8">A cap for each layer</text>
+<text x="288" y="292" font-size="13" font-weight="600" fill="#f0efec">Store</text>
+<text x="288" y="308" font-size="11.5" fill="#c3c2b8">SQLite to start, hooks for more</text>
+<text x="520" y="292" font-size="13" font-weight="600" fill="#f0efec">Search</text>
+<text x="520" y="308" font-size="11.5" fill="#c3c2b8">BM25, re-ranked if set</text>
+<text x="56" y="186" font-size="13" font-weight="600" fill="#f0efec">Core</text>
+<text x="72" y="412" font-size="13" font-weight="600" fill="#f0efec">Facts</text>
+<text x="72" y="428" font-size="11.5" fill="#c3c2b8">by Factoid</text>
+<text x="72" y="444" font-size="11.5" fill="#c3c2b8">(also stands alone)</text>
+<text x="432" y="412" font-size="13" font-weight="600" fill="#f0efec">Articles</text>
+<text x="432" y="428" font-size="11.5" fill="#c3c2b8">by context agents</text>
+<text x="432" y="444" font-size="11.5" fill="#c3c2b8">Curators admit them</text>
+<text x="56" y="378" font-size="13" font-weight="600" fill="#f0efec">Context layer</text>
+<text x="56" y="540" font-size="13" font-weight="600" fill="#f0efec">Connectors</text>
+<text x="56" y="556" font-size="11.5" fill="#c3c2b8">Core: hold the logins</text>
+<text x="288" y="540" font-size="13" font-weight="600" fill="#f0efec">Apps: Notes</text>
+<text x="288" y="556" font-size="11.5" fill="#c3c2b8">Yours to add</text>
+<text x="176" y="150" font-size="13" font-weight="600" fill="#f0efec">Cerebro: a wiki your agents write</text>
+<text x="40" y="648" font-size="13" fill="#f0efec">Your systems: CRM, call recorder, mailbox, folders</text>
+<text x="380" y="413" font-size="11.5" fill="#c3c2b8" text-anchor="middle">evidence</text>
+<text x="156" y="492" font-size="11.5" fill="#c3c2b8">documents</text>
+<text x="304" y="492" font-size="11.5" fill="#c3c2b8" text-anchor="end">documents</text>
+<text x="510" y="492" font-size="11.5" fill="#c3c2b8">direct evidence</text>
+<text x="156" y="616" font-size="11.5" fill="#c3c2b8">read only</text>
+</svg>

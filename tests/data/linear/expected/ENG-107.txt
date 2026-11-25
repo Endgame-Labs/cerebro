@@ -1,0 +1,20 @@
+Team: displayName 1 (ENG)
+Issue: ENG-107 title 62
+State: Done on 2026-11-02
+Project: project 64
+Priority: Low
+Assignee: name 21
+Creator: name 21
+Links: title 76 https://example.com/path-3; title 77 https://example.com/path-4
+Opened: Sun, 01 Nov 2026 18:00:00 +0000
+Date: Mon, 02 Nov 2026 06:30:00 +0000
+
+description 63 and the rest of it, past where the listing cuts.
+
+Discussion, oldest first:
+
+[2026-11-02 04:10 UTC, name 21 <user3@acme.example>]
+body 35
+
+[2026-11-02 05:10 UTC, name 21 <user3@acme.example>]
+body 34

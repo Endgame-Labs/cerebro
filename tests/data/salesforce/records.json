@@ -1,0 +1,361 @@
+[
+ {
+  "id": "005000000000002AAA",
+  "source": "crm",
+  "revision": "2025-12-15T12:00:00.000+0000+74d5811e4b6b",
+  "at": "2025-12-15T12:00:00Z",
+  "url": "<instance>/lightning/r/User/005000000000002AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "005000000000002AAA"
+   ],
+   "name": [
+    "John Roe"
+   ],
+   "email": [
+    "john.roe@vandelay.example"
+   ]
+  },
+  "links": [],
+  "fields": {
+   "title": "Regional Director"
+  },
+  "body": "",
+  "extract": "records",
+  "into": "people"
+ },
+ {
+  "id": "001000000000001AAA",
+  "source": "crm",
+  "revision": "2026-10-06T12:00:00.000+0000+30dd65192961",
+  "at": "2026-10-06T12:00:00Z",
+  "url": "<instance>/lightning/r/Account/001000000000001AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "001000000000001AAA"
+   ],
+   "name": [
+    "Acme Corp"
+   ],
+   "aliases": [
+    "acme.example"
+   ]
+  },
+  "links": [
+   "005000000000001AAA"
+  ],
+  "fields": {
+   "owner": "me",
+   "industry": "Manufacturing",
+   "website": "https://www.acme.example/",
+   "domain": "acme.example"
+  },
+  "body": "",
+  "extract": "records",
+  "into": "accounts"
+ },
+ {
+  "id": "001000000000004AAA",
+  "source": "crm",
+  "revision": "2026-10-08T12:00:00.000+0000+752dd8d8afa2",
+  "at": "2026-10-08T12:00:00Z",
+  "url": "<instance>/lightning/r/Account/001000000000004AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "001000000000004AAA"
+   ],
+   "name": [
+    "Initech"
+   ],
+   "aliases": [
+    "initech.example"
+   ]
+  },
+  "links": [
+   "005000000000002AAA"
+  ],
+  "fields": {
+   "owner": "john.roe@vandelay.example",
+   "industry": "Software",
+   "website": "http://initech.example",
+   "domain": "initech.example"
+  },
+  "body": "",
+  "extract": "records",
+  "into": "accounts"
+ },
+ {
+  "id": "003000000000001AAA",
+  "source": "crm",
+  "revision": "2026-09-26T12:00:00.000+0000+71a56e3c198b",
+  "at": "2026-09-26T12:00:00Z",
+  "url": "<instance>/lightning/r/Contact/003000000000001AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "003000000000001AAA"
+   ],
+   "name": [
+    "Wile Coyote"
+   ],
+   "email": [
+    "wile@acme.example"
+   ]
+  },
+  "links": [
+   "001000000000001AAA"
+  ],
+  "fields": {
+   "account": "001000000000001AAA",
+   "title": "Head of Procurement"
+  },
+  "body": "",
+  "extract": "records",
+  "into": "people"
+ },
+ {
+  "id": "003000000000002AAA",
+  "source": "crm",
+  "revision": "2026-10-08T12:00:00.000+0000+cb4a383d754b",
+  "at": "2026-10-08T12:00:00Z",
+  "url": "<instance>/lightning/r/Contact/003000000000002AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "003000000000002AAA"
+   ],
+   "name": [
+    "Sam Rivera"
+   ],
+   "email": [
+    "sam@initech.example"
+   ]
+  },
+  "links": [
+   "001000000000004AAA"
+  ],
+  "fields": {
+   "account": "001000000000004AAA",
+   "title": "CTO"
+  },
+  "body": "",
+  "extract": "records",
+  "into": "people"
+ },
+ {
+  "id": "006000000000001AAA",
+  "source": "crm",
+  "revision": "2026-10-09T12:00:00.000+0000+c6e3abd63590",
+  "at": "2026-10-09T12:00:00Z",
+  "url": "<instance>/lightning/r/Opportunity/006000000000001AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "006000000000001AAA"
+   ]
+  },
+  "links": [
+   "001000000000001AAA",
+   "005000000000001AAA"
+  ],
+  "fields": {
+   "name": "Acme Corp renewal",
+   "stage": "Proposal/Price Quote",
+   "amount": 50000,
+   "currency": "USD",
+   "close_date": "2026-11-10",
+   "probability": 60,
+   "type": "Existing Business",
+   "owner": "me",
+   "created": "2026-08-12T12:00:00Z",
+   "last_modified": "2026-10-09T12:00:00Z",
+   "is_closed": false,
+   "is_won": false,
+   "next_step": "Send the revised quote",
+   "account": "001000000000001AAA"
+  },
+  "body": "Opportunity: Acme Corp renewal\nAccount: Acme Corp\nStage: Proposal/Price Quote\nAmount: 50000\nClose date: 2026-11-10\nProbability: 60\nType: Existing Business\nNext step: Send the revised quote\nOwner: Jane Doe\nLast changed: 2026-10-09T12:00:00Z\n",
+  "extract": "facts",
+  "into": "opportunities"
+ },
+ {
+  "id": "006000000000002AAA",
+  "source": "crm",
+  "revision": "2026-09-11T12:00:00.000+0000+0ba153ebf593",
+  "at": "2026-09-11T12:00:00Z",
+  "url": "<instance>/lightning/r/Opportunity/006000000000002AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "006000000000002AAA"
+   ]
+  },
+  "links": [
+   "001000000000001AAA",
+   "005000000000001AAA"
+  ],
+  "fields": {
+   "name": "Acme Corp expansion",
+   "stage": "Qualification",
+   "amount": 120000,
+   "currency": "USD",
+   "close_date": "2026-12-30",
+   "probability": null,
+   "type": null,
+   "owner": "me",
+   "created": "2026-08-27T12:00:00Z",
+   "last_modified": "2026-09-11T12:00:00Z",
+   "is_closed": false,
+   "is_won": false,
+   "next_step": null,
+   "account": "001000000000001AAA"
+  },
+  "body": "Opportunity: Acme Corp expansion\nAccount: Acme Corp\nStage: Qualification\nAmount: 120000\nClose date: 2026-12-30\nOwner: Jane Doe\nLast changed: 2026-09-11T12:00:00Z\n",
+  "extract": "facts",
+  "into": "opportunities"
+ },
+ {
+  "id": "006000000000003AAA",
+  "source": "crm",
+  "revision": "2026-06-13T12:00:00.000+0000+8d9e7e14f706",
+  "at": "2026-06-13T12:00:00Z",
+  "url": "<instance>/lightning/r/Opportunity/006000000000003AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "006000000000003AAA"
+   ]
+  },
+  "links": [
+   "001000000000001AAA",
+   "005000000000001AAA"
+  ],
+  "fields": {
+   "name": "Acme Corp pilot",
+   "stage": "Closed Won",
+   "amount": 10000,
+   "currency": "USD",
+   "close_date": "2026-06-13",
+   "probability": 100,
+   "type": null,
+   "owner": "me",
+   "created": "2026-03-25T12:00:00Z",
+   "last_modified": "2026-06-13T12:00:00Z",
+   "is_closed": true,
+   "is_won": true,
+   "next_step": null,
+   "account": "001000000000001AAA"
+  },
+  "body": "Opportunity: Acme Corp pilot\nAccount: Acme Corp\nStage: Closed Won\nAmount: 10000\nClose date: 2026-06-13\nProbability: 100\nOwner: Jane Doe\nLast changed: 2026-06-13T12:00:00Z\n",
+  "extract": "records",
+  "into": "opportunities"
+ },
+ {
+  "id": "006000000000004AAA",
+  "source": "crm",
+  "revision": "2026-10-10T12:00:00.000+0000+fb47341c9347",
+  "at": "2026-10-10T12:00:00Z",
+  "url": "<instance>/lightning/r/Opportunity/006000000000004AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "006000000000004AAA"
+   ]
+  },
+  "links": [
+   "001000000000004AAA",
+   "005000000000002AAA"
+  ],
+  "fields": {
+   "name": "Initech platform",
+   "stage": "Negotiation/Review",
+   "amount": 75000,
+   "currency": "USD",
+   "close_date": "2026-10-25",
+   "probability": null,
+   "type": null,
+   "owner": "john.roe@vandelay.example",
+   "created": "2026-07-13T12:00:00Z",
+   "last_modified": "2026-10-10T12:00:00Z",
+   "is_closed": false,
+   "is_won": false,
+   "next_step": null,
+   "account": "001000000000004AAA"
+  },
+  "body": "Opportunity: Initech platform\nAccount: Initech\nStage: Negotiation/Review\nAmount: 75000\nClose date: 2026-10-25\nOwner: John Roe\nLast changed: 2026-10-10T12:00:00Z\n",
+  "extract": "facts",
+  "into": "opportunities"
+ },
+ {
+  "id": "00T000000000001EAA",
+  "source": "crm",
+  "revision": "2026-10-01T12:00:00.000+0000",
+  "at": "2026-10-01T00:00:00Z",
+  "url": "<instance>/lightning/r/Task/00T000000000001EAA/view",
+  "keys": {
+   "salesforce_id": [
+    "001000000000001AAA",
+    "003000000000001AAA"
+   ]
+  },
+  "links": [
+   "001000000000001AAA",
+   "003000000000001AAA",
+   "005000000000001AAA"
+  ],
+  "fields": {
+   "kind": "logged_activity",
+   "subject": "Call about the renewal"
+  },
+  "body": "Logged activity: Call about the renewal\nAccount: Acme Corp\nDate: 2026-10-01\nStatus: Completed\nWith: Wile Coyote\nOwner: Jane Doe\n\nWile asked for a three-year price.\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "00U000000000001EAA",
+  "source": "crm",
+  "revision": "2026-10-06T12:00:00.000+0000",
+  "at": "2026-10-06T12:00:00Z",
+  "url": "<instance>/lightning/r/Event/00U000000000001EAA/view",
+  "keys": {
+   "salesforce_id": [
+    "001000000000001AAA",
+    "003000000000001AAA"
+   ]
+  },
+  "links": [
+   "001000000000001AAA",
+   "003000000000001AAA",
+   "005000000000001AAA"
+  ],
+  "fields": {
+   "kind": "meeting"
+  },
+  "body": "Event: Quarterly review\nAccount: Acme Corp\nStarts: 2026-10-06T12:00:00Z\nEnds: 2026-10-06T13:00:00Z\nLocation: Video call\nWith: Wile Coyote\nOwner: Jane Doe\n",
+  "extract": "facts",
+  "into": ""
+ },
+ {
+  "id": "02s000000000001AAA",
+  "source": "crm",
+  "revision": "2026-10-08T12:00:00.000+0000",
+  "at": "2026-10-08T12:00:00Z",
+  "url": "<instance>/lightning/r/EmailMessage/02s000000000001AAA/view",
+  "keys": {
+   "salesforce_id": [
+    "001000000000001AAA"
+   ],
+   "email": [
+    "jane.doe@vandelay.example",
+    "wile@acme.example"
+   ],
+   "domain": [
+    "acme.example",
+    "vandelay.example"
+   ]
+  },
+  "links": [
+   "001000000000001AAA"
+  ],
+  "fields": {
+   "kind": "email"
+  },
+  "body": "From: \"Wile Coyote\" <wile@acme.example>\nTo: jane.doe@vandelay.example\nDate: 2026-10-08T12:00:00Z\nSubject: Re: renewal quote\n\nThree years works if the price holds.\n",
+  "extract": "facts",
+  "into": ""
+ }
+]

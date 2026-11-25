@@ -1,0 +1,1 @@
+<!here> <!channel> <!everyone>: ping <!subteam^S0SALES|@sales-team> and <!subteam^S0OPS>, due <!date^1792000000^{date_short}|Oct 14, 2026>.

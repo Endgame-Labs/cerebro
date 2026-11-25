@@ -1,0 +1,214 @@
+-- New workspace --
+
+[1mNew workspace[0m
+[38;2;88;114;146mStart from a blank workspace or a template. Escape writes nothing.[0m
+
+[38;2;57;154;255m>[0m [1mblank[0m   [38;2;88;114;146mno agent[0m   [38;2;88;114;146myou write the first one[0m
+  gtm     [38;2;88;114;146mtemplate[0m   [38;2;88;114;146mstarts with the gtm template's agents[0m
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- asked --
+Your name [Enter to skip]: 
+Your work email [Enter to skip]: 
+Team or organization name [Quillmoor, from your email's domain]: 
+Team or organization web domain [quillmoor.example, from your email's domain]: 
+Daily budget in dollars [50.0]: 
+Time zone [Europe/Berlin]: 
+
+-- Model selection --
+
+[1mModel selection[0m
+[38;2;88;114;146mChoose providers and models for the following processes.[0m
+
+[38;2;57;154;255m>[0m [1mExtraction[0m    [38;2;52;211;153m✓[0m [38;2;88;114;146mfireworks glm-5p3-flash[0m   [38;2;88;114;146mextracts facts from source records[0m
+  Decision      [38;2;52;211;153m✓[0m [38;2;88;114;146mtypesafe jev-1.13.0[0m       [38;2;88;114;146mclassifies, decides, and evaluates[0m
+  Compilation   [38;2;52;211;153m✓[0m [38;2;88;114;146mfireworks glm-5p3[0m         [38;2;88;114;146mcompiles facts into articles[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- Compilation model provider --
+
+[1mCompilation model provider[0m
+[38;2;88;114;146mThe compilation model compiles facts into articles.[0m
+
+[38;2;57;154;255m>[0m [1mfireworks[0m
+  openai
+  anthropic
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- Compilation model --
+
+[1mCompilation model[0m
+[38;2;88;114;146mThe compilation model compiles facts into articles.[0m
+
+[38;2;57;154;255m>[0m [1mclaude-fable-5-1[0m            [38;2;88;114;146m$10.00 in, $50.00 out per million tokens[0m
+  claude-fable-5              [38;2;88;114;146m$10.00 in, $50.00 out per million tokens[0m
+  claude-opus-5-5             [38;2;88;114;146m$4.00 in, $20.00 out per million tokens[0m
+  claude-opus-5               [38;2;88;114;146m$5.00 in, $25.00 out per million tokens[0m
+  claude-opus-4-8             [38;2;88;114;146m$5.00 in, $25.00 out per million tokens[0m
+  claude-sonnet-5-5           [38;2;88;114;146m$2.00 in, $10.00 out per million tokens[0m
+  claude-sonnet-5             [38;2;88;114;146m$2.00 in, $10.00 out per million tokens[0m
+  claude-sonnet-4-6           [38;2;88;114;146m$3.00 in, $15.00 out per million tokens[0m
+  claude-sonnet-4-5           [38;2;88;114;146m$3.00 in, $15.00 out per million tokens[0m
+  claude-haiku-5-5            [38;2;88;114;146m$0.10 in, $0.50 out per million tokens[0m
+  claude-haiku-4-5-20251001   [38;2;88;114;146m$1.00 in, $5.00 out per million tokens[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- Model selection --
+
+[1mModel selection[0m
+[38;2;88;114;146mChoose providers and models for the following processes.[0m
+
+  Extraction    [38;2;52;211;153m✓[0m [38;2;88;114;146mfireworks glm-5p3-flash[0m       [38;2;88;114;146mextracts facts from source records[0m
+  Decision      [38;2;52;211;153m✓[0m [38;2;88;114;146mtypesafe jev-1.13.0[0m           [38;2;88;114;146mclassifies, decides, and evaluates[0m
+[38;2;57;154;255m>[0m [1mCompilation[0m   [38;2;52;211;153m✓[0m [38;2;88;114;146manthropic claude-sonnet-5-5[0m   [38;2;88;114;146mcompiles facts into articles[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- Model keys --
+
+[1mModel keys[0m
+[38;2;88;114;146mAdd keys for the following model providers to continue. Model selection can also be configured by[0m
+[38;2;88;114;146mediting settings.yaml in your workspace and running cerebro secrets to add the required provider[0m
+[38;2;88;114;146mcredentials.[0m
+
+[38;2;57;154;255m>[0m [1mFireworks[0m   [38;2;213;89;115m✗[0m [38;2;88;114;146mnot added[0m            [38;2;88;114;146mextraction[0m
+  Typesafe    [38;2;52;211;153m✓[0m [38;2;88;114;146min the environment[0m   [38;2;88;114;146mextraction and decision[0m
+  Anthropic   [38;2;213;89;115m✗[0m [38;2;88;114;146mnot added[0m            [38;2;88;114;146mcompilation[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- asked --
+Fireworks API key: 
+
+-- Model keys --
+
+[1mModel keys[0m
+[38;2;88;114;146mAdd keys for the following model providers to continue. Model selection can also be configured by[0m
+[38;2;88;114;146mediting settings.yaml in your workspace and running cerebro secrets to add the required provider[0m
+[38;2;88;114;146mcredentials.[0m
+[38;2;88;114;146m[38;2;52;211;153m✓[0m[38;2;88;114;146m Fireworks connection verified, key added to secrets store[0m
+
+[38;2;57;154;255m>[0m [1mFireworks[0m   [38;2;52;211;153m✓[0m [38;2;88;114;146mconnected[0m            [38;2;88;114;146mextraction[0m
+  Typesafe    [38;2;52;211;153m✓[0m [38;2;88;114;146min the environment[0m   [38;2;88;114;146mextraction and decision[0m
+  Anthropic   [38;2;213;89;115m✗[0m [38;2;88;114;146mnot added[0m            [38;2;88;114;146mcompilation[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- asked --
+Anthropic API key: 
+
+-- Model keys --
+
+[1mModel keys[0m
+[38;2;88;114;146mAdd keys for the following model providers to continue. Model selection can also be configured by[0m
+[38;2;88;114;146mediting settings.yaml in your workspace and running cerebro secrets to add the required provider[0m
+[38;2;88;114;146mcredentials.[0m
+[38;2;88;114;146m[38;2;213;89;115m✗[0m[38;2;88;114;146m Anthropic did not verify: Anthropic answered 401: the key was not accepted[0m
+
+  Fireworks   [38;2;52;211;153m✓[0m [38;2;88;114;146mconnected[0m            [38;2;88;114;146mextraction[0m
+  Typesafe    [38;2;52;211;153m✓[0m [38;2;88;114;146min the environment[0m   [38;2;88;114;146mextraction and decision[0m
+[38;2;57;154;255m>[0m [1mAnthropic[0m   [38;2;213;89;115m✗[0m [38;2;88;114;146mnot added[0m            [38;2;88;114;146mcompilation[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- asked --
+Anthropic API key: 
+
+-- Model keys --
+
+[1mModel keys[0m
+[38;2;88;114;146mAdd keys for the following model providers to continue. Model selection can also be configured by[0m
+[38;2;88;114;146mediting settings.yaml in your workspace and running cerebro secrets to add the required provider[0m
+[38;2;88;114;146mcredentials.[0m
+[38;2;88;114;146m[38;2;52;211;153m✓[0m[38;2;88;114;146m Anthropic connection verified, key added to secrets store[0m
+
+  Fireworks   [38;2;52;211;153m✓[0m [38;2;88;114;146mconnected[0m            [38;2;88;114;146mextraction[0m
+  Typesafe    [38;2;52;211;153m✓[0m [38;2;88;114;146min the environment[0m   [38;2;88;114;146mextraction and decision[0m
+[38;2;57;154;255m>[0m [1mAnthropic[0m   [38;2;52;211;153m✓[0m [38;2;88;114;146mconnected[0m            [38;2;88;114;146mcompilation[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- the sources: connect's own lobby, framed by checks/connect_demo.py --
+
+-- MCP clients --
+
+[1mMCP clients[0m
+
+[38;2;57;154;255m>[0m [1mClaude Desktop[0m   [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+  Claude Code      [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+  Codex            [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m   [38;2;88;114;146mheld for /srv/old/wiki[0m
+  Cursor           [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- Claude Desktop --
+
+[1mClaude Desktop[0m
+[38;2;88;114;146mAdd the MCP client for this workspace to Claude Desktop.[0m
+
+[38;2;57;154;255m>[0m [1mInstall for me[0m
+  Let me do it
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m back[0m
+
+-- MCP clients --
+
+[1mMCP clients[0m
+[38;2;88;114;146m[38;2;52;211;153m✓[0m[38;2;88;114;146m Claude Desktop connected (cerebro-wiki)[0m
+
+[38;2;57;154;255m>[0m [1mClaude Desktop[0m   [38;2;52;211;153m✓[0m [38;2;88;114;146minstalled[0m
+  Claude Code      [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+  Codex            [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m   [38;2;88;114;146mheld for /srv/old/wiki[0m
+  Cursor           [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- Codex --
+
+[1mCodex[0m
+[38;2;88;114;146mAdd the MCP client for this workspace to Codex.[0m
+
+[38;2;57;154;255m>[0m [1mReplace it[0m
+  Let me do it
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m back[0m
+
+-- MCP clients --
+
+[1mMCP clients[0m
+
+  Claude Desktop   [38;2;52;211;153m✓[0m [38;2;88;114;146minstalled[0m
+  Claude Code      [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+[38;2;57;154;255m>[0m [1mCodex[0m            [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m   [38;2;88;114;146mheld for /srv/old/wiki[0m
+  Cursor           [38;2;213;89;115m✗[0m [38;2;88;114;146mnot installed[0m
+
+  Done
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m done[0m
+
+-- the first run: cerebro serve --once starts, with no question --
+

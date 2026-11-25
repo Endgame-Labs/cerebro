@@ -1,0 +1,326 @@
+{
+ "cut": [
+  [
+   [
+    "ééééééééé\nababababababababababababababab",
+    25
+   ],
+   "ééééééééé\nababab",
+   true
+  ],
+  [
+   [
+    "short",
+    25
+   ],
+   "short",
+   false
+  ],
+  [
+   [
+    "line one\nline two is longer here",
+    20
+   ],
+   "line one\nline two is",
+   true
+  ],
+  [
+   [
+    "abcdefghij",
+    4
+   ],
+   "abcd",
+   true
+  ]
+ ],
+ "html": [
+  [
+   "\u003cp\u003eOne\u003c/p\u003e\u003cp\u003eTwo\u003c/p\u003e\u003cbr\u003e\u003cbr\u003e\u003cbr\u003eThree",
+   "One\nTwo\n\nThree",
+   "One\nTwo\n\nThree"
+  ],
+  [
+   "\u003cul\u003e\u003cli\u003eFirst\u003c/li\u003e\u003cli\u003eSecond\u003c/li\u003e\u003c/ul\u003e\u003col\u003e\u003cli\u003eThird\u003c/li\u003e\u003c/ol\u003e",
+   "- First\n- Second\n- Third",
+   "- First\n- Second\n- Third"
+  ],
+  [
+   "Before\u003chr\u003eAfter",
+   "Before\n________________________________\nAfter",
+   "Before\n________________________________\nAfter"
+  ],
+  [
+   "\u003cblockquote\u003eOuter\u003cblockquote\u003eInner\u003c/blockquote\u003eBack\u003c/blockquote\u003eMine",
+   "\u003e Outer\n\u003e \u003e Inner\n\u003e Back\nMine",
+   "Mine"
+  ],
+  [
+   "\u003cpre\u003e  keep   spacing\nline two\u003c/pre\u003eafter",
+   "keep   spacing\nline two\nafter",
+   "keep   spacing\nline two\nafter"
+  ],
+  [
+   "a\u003c!-- hidden --\u003eb\u003c!-- unclosed",
+   "ab",
+   "ab"
+  ],
+  [
+   "\u003cscript\u003evar x = '\u003cp\u003e';\u003c/script\u003e\u003cstyle\u003ep{}\u003c/style\u003eSeen\u003cnoscript\u003eno\u003c/noscript\u003e",
+   "Seen",
+   "Seen"
+  ],
+  [
+   "\u003ctable\u003e\u003ctr\u003e\u003ctd\u003eA\u003c/td\u003e\u003ctd\u003eB\u003c/td\u003e\u003c/tr\u003e\u003ctr\u003e\u003cth\u003eC\u003c/th\u003e\u003ctd\u003eD\u003c/td\u003e\u003c/tr\u003e\u003c/table\u003e",
+   "A B\nC D",
+   "A B\nC D"
+  ],
+  [
+   "\u003ca href=\"x\u003ey\"\u003elink\u003c/a\u003e text \u0026amp; more\u0026nbsp;here \u0026lt;tag\u0026gt;",
+   "link text \u0026 more here \u003ctag\u003e",
+   "link text \u0026 more here \u003ctag\u003e"
+  ],
+  [
+   "Unclosed \u003cb tag",
+   "Unclosed \u003cb tag",
+   "Unclosed \u003cb tag"
+  ],
+  [
+   "\u003cdiv\u003e\u003cbr/\u003e\u003c/div\u003e\u003cp\u003ex\u003c/p\u003e\u003cbr /\u003ey\u003chead/\u003ez",
+   "x\n\nyz",
+   "x\n\nyz"
+  ],
+  [
+   "\u003cblockquote\u003e\u003c/blockquote\u003e\u003cblockquote\u003e\u003cp\u003e\u003c/p\u003e\u003c/blockquote\u003eafter",
+   "after",
+   "after"
+  ],
+  [
+   "\u003cDIV\u003eUpper\u003c/DIV\u003e\u003cP\u003eCase\u003c/P\u003e",
+   "Upper\nCase",
+   "Upper\nCase"
+  ],
+  [
+   "\u003ch1\u003eTitle\u003c/h1\u003etext\u003ch2\u003eSub\u003c/h2\u003e",
+   "Title\ntext\nSub",
+   "Title\ntext\nSub"
+  ]
+ ],
+ "reduce": [
+  [
+   "Thanks.\n\n-----Original Message-----\nAn earlier line.",
+   ""
+  ],
+  [
+   "Thanks.\n\n________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line.",
+   ""
+  ],
+  [
+   "Thanks.\n\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line.",
+   ""
+  ],
+  [
+   "Thanks.\n\nOn Oct 8, 2026 Jane wrote:\nAn earlier line.",
+   ""
+  ],
+  [
+   "Thanks.\r\n\r\n-----Original Message-----\r\nAn earlier line.",
+   ""
+  ],
+  [
+   "-----Original Message-----\nAn earlier line.",
+   ""
+  ],
+  [
+   "On Oct 8, 2026 Jane wrote:\nAn earlier line.",
+   "An earlier line."
+  ],
+  [
+   "On Monday their CFO wrote:\nThe offer holds.",
+   "On Monday their CFO wrote:\nThe offer holds."
+  ],
+  [
+   "Thanks.\n\n\u003e An earlier line.",
+   ""
+  ],
+  [
+   "---------- Forwarded message ---------\nAn earlier line.",
+   "---------- Forwarded message ---------\nAn earlier line."
+  ],
+  [
+   "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line.",
+   "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line."
+  ],
+  [
+   "Here it is.\n\n-------- Forwarded Message --------\nSubject: Pricing\nDate: Monday\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nTo: Lee Moss\n\nAn earlier line.",
+   "Here it is.\n\n-------- Forwarded Message --------\nSubject: Pricing\nDate: Monday\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nTo: Lee Moss\n\nAn earlier line."
+  ],
+  [
+   "Here it is.\n\n---------- Forwarded message ---------\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nDate: Monday\nTo: Lee Moss\n\nAn earlier line.",
+   "Here it is.\n\n---------- Forwarded message ---------"
+  ],
+  [
+   "The offer holds.\nSend the form.",
+   "The offer holds.\nSend the form."
+  ],
+  [
+   "The offer holds.\n\nThanks,\nSam",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n-- \nSam\nGlobex",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\nSent from my phone",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nSam Rivera\n+1 415 555 0100",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nThanks,\nSam\n\n\u003e an earlier line\n\u003e and another",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nOn Oct 8, 2026 Sam wrote:\nAn earlier line\nand another",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\r\n\r\n  Thanks,  \r\nSam\r\n",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nThanks,\nSam\nP.S. Send the form.",
+   "The offer holds.\n\nP.S. Send the form."
+  ],
+  [
+   "The offer holds.\n\nOn Tue, Oct 8, 2026 at 9:14 AM Sam Rivera\n\u003csam@quillmoor.example\u003e\nwrote:\n\n\u003e Earlier.",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nOn Tuesday Sam\nsaid that\nhe really\nwrote:\n\u003e Earlier.",
+   "The offer holds.\n\nOn Tuesday Sam\nsaid that\nhe really\nwrote:"
+  ],
+  [
+   "The offer holds.\n\nOn Tuesday, Sam wrote:\n  An indented earlier line.",
+   "The offer holds."
+  ],
+  [
+   "On Tuesday, Sam wrote:\n  An indented line at the top.\nMine.",
+   "An indented line at the top.\nMine."
+  ],
+  [
+   "The offer holds.\n\nOn Tuesday Sam\n\nwrote:\n\u003e Earlier.",
+   "The offer holds.\n\nOn Tuesday Sam\n\nwrote:"
+  ],
+  [
+   "The offer holds.\n\nOn Tuesday Sam wrote:",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nLe mar. 8 oct. 2026 à 09:14, Sam a écrit :\n\u003e Plus tôt.",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nThanks,\nThis line under the sign-off is far too long to be any part of a signature block, surely.",
+   "The offer holds.\n\nThanks,\nThis line under the sign-off is far too long to be any part of a signature block, surely."
+  ],
+  [
+   "The offer holds.\n\nThanks,\nSam\nOne\nTwo\nThree\nFour\nFive\nSix",
+   "The offer holds.\n\nThanks,\nSam\nOne\nTwo\nThree\nFour\nFive\nSix"
+  ],
+  [
+   "The offer holds.\n--\nThis is a divider and the text after it is a long paragraph that goes on and on past seventy.",
+   "The offer holds.\n--\nThis is a divider and the text after it is a long paragraph that goes on and on past seventy."
+  ],
+  [
+   "The offer holds.\n--\nSam",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n--  \nSam",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\nSent from my iPhone\n\nGet Outlook for iOS",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nAda Park\nBo Chen",
+   "The offer holds.\n\nAda Park\nBo Chen"
+  ],
+  [
+   "The offer holds.\n\nAda Park\nHead of Sales, Globex Inc.",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nAda Park\nWe met on Tuesday.",
+   "The offer holds.\n\nAda Park\nWe met on Tuesday."
+  ],
+  [
+   "The offer holds.\n\nAda Park\n- a list item",
+   "The offer holds.\n\nAda Park\n- a list item"
+  ],
+  [
+   "Ada Park\nHead of Sales",
+   "Ada Park\nHead of Sales"
+  ],
+  [
+   "The offer holds.\n\nAda Park\nHead of Sales\nGlobex\n100 Harbor Blvd.\n+1 415 555 0100\nwww.globex.example\nada@globex.example",
+   "The offer holds.\n\nAda Park\nHead of Sales\nGlobex\n100 Harbor Blvd.\n+1 415 555 0100\nwww.globex.example\nada@globex.example"
+  ],
+  [
+   "The offer holds.\n\nAda Park\n100 Harbor Way, Suite 4",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nada park\nHead of Sales",
+   "The offer holds.\n\nada park\nHead of Sales"
+  ],
+  [
+   "The offer holds.\n\nAda P4rk\nHead of Sales",
+   "The offer holds.\n\nAda P4rk\nHead of Sales"
+  ],
+  [
+   "The offer holds.\n\nBest regards,\nAda",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nThanks and best regards\nAda",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nCheers!\nAda",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nPS: send it\n\nThanks,\nAda",
+   "The offer holds.\n\nPS: send it"
+  ],
+  [
+   "Line one.\n\n\n\nLine two.   \n",
+   "Line one.\n\nLine two."
+  ],
+  [
+   "The offer holds.\n\n**From:** Jane Doe \u003cjane@acme.example\u003e\n**Sent:** Monday\n**Subject:** Hi\n\nEarlier.",
+   "The offer holds."
+  ],
+  [
+   "The offer holds.\n\nFrom: Jane Doe \u003cjane@acme.example\u003e\nTo: Lee\n\nEarlier.",
+   "The offer holds.\n\nFrom: Jane Doe \u003cjane@acme.example\u003e\nTo: Lee\n\nEarlier."
+  ],
+  [
+   "The offer holds.\n\nDe : Jane Doe \u003cjane@acme.example\u003e\nEnvoyé : lundi\nÀ : Lee\nObjet : Bonjour\n\nPlus tôt.",
+   "The offer holds.\n\nDe : Jane Doe \u003cjane@acme.example\u003e\nEnvoyé : lundi\nÀ : Lee\nObjet : Bonjour\n\nPlus tôt."
+  ],
+  [
+   "Mine.\n\u003e\n\u003e quoted\n  \u003e indented quote\nMore mine.",
+   "Mine.\nMore mine."
+  ],
+  [
+   "The offer holds.\nSincerely\n\n\nAda\n\nP.S. call me",
+   "The offer holds.\n\nP.S. call me"
+  ]
+ ]
+}

@@ -1,0 +1,7 @@
+Run `make <target> &amp;&amp; *go*` first:
+```
+if a &lt; b {
+  *x* = <@U02MORGAN>
+}
+```
+then *ship* it.

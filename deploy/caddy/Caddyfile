@@ -1,0 +1,5 @@
+# Ends TLS for one workspace and passes each request on with its Host unchanged.
+# Put the workspace's public name here and in settings.yaml under serve: allowed_hosts:
+wiki.example.com {
+	reverse_proxy 127.0.0.1:4747
+}

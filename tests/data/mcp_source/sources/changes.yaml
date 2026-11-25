@@ -1,0 +1,15 @@
+# The same database, asked only for the rows updated since the last listing began.
+kind: mcp
+url: https://warehouse.example/mcp
+window: { behind: 30d }
+capabilities: [enumerate_history, fetch_by_id, incremental_since]
+read_only: [execute_sql]   # the server does not mark its SQL tool, and this one only reads
+binding:
+  list:
+    tool: execute_sql
+    args: { query: "select id from rows where updated >= '{since}'" }
+    id: "$.rows[*].id"
+  get:
+    tool: execute_sql
+    args: { query: "select * from rows where id = '{id}'" }
+    revision: "$.rows[0].revision"

@@ -1,0 +1,106 @@
+== C03GXSHARED:1791540000.000000
+url: https://quillmoor.slack.example/archives/C03GXSHARED/p1791540000000000
+at: 2026-10-09T10:00:00Z
+key domain: globex.example
+key email: vikram.sondhi@globex.example
+key slack_channels: C03GXSHARED, shared-ops
+field channel: C03GXSHARED
+field from: vikram.sondhi@globex.example
+extract: facts
+--- text
+Channel: #shared-ops
+From: Vikram Sondhi <vikram.sondhi@globex.example>
+Date: Fri, 09 Oct 2026 10:00:00 +0000
+
+Globex will start the two-depot pilot on 2026-11-02.
+== C02NWSHARED:1791612000.000000
+url: https://quillmoor.slack.example/archives/C02NWSHARED/p1791612000000000
+at: 2026-10-10T06:00:00Z
+key domain: northwind.example
+key email: mia.chen@northwind.example
+key slack_channels: C02NWSHARED, quillmoor-northwind
+field channel: C02NWSHARED
+field from: mia.chen@northwind.example
+extract: facts
+--- text
+Channel: #quillmoor-northwind
+From: Mia Chen <mia.chen@northwind.example>
+Date: Sat, 10 Oct 2026 06:00:00 +0000
+
+I lead dispatch at Northwind and will own the rollout.
+== C01ACMEDEAL:1791633600.000000
+url: https://quillmoor.slack.example/archives/C01ACMEDEAL/p1791633600000000
+at: 2026-10-10T12:00:00Z
+key domain: quillmoor.example
+key email: sam.rivera@quillmoor.example
+key slack_channels: C01ACMEDEAL, acme-corp-deal
+field channel: C01ACMEDEAL
+field from: me
+field thread: 1791633600.000000
+extract: facts
+--- text
+Channel: #acme-corp-deal
+From: Sam Rivera <sam.rivera@quillmoor.example>
+Date: Sat, 10 Oct 2026 12:00:00 +0000
+
+Can someone confirm the renewal terms for @Morgan Lee?
+== C01ACMEDEAL:1791637200.000001
+url: https://quillmoor.slack.example/archives/C01ACMEDEAL/p1791637200000001?thread_ts=1791633600.000000&cid=C01ACMEDEAL
+at: 2026-10-10T13:00:00.000001Z
+key domain: quillmoor.example
+key email: morgan.lee@quillmoor.example
+key slack_channels: C01ACMEDEAL, acme-corp-deal
+link: C01ACMEDEAL:1791633600.000000
+field channel: C01ACMEDEAL
+field from: morgan.lee@quillmoor.example
+field thread: 1791633600.000000
+extract: facts
+--- text
+Channel: #acme-corp-deal
+From: Morgan Lee <morgan.lee@quillmoor.example>
+Date: Sat, 10 Oct 2026 13:00:00 +0000
+
+Procurement wants net 60 terms on the renewal.
+== C01ACMEDEAL:1791640800.000002
+url: https://quillmoor.slack.example/archives/C01ACMEDEAL/p1791640800000002?thread_ts=1791633600.000000&cid=C01ACMEDEAL
+at: 2026-10-10T14:00:00.000002Z
+key slack_channels: C01ACMEDEAL, acme-corp-deal
+link: C01ACMEDEAL:1791633600.000000
+field channel: C01ACMEDEAL
+field from: Robin Vale
+field thread: 1791633600.000000
+extract: facts
+--- text
+Channel: #acme-corp-deal
+From: Robin Vale
+Date: Sat, 10 Oct 2026 14:00:00 +0000
+
+Legal signs off on Friday.
+== C01ACMEDEAL:1791648000.000000
+url: https://quillmoor.slack.example/archives/C01ACMEDEAL/p1791648000000000
+at: 2026-10-10T16:00:00Z
+key slack_channels: C01ACMEDEAL, acme-corp-deal
+field channel: C01ACMEDEAL
+field from: Deal Desk
+extract: facts
+--- text
+Channel: #acme-corp-deal
+From: Deal Desk (bot)
+Date: Sat, 10 Oct 2026 16:00:00 +0000
+
+Deal desk approved a 12% discount for Acme Corp.
+== C01ACMEDEAL:1791684000.000000
+url: https://quillmoor.slack.example/archives/C01ACMEDEAL/p1791684000000000
+at: 2026-10-11T02:00:00Z
+key domain: quillmoor.example
+key email: morgan.lee@quillmoor.example
+key slack_channels: C01ACMEDEAL, acme-corp-deal
+field channel: C01ACMEDEAL
+field from: morgan.lee@quillmoor.example
+extract: facts
+--- text
+Channel: #acme-corp-deal
+From: Morgan Lee <morgan.lee@quillmoor.example>
+Date: Sun, 11 Oct 2026 02:00:00 +0000
+
+The quote is the Q7 quote (https://quotes.quillmoor.example/q/7), see `net_60` & the <terms>.

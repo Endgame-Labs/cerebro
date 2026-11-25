@@ -1,0 +1,66 @@
+{
+  "id": "ENG-104",
+  "uuid": "00000000-0000-4000-8000-000000000028",
+  "title": "title 15",
+  "description": "description 32",
+  "priority": {
+    "value": 0,
+    "name": "No priority"
+  },
+  "url": "https://linear.app/acme/issue/ENG-104/page-3",
+  "gitBranchName": "user1/eng-branch-1",
+  "createdAt": "2026-02-24T16:10:00.000Z",
+  "updatedAt": "2026-05-26T06:20:00.000Z",
+  "archivedAt": "2026-09-21T06:00:00.000Z",
+  "completedAt": null,
+  "startedAt": null,
+  "canceledAt": "2026-05-26T06:00:00.000Z",
+  "dueDate": null,
+  "slaStartedAt": null,
+  "slaMediumRiskAt": null,
+  "slaHighRiskAt": null,
+  "slaBreachesAt": null,
+  "status": "Canceled",
+  "statusType": "canceled",
+  "labels": [
+    "labels 33"
+  ],
+  "attachments": [],
+  "documents": [],
+  "stateHistory": [
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "name": "Triage",
+        "type": "triage"
+      },
+      "startedAt": "2026-02-24T16:10:00.000Z",
+      "endedAt": "2026-02-25T20:10:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "name": "Backlog",
+        "type": "backlog"
+      },
+      "startedAt": "2026-02-25T20:10:00.000Z",
+      "endedAt": "2026-05-26T06:10:00.000Z"
+    },
+    {
+      "state": {
+        "id": "00000000-0000-4000-8000-000000000031",
+        "name": "Canceled",
+        "type": "canceled"
+      },
+      "startedAt": "2026-05-26T06:10:00.000Z",
+      "endedAt": null
+    }
+  ],
+  "customerNeeds": [],
+  "createdBy": "name 11",
+  "createdById": "00000000-0000-4000-8000-000000000011",
+  "project": "name 16",
+  "projectId": "00000000-0000-4000-8000-000000000014",
+  "team": "displayName 1",
+  "teamId": "00000000-0000-4000-8000-000000000001"
+}

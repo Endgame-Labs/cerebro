@@ -1,0 +1,28 @@
+Sample list
+by a made-up helper
+
+  [-] Sample collection  13 of 15
+    [-] ▾ named in your notes  (2 notes)
+>     [ ] Bramblecote Ltd
+          Named in 2 notes, replies both ways in 6 threads, last 2026-10-08.
+
+      [x] Quillfeather & Sons
+          Named in 1 note, last 2026-10-06.
+
+      [ ] Larkspur Mills
+          Named in 1 note on 2026-09-18, nothing since.
+
+    [x] ▸ from the files source  (local)  12 of 12
+
+  [x] Second collection  2 of 2
+    [x] ▾ spoke in your calls  (calls)
+      [x] Juniper Ward
+          Spoke in 3 calls, last 2026-10-02.
+
+  … 2 more
+
+15 of 18 selected · about $6.75 to write the checked articles
+  Left out 1: one vendor
+
+↑↓ move   space toggle   →← open or close   a all or none
+⏎ Approve selected   esc Cancel and quit

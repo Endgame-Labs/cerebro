@@ -1,0 +1,34 @@
+[38;2;88;114;146mDistilling[0m
+  [38;2;181;69;93m✗[0m mail  [38;2;88;114;146mcheck failed[0m  [38;2;88;114;146m0s[0m
+    [38;2;88;114;146mConnectError: the server refused the connection[0m
+  [38;2;4;120;87m✓[0m notes  [38;2;88;114;146m5 records • 14 facts[0m  [38;2;88;114;146m3s[0m
+
+[38;2;88;114;146mCompiling[0m
+  [38;2;4;120;87m✓[0m alpha  [38;2;88;114;146marticles/things/alpha.md[0m  [38;2;88;114;146m2s[0m
+  [38;2;0;75;162m⠏[0m things/beta  [38;2;88;114;146m2s[0m
+  [38;2;0;75;162m⠦[0m parts/gamma  [38;2;88;114;146m2s[0m
+  [38;2;0;75;162m⠴[0m parts/delta  [38;2;88;114;146m2s[0m
+
+[38;2;88;114;146mAgents[0m
+  [38;2;4;120;87m✓[0m things/curator    [38;2;88;114;146madmitted 2[0m    [38;2;88;114;146m$0.0124[0m    [38;2;88;114;146m0m 2s[0m
+
+[38;2;88;114;146m1 of 4 complete • 3 in flight • 9s[0m
+
+-- the pass ends --
+
+[38;2;88;114;146mDistilling[0m
+  [38;2;181;69;93m✗[0m mail  [38;2;88;114;146mcheck failed[0m  [38;2;88;114;146m0s[0m
+    [38;2;88;114;146mConnectError: the server refused the connection[0m
+  [38;2;4;120;87m✓[0m notes  [38;2;88;114;146m5 records • 14 facts[0m  [38;2;88;114;146m3s[0m
+
+[38;2;88;114;146mCompiling[0m
+  [38;2;4;120;87m✓[0m alpha  [38;2;88;114;146marticles/things/alpha.md[0m  [38;2;88;114;146m2s[0m
+  [38;2;181;69;93m✗[0m gamma  [38;2;88;114;146marticles/parts/gamma.md[0m  [38;2;88;114;146m2s[0m
+    [38;2;88;114;146mparts/writer: TimeoutError: no answer in 120s[0m
+  [38;2;88;114;146m·[0m delta  [38;2;88;114;146marticles/parts/delta.md[0m  [38;2;88;114;146mnothing it reads has moved[0m  [38;2;88;114;146m2s[0m
+  [38;2;4;120;87m✓[0m beta  [38;2;88;114;146marticles/things/beta.md[0m  [38;2;88;114;146m4s[0m
+
+[38;2;88;114;146mAgents[0m
+  [38;2;4;120;87m✓[0m things/curator    [38;2;88;114;146madmitted 2[0m    [38;2;88;114;146m$0.0124[0m    [38;2;88;114;146m0m 2s[0m
+
+[38;2;88;114;146m4 of 4 complete • 0 in flight • 10s[0m

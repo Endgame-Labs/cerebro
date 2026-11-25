@@ -1,0 +1,60 @@
+[1mSlack[0m
+[38;2;88;114;146mInstall a custom app on your Slack workspace using the app manifest below, and[0m
+[38;2;88;114;146mprovide the OAuth user token issued by the app.[0m
+
+[48;2;30;34;41m  display_information:             [0m
+[48;2;30;34;41m    name: Cerebro                  [0m
+[48;2;30;34;41m  oauth_config:                    [0m
+[48;2;30;34;41m    scopes:                        [0m
+[48;2;30;34;41m      user:                        [0m
+[48;2;30;34;41m        - channels:read            [0m
+[48;2;30;34;41m        - channels:history         [0m
+[48;2;30;34;41m        - groups:read              [0m
+[48;2;30;34;41m        - groups:history           [0m
+[48;2;30;34;41m        - users:read               [0m
+[48;2;30;34;41m        - users:read.email         [0m
+[48;2;30;34;41m  settings:                        [0m
+[48;2;30;34;41m    token_rotation_enabled: false  [0m
+
+[38;2;88;114;146m1. Go to [38;2;57;154;255mhttps://api.slack.com/apps[0m[38;2;88;114;146m and click "[38;2;57;154;255mCreate New App[0m[38;2;88;114;146m". Select "[38;2;57;154;255mFrom[0m
+[38;2;88;114;146m[38;2;57;154;255mmanifest[0m[38;2;88;114;146m", pick your workspace, then paste in the manifest shown above.[0m
+
+[38;2;88;114;146m2. From [38;2;57;154;255mInstall App[0m[38;2;88;114;146m in the app's settings, select [38;2;57;154;255mInstall App[0m[38;2;88;114;146m or [38;2;57;154;255mRequest to[0m
+[38;2;88;114;146m[38;2;57;154;255mInstall[0m[38;2;88;114;146m if admin approval is required.[0m
+
+[38;2;88;114;146m3. From [38;2;57;154;255mOAuth & Permissions[0m[38;2;88;114;146m in the app's settings, copy the [38;2;57;154;255mUser OAuth Token[0m[38;2;88;114;146m[0m
+[38;2;88;114;146m(starts with [38;2;57;154;255mxoxp-[0m[38;2;88;114;146m), and paste it below.[0m
+
+[38;2;88;114;146mIf you are waiting for admin approval, you may return to complete this step[0m
+[38;2;88;114;146manytime with [38;2;57;154;255mcerebro connect slack[0m[38;2;88;114;146m.[0m
+
+OAuth token: 
+
+[38;2;57;154;255m⏎[0m[38;2;88;114;146m submit[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m back[0m
+
+-- calendar --
+
+[1mCalendar[0m
+
+[38;2;57;154;255m>[0m [1mGoogle Calendar[0m
+  Outlook Calendar (web-based)
+  Other calendar (ICS link)
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m back[0m
+
+[1mOutlook Calendar (web-based)[0m
+[38;2;88;114;146mOpen [38;2;57;154;255mSettings > Calendar > Shared calendars[0m[38;2;88;114;146m, publish the calendar, then copy its[0m
+[38;2;88;114;146m[38;2;57;154;255mICS link[0m[38;2;88;114;146m.[0m
+
+ICS link: 
+
+[38;2;57;154;255m⏎[0m[38;2;88;114;146m submit[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m back[0m
+
+-- linear --
+
+[1mLinear[0m
+
+[38;2;57;154;255m>[0m [1mSign in through the browser[0m      [38;2;88;114;146ma login kept in the secrets store[0m
+  Paste an API key                 [38;2;88;114;146ma personal API key with Read access[0m
+
+[38;2;57;154;255m↑↓[0m[38;2;88;114;146m move[0m   [38;2;57;154;255m⏎[0m[38;2;88;114;146m select[0m   [38;2;57;154;255mesc[0m[38;2;88;114;146m back[0m

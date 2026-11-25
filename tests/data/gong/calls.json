@@ -1,0 +1,36 @@
+[
+  {
+    "metaData": {"id": "1000000000000937895", "title": "Acme QBR", "url": "https://gong.example/call?id=1000000000000937895",
+      "started": "2026-10-08T10:00:00-07:00", "duration": 1830},
+    "parties": [
+      {"id": "p1", "name": "Sam Rivera", "emailAddress": "sam.rivera@quillmoor.example", "speakerId": "s1", "affiliation": "Internal"},
+      {"id": "p2", "name": "Jane Doe", "emailAddress": "jane.doe@acme.example", "speakerId": "s2", "affiliation": "External"},
+      {"id": "p3", "name": "Priya Natarajan", "emailAddress": "PRIYA.NATARAJAN@acme.example", "speakerId": "s3"},
+      {"id": "p4", "name": "Art Vandelay", "emailAddress": "art.vandelay@mail.vandelay.example"},
+      {"id": "p5", "name": "Dial-in user"}
+    ],
+    "context": [{"system": "Salesforce", "objects": [
+      {"objectType": "Account", "objectId": "001SAMPLE000AC1", "fields": [{"name": "Name", "value": "Acme Corp"}]},
+      {"objectType": "Opportunity", "objectId": "006SAMPLE0001"}
+    ]}]
+  },
+  {
+    "metaData": {"id": "1000000000000937901", "title": "Globex intro", "url": "https://gong.example/call?id=1000000000000937901",
+      "started": "2026-11-02T15:30:00Z", "duration": 900, "calendarEventId": "evt-sample-0001"},
+    "parties": [
+      {"id": "p1", "name": "Morgan Lee", "emailAddress": "morgan.lee@quillmoor.example", "speakerId": "21"},
+      {"id": "p2", "name": "Tomas Alvarez", "emailAddress": "tomas.alvarez@globex.co.example", "speakerId": "22"},
+      {"id": "p3", "name": "Vikram Sondhi", "emailAddress": "bo-example@gmail.com", "speakerId": "23"},
+      {"id": "p4", "name": "Sam Rivera", "emailAddress": "So@home.example"}
+    ],
+    "context": [{"system": "HubSpot", "objects": [{"objectType": "Account", "objectId": "hs-sample-0001"}]}]
+  },
+  {
+    "metaData": {"id": "1000000000000937912", "title": "Team standup", "url": "https://gong.example/call?id=1000000000000937912",
+      "started": "2026-11-16T09:00:00+01:00", "duration": 600},
+    "parties": [
+      {"id": "p1", "name": "Sam Rivera", "emailAddress": "sam.rivera@quillmoor.example", "speakerId": "31"},
+      {"id": "p2", "name": "Lee Moss", "emailAddress": "lee.moss@quillmoor.example", "speakerId": "32"}
+    ]
+  }
+]

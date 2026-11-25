@@ -1,0 +1,61 @@
+{
+  "users": {"jane--doe": "Jane Doe", "morgan--lee": "Morgan Lee"},
+  "repos": [
+    {
+      "name": "quillmoor/initech-connector",
+      "description": "Syncs routes between Initech's dispatch system and ours",
+      "topics": ["integration", "initech"],
+      "pulls": [
+        {"number": 12, "title": "Retry failed route syncs", "body": "Retries a route sync that timed out, up to three times.", "state": "MERGED", "author": "jane--doe",
+         "created": "2026-09-28T10:00:00Z", "updated": "2026-10-03T15:00:00Z", "closed": "2026-10-03T15:00:00Z"},
+        {"number": 14, "title": "Map depot codes", "body": "Maps the depot codes of the dispatch system to ours.", "state": "OPEN", "author": "morgan--lee",
+         "created": "2026-10-06T09:00:00Z", "updated": "2026-10-08T11:00:00Z"}
+      ],
+      "issues": [],
+      "releases": [
+        {"tag": "v0.4.0", "name": "Retries", "body": "Route syncs retry on a timeout.", "author": "jane--doe", "published": "2026-10-04T12:00:00Z"}
+      ]
+    },
+    {
+      "name": "quillmoor/route-engine",
+      "description": "The routing engine",
+      "topics": ["core", "solver"],
+      "pulls": [
+        {"number": 301, "title": "Faster solver warm start", "body": "Starts the solver from yesterday's plan.", "state": "MERGED", "author": "jane--doe",
+         "created": "2026-09-25T10:00:00Z", "updated": "2026-10-02T16:00:00Z", "closed": "2026-10-02T16:00:00Z"},
+        {"number": 305, "title": "Cap the solver at ten seconds", "body": "A plan that takes longer keeps the best found so far.", "state": "OPEN", "author": "morgan--lee",
+         "created": "2026-10-05T09:00:00Z", "updated": "2026-10-07T10:00:00Z"}
+      ],
+      "issues": [],
+      "releases": [
+        {"tag": "v3.2.0", "name": "Warm start", "body": "The solver starts from the last plan.", "author": "jane--doe", "published": "2026-10-03T12:00:00Z"}
+      ]
+    },
+    {
+      "name": "quillmoor/monorepo",
+      "description": "Integrations and depot configs for Acme Corp, Globex, Northwind and Stellarway",
+      "topics": ["monorepo"],
+      "pulls": [
+        {"number": 880, "title": "Globex depot configs for the north region", "body": "Adds the depot configs Globex asked for.", "state": "OPEN", "author": "jane--doe",
+         "created": "2026-10-05T09:00:00Z", "updated": "2026-10-07T10:00:00Z"},
+        {"number": 881, "title": "Acme Corp and Northwind share the route export", "body": "One export format for both.", "state": "OPEN", "author": "morgan--lee",
+         "created": "2026-10-05T09:00:00Z", "updated": "2026-10-07T11:00:00Z"},
+        {"number": 882, "title": "Bump the lint config", "body": "Updates the lint rules.", "state": "MERGED", "author": "jane--doe",
+         "created": "2026-10-04T09:00:00Z", "updated": "2026-10-06T10:00:00Z", "closed": "2026-10-06T10:00:00Z"}
+      ],
+      "issues": [],
+      "releases": []
+    },
+    {
+      "name": "quillmoor/platform-sdk",
+      "description": "The SDK every customer integration builds on",
+      "topics": ["sdk", "customers"],
+      "pulls": [
+        {"number": 41, "title": "Retry on a rate limit", "body": "The SDK waits and retries when the API says slow down.", "state": "OPEN", "author": "jane--doe",
+         "created": "2026-10-05T09:00:00Z", "updated": "2026-10-07T10:00:00Z"}
+      ],
+      "issues": [],
+      "releases": []
+    }
+  ]
+}

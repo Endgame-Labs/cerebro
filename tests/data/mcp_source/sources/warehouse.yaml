@@ -1,0 +1,20 @@
+# A database reached through an MCP server's SQL tool. The list never names {since}, so each listing reads it whole.
+kind: mcp
+url: https://warehouse.example/mcp
+extract: records
+into: accounts
+read_only: [execute_sql]   # the server does not mark its SQL tool, and this one only reads
+binding:
+  list:
+    tool: execute_sql
+    args: { query: "select id from rows" }
+    id: "$.rows[*].id"
+  get:
+    tool: execute_sql
+    args: { query: "select * from rows where id = '{id}'" }
+    revision: "$.rows[0].revision"
+    at: "$.rows[0].at"
+    text: "$.rows[0].notes"
+    url: "https://warehouse.example/rows/{id}"
+    identity: { email: "$.rows[0].email" }
+    fields: { title: "$.rows[0].title" }

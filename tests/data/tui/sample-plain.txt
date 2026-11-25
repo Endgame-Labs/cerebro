@@ -1,0 +1,25 @@
+Sample list
+by a made-up helper
+
+Sample collection  14 of 15
+named in your notes  (2 notes)
+  [x] Bramblecote Ltd
+      Named in 2 notes, last 2026-10-08.
+  [x] Quillfeather & Sons
+      Named in 1 note, last 2026-10-06.
+  [ ] Larkspur Mills
+      Named once on 2026-09-18, nothing since.
+
+from the files source  (local)  12 of 12
+  [x] Harbor Row 1
+  [x] Harbor Row 2
+  [x] Harbor Row 3
+  [x] Harbor Row 4
+  [x] Harbor Row 5
+  … 7 more
+
+Left out: vendor (1)
+  [ ] Otterly Goods
+
+14 of 16 selected · about $14.00 to write the checked rows
+  Left out 1: one vendor

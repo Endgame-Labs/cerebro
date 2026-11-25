@@ -1,0 +1,88 @@
+{
+  "about": "A labelled set for the slack-channel-grouping prompt. Every workspace, channel, topic, purpose and domain is made up, and every domain ends in .example. Each case is one person's channels and what their wiki is for. `read` are channels the wiki should read: a ticked row should take each in. `skip` are channels no ticked row should take in. A channel in neither is left to the model. `pattern` names a pattern a good grouping gives, scored apart and never needed to pass.",
+  "cases": [
+    {
+      "id": "research-lab",
+      "workspace": "The wiki of a protein research lab: one article for each of its projects, each collaborating institute and each instrument it runs.",
+      "channels": [
+        {"name": "proj-kinase", "topic": "Kinase binding assays", "members": 6},
+        {"name": "proj-folding", "topic": "Folding simulations", "members": 5},
+        {"name": "proj-membrane", "purpose": "Membrane transport project", "members": 4},
+        {"name": "with-northfield-uni", "topic": "Joint grant with Northfield", "shared": true, "outside_domains": ["northfield-uni.example"], "members": 9},
+        {"name": "lab-meeting", "purpose": "Weekly progress across all projects", "members": 18},
+        {"name": "journal-club", "topic": "Papers we read on Fridays", "members": 15},
+        {"name": "it-helpdesk", "purpose": "Laptops, accounts and printers", "members": 40},
+        {"name": "random", "members": 41},
+        {"name": "lunch-club", "members": 12}
+      ],
+      "read": ["proj-kinase", "proj-folding", "proj-membrane", "with-northfield-uni", "lab-meeting"],
+      "skip": ["it-helpdesk", "random", "lunch-club"],
+      "pattern": "proj-*"
+    },
+    {
+      "id": "law-practice",
+      "workspace": "The wiki of a small law practice: an article for each client matter, each client and each court deadline that spans matters.",
+      "channels": [
+        {"name": "matter-hollis-lease", "topic": "Commercial lease renewal", "members": 4},
+        {"name": "matter-orchard-merger", "topic": "Merger due diligence", "members": 7},
+        {"name": "matter-quay-dispute", "topic": "Contract dispute, hearing in March", "members": 5},
+        {"name": "client-orchard", "topic": "Shared with Orchard's in-house counsel", "shared": true, "outside_domains": ["orchard.example"], "members": 8},
+        {"name": "docketing", "purpose": "Court deadlines across all matters", "members": 9},
+        {"name": "esign-notices", "topic": "Signature notifications", "shared": true, "outside_domains": ["notifyhub.example"], "members": 3},
+        {"name": "calendar-sync", "topic": "Calendar bot", "shared": true, "outside_domains": ["notifyhub.example"], "members": 3},
+        {"name": "billing-ops", "purpose": "Invoices and timesheets", "members": 6},
+        {"name": "printer-issues", "members": 20},
+        {"name": "softball", "members": 11}
+      ],
+      "read": ["matter-hollis-lease", "matter-orchard-merger", "matter-quay-dispute", "client-orchard", "docketing"],
+      "skip": ["esign-notices", "calendar-sync", "printer-issues", "softball"],
+      "pattern": "matter-*"
+    },
+    {
+      "id": "open-source-project",
+      "workspace": "The wiki of an open-source database: its releases, its design decisions, its contributors and the organizations that run it in production.",
+      "channels": [
+        {"name": "rel-4-2", "topic": "4.2 release train", "members": 14},
+        {"name": "rel-4-3", "topic": "4.3 release train", "members": 16},
+        {"name": "rel-5-0", "topic": "5.0 planning", "members": 22},
+        {"name": "design-docs", "purpose": "Design reviews for every release", "members": 25},
+        {"name": "with-ferrous-labs", "topic": "Ferrous runs us in production", "shared": true, "outside_domains": ["ferrous.example"], "members": 10},
+        {"name": "ci-alerts", "purpose": "Build failures from the CI bot", "members": 30},
+        {"name": "offtopic", "members": 60}
+      ],
+      "read": ["rel-4-2", "rel-4-3", "rel-5-0", "design-docs", "with-ferrous-labs"],
+      "skip": ["ci-alerts", "offtopic"],
+      "pattern": "rel-*"
+    },
+    {
+      "id": "consultancy",
+      "workspace": "The wiki of a design consultancy: an article for each client, its engagements and the people we work with there.",
+      "channels": [
+        {"name": "client-larkspur", "topic": "Larkspur rebrand", "members": 6},
+        {"name": "client-tamarind", "topic": "Tamarind app redesign", "members": 5},
+        {"name": "client-wexford", "topic": "Wexford signage", "members": 4},
+        {"name": "ext-tamarind", "topic": "Shared with Tamarind's product team", "shared": true, "outside_domains": ["tamarind.example"], "members": 9},
+        {"name": "proposals", "purpose": "Every proposal we send", "members": 7},
+        {"name": "hiring", "purpose": "Candidates and interviews", "members": 5},
+        {"name": "bench", "topic": "Who is free next week", "members": 14},
+        {"name": "general", "members": 30}
+      ],
+      "read": ["client-larkspur", "client-tamarind", "client-wexford", "ext-tamarind", "proposals"],
+      "skip": ["hiring", "bench", "general"],
+      "pattern": "client-*"
+    },
+    {
+      "id": "nothing-to-read",
+      "workspace": "The wiki of a hospital's research ethics board: each study it reviews, and each decision it makes.",
+      "channels": [
+        {"name": "general", "members": 80},
+        {"name": "random", "members": 75},
+        {"name": "announcements", "purpose": "Building and parking notices", "members": 90},
+        {"name": "lunch", "members": 30},
+        {"name": "it-status", "topic": "Outages", "shared": true, "outside_domains": ["statuspage.example"], "members": 50}
+      ],
+      "read": [],
+      "skip": ["general", "random", "announcements", "lunch", "it-status"]
+    }
+  ]
+}

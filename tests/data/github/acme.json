@@ -1,0 +1,235 @@
+{
+  "users": {
+    "ja--ne": "Jane Doe",
+    "morgan--lee": "Morgan Lee",
+    "sam--ruiz": "Sam Ruiz"
+  },
+  "bots": [
+    "ci-bot",
+    "dependabot"
+  ],
+  "repos": [
+    {
+      "name": "acme/api",
+      "pulls": [
+        {
+          "number": 7,
+          "title": "Retry the sync",
+          "body": "<!-- template -->Fixes the retry.",
+          "state": "MERGED",
+          "author": "ja--ne",
+          "created": "2026-11-15T12:00:00Z",
+          "updated": "2026-11-17T11:00:00Z",
+          "closed": "2026-11-17T11:00:00Z",
+          "merged_by": "morgan--lee",
+          "head": "retry",
+          "additions": 10,
+          "deletions": 2,
+          "changed_files": 1,
+          "labels": [
+            "bug"
+          ],
+          "closes": [
+            9
+          ],
+          "comments": [
+            {
+              "author": "ci-bot",
+              "body": "ci passed",
+              "at": "2026-11-17T10:00:00Z"
+            },
+            {
+              "author": "morgan--lee",
+              "body": "Ship it, Acme is waiting on this.",
+              "at": "2026-11-17T09:00:00Z"
+            }
+          ],
+          "reviews": [
+            {
+              "author": "morgan--lee",
+              "state": "APPROVED",
+              "body": "",
+              "at": "2026-11-17T10:00:00Z"
+            }
+          ]
+        },
+        {
+          "number": 8,
+          "title": "Bump a dependency",
+          "body": "",
+          "state": "OPEN",
+          "author": "dependabot",
+          "created": "2026-11-17T11:00:00Z",
+          "updated": "2026-11-17T11:00:00Z"
+        },
+        {
+          "number": 3,
+          "title": "Old",
+          "body": "",
+          "state": "CLOSED",
+          "author": "ja--ne",
+          "created": "2025-10-13T12:00:00Z",
+          "updated": "2025-10-13T12:00:00Z",
+          "closed": "2025-10-13T12:00:00Z"
+        },
+        {
+          "number": 10,
+          "title": "Split the export",
+          "body": "Splits the export in two.\r\n\r\n\r\n\r\nThe old one stays.",
+          "state": "OPEN",
+          "draft": true,
+          "author": "morgan--lee",
+          "created": "2026-11-12T08:00:00Z",
+          "updated": "2026-11-16T12:00:00Z",
+          "head": "split",
+          "additions": 120,
+          "deletions": 30,
+          "changed_files": 4,
+          "labels": [
+            "export",
+            "api"
+          ],
+          "assignees": [
+            "ja--ne",
+            "morgan--lee"
+          ],
+          "milestone": "v1.3",
+          "asked": [
+            "sam--ruiz"
+          ],
+          "reviews": [
+            {
+              "author": "ja--ne",
+              "state": "CHANGES_REQUESTED",
+              "body": "Keep the old name for a release.",
+              "at": "2026-11-13T09:00:00Z",
+              "comments": [
+                {
+                  "author": "ja--ne",
+                  "path": "export/csv.go",
+                  "body": "This drops the header row.",
+                  "at": "2026-11-13T09:00:00Z"
+                }
+              ]
+            },
+            {
+              "author": "ja--ne",
+              "state": "COMMENTED",
+              "body": "",
+              "at": "2026-11-14T09:00:00Z"
+            },
+            {
+              "author": "ja--ne",
+              "state": "APPROVED",
+              "body": "Looks right now.",
+              "at": "2026-11-15T09:00:00Z"
+            },
+            {
+              "author": "ci-bot",
+              "state": "COMMENTED",
+              "body": "lint ok",
+              "at": "2026-11-15T10:00:00Z"
+            },
+            {
+              "author": "morgan--lee",
+              "state": "PENDING",
+              "body": "a note not sent",
+              "at": "2026-11-15T11:00:00Z"
+            }
+          ]
+        },
+        {
+          "number": 11,
+          "title": "Drop the v1 endpoint",
+          "body": "",
+          "state": "CLOSED",
+          "author": "ja--ne",
+          "created": "2026-11-11T12:00:00Z",
+          "updated": "2026-11-12T12:00:00Z",
+          "closed": "2026-11-12T12:00:00Z"
+        }
+      ],
+      "issues": [
+        {
+          "number": 9,
+          "title": "Sync drops rows",
+          "body": "Seen at Acme.",
+          "state": "CLOSED",
+          "state_reason": "COMPLETED",
+          "author": "ja--ne",
+          "created": "2026-11-14T12:00:00Z",
+          "updated": "2026-11-17T11:00:00Z",
+          "closed": "2026-11-17T11:00:00Z"
+        },
+        {
+          "number": 12,
+          "title": "Export in Excel format",
+          "body": "Asked for twice.",
+          "state": "CLOSED",
+          "state_reason": "NOT_PLANNED",
+          "author": "morgan--lee",
+          "created": "2026-11-10T12:00:00Z",
+          "updated": "2026-11-16T12:00:00Z",
+          "closed": "2026-11-16T12:00:00Z",
+          "milestone": "v1.3",
+          "assignees": [
+            "ja--ne"
+          ],
+          "comments": [
+            {
+              "author": "ja--ne",
+              "body": "We will not support this. <!-- internal --> Use CSV.",
+              "at": "2026-11-16T11:00:00Z"
+            }
+          ]
+        }
+      ],
+      "releases": [
+        {
+          "tag": "v1.3.0-rc",
+          "name": "Next",
+          "body": "Not out yet.",
+          "author": "ja--ne",
+          "published": "2026-11-17T11:30:00Z",
+          "draft": true
+        },
+        {
+          "tag": "v1.2.0",
+          "name": "Faster sync",
+          "body": "Sync is twice as fast.",
+          "author": "morgan--lee",
+          "published": "2026-11-17T11:00:00Z"
+        },
+        {
+          "tag": "v1.0.0",
+          "name": "",
+          "body": "",
+          "author": "morgan--lee",
+          "published": "2025-10-13T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "acme/web-app",
+      "renamed_from": [
+        "acme/web"
+      ],
+      "pulls": [
+        {
+          "number": 2,
+          "title": "Dark mode",
+          "body": "Adds a dark theme.",
+          "state": "OPEN",
+          "author": "ja--ne",
+          "created": "2026-11-10T12:00:00Z",
+          "updated": "2026-11-10T12:00:00Z"
+        }
+      ],
+      "issues": [],
+      "releases": []
+    }
+  ],
+  "emails": {
+    "morgan--lee": "morgan@acme.example"
+  }
+}

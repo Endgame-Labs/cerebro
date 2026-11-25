@@ -1,0 +1,28 @@
+{
+  "teams": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "key": "T1",
+      "parentId": null,
+      "displayName": "displayName 1",
+      "icon": "icon 1",
+      "name": "displayName 1",
+      "visibility": "visibility 2",
+      "createdAt": "2024-01-08T09:00:00.000Z",
+      "updatedAt": "2026-11-01T07:00:00.000Z"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "key": "T2",
+      "parentId": null,
+      "displayName": "displayName 3",
+      "icon": "icon 2",
+      "name": "displayName 3",
+      "visibility": "visibility 2",
+      "createdAt": "2024-01-09T09:00:00.000Z",
+      "updatedAt": "2026-10-31T07:00:00.000Z"
+    }
+  ],
+  "hasNextPage": true,
+  "cursor": "00000000-0000-4000-8000-000000000002"
+}

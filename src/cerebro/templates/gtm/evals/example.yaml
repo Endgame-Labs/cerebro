@@ -1,0 +1,22 @@
+# An example eval suite. Edit it before you run it: this template ships no notes, so each name below is made up.
+# Put in an account, a person and a fact your own notes hold, run a pass, then:
+#   cerebro eval evals/example.yaml
+# Each question asks the wiki what an outside agent would ask, by one route: find a name, query a source, or read
+# ids. Under expect, holds lists words the answer must hold, and judge says what a right answer establishes, for the
+# decision model. --no-model scores by holds and lacks alone. See docs/cli.md, under Check answers with eval.
+context: A sales team's wiki built from its own call notes, read by an outside agent.
+questions:
+  - id: next-step
+    group: accounts
+    ask: Where does Tidewater Freight stand, and what is the next step?
+    find: Tidewater Freight            # an account one of your notes names in an Account: line
+    expect:
+      article: accounts/tidewater-freight
+      judge: The answer gives the account's stage and its next step, as the notes say them.
+  - id: champion
+    group: people
+    ask: Who is our champion at Tidewater Freight?
+    find: Tidewater Freight
+    expect:
+      holds: [Ana Ruiz]                # the person your notes name
+      judge: The answer names Ana Ruiz as the champion.
