@@ -12,14 +12,17 @@ Cerebro builds a wiki from your sources and keeps it current. You keep it in a w
 You need Python 3.13, [uv](https://docs.astral.sh/uv/), a Fireworks key and a Typesafe key.
 
 ```sh
+git clone https://github.com/Endgame-Labs/cerebro
+cd cerebro
 uv tool install .
-cerebro init ~/wikis/team-wiki && cd ~/wikis/team-wiki
-cerebro secrets set fireworks && cerebro secrets set typesafe
-cerebro agents new projects/atlas     # then drop a note in local/ and fill in the agent
-cerebro serve --once
+cerebro init ~/wikis/team-wiki
 ```
 
-The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
+`init` asks you for a template, your models and keys, your sources and your AI tools, then runs a first pass. Connect a source, or drop a note in `local/`, so the first pass has something to read. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
+
+## Status
+
+Cerebro is at 0.1. Before 1.0, an update can change how a workspace is stored. When that happens, Cerebro tells you what to do, and the workspace starts over from the same sources. Cerebro never changes your sources, but what you told it, the decisions you made and what your apps saved don't carry over.
 
 ## Docs
 

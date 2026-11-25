@@ -91,6 +91,7 @@ Tests guard these in what a person sees (`tests/test_workspace_words.py`, `tests
 - **Commits and pull requests:** plain language, no attribution lines, no model names. Titles and commit messages carry no ticket ids. Merge, never rewrite history.
 - **Ask a maintainer** before you add a construct, a key, a flag or a word a person will see, and before you change what the framework assumes. A bot reviewer does not make design decisions.
 - **Ask a maintainer before you change how a workspace is stored.**
+- **No migrations before 1.0.** When a change alters how a workspace is stored, raise `SCHEMA_VERSION` in `src/cerebro/store.py`. Cerebro refuses a workspace of any other version, with a line that says what to do. Do not write code that reads or upgrades an older store.
 - **Prompt, tool-description and template words are yours to get right.** Revise them against `docs/philosophy.md`, proofread them, prove them on real models on both sides of the change, and bring the measured result. A new term a person will see still goes to a maintainer.
 - **Bring a maintainer few questions,** in the order that unblocks the most work, each a yes or no with your pick.
 - **Write the smallest change that does the job.** It is easy to write more code than the goal needs. Report lines added and removed. A reviewer hunts for what need not exist as well as for what is wrong.
