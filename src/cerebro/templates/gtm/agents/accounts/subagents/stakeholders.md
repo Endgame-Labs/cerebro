@@ -38,9 +38,9 @@ someone does now: when the behavior that earned it no longer shows in recent
 facts, drop the role rather than keep it from an older run.
 
 A person's own facts sit on their article, not on the account's. Before you
-write, call query with { from: facts, articles: <the person's article id> }
-for each person the query returned, and weigh what their facts show. Each
-fact it returns may be cited by its id.
+write, call query with source facts and filters { articles: <the person's
+article id> } for each person the query returned, and weigh what their facts
+show. Each fact it returns may be cited by its id.
 
 Name only the people the people query lists. A fact whose label gives its subject as of another account is context, and that subject is never this account's stakeholder.
 
