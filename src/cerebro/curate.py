@@ -654,6 +654,26 @@ def address_form(keys: dict[str, list[Any]]) -> dict[str, list[str]]:
     return out
 
 
+def read_keys(given: Iterable[tuple[Any, Any]], spellings: Iterable[str]) -> dict[str, list[Any] | None]:
+    """Keys as a curator gives them, read as it means them. A name is read as the first of `spellings` that spells it
+    in any case and spacing, so `Thing Code` is a source's `thing_code`, else as it was first given, so two spellings
+    of one name are one key. One value given alone is that value, never its letters. A name given only null stays null."""
+    def word(name: Any) -> str:
+        return "_".join(str(name).casefold().replace("_", " ").split())
+
+    spelled: dict[str, str] = {}
+    for name in spellings:
+        spelled.setdefault(word(name), name)
+    out: dict[str, list[Any] | None] = {}
+    for name, values in given:
+        key = spelled.setdefault(word(name), str(name).strip())
+        if values is None:
+            out.setdefault(key, None)
+        else:
+            out[key] = [*(out.get(key) or []), *(values if isinstance(values, list) else [values])]
+    return out
+
+
 def own_values(keys: dict[str, list[str]], name: str) -> dict[str, list[str]]:
     """Keys as one article holds them: a value that lists several names between commas, as a meeting note's
     `Attendees: Nessa Torvik, Sam Okoye` line, is the article's own only in its own name, so a person admitted by such a
@@ -1112,6 +1132,14 @@ class _Curation:
         """The proposals a caller accepted that the act under way names, and so carries out."""
         return [p for p in proposals(self.store, "accepted") if p.id in self.answers]
 
+    def spellings(self) -> list[str]:
+        """The key names a key given in another case or spacing is read as, the strongest first: those the engine and
+        the sources issue, the engine's `alias` and `group`, then those of the records its sources hold."""
+        weights = self.store.weights if self.store.weights is not None else key_weights()
+        return [*weights, "alias", "group", *(key for source in self.sources
+                                              for row in self.store.state(f"held:{source}") or []
+                                              for key in row.get("keys") or {})]
+
     def answering(self, ids: list[str] | None, kind: str, act: Callable[[], dict[str, Any]],
                   distinct: bool = False) -> dict[str, Any]:
         """Run an act of `kind`, a keep-apart when `distinct`, that answers the proposals `ids`, each one this curator
@@ -1544,6 +1572,8 @@ class _Curation:
         another collection waits there."""
         other = self.other(collection)
         who = self.find(article, collection=other)
+        spellings = [*who.keys, *self.spellings()]  # what comes off is read as the article holds it
+        keys, wrong = read_keys(keys.items(), spellings), read_keys(wrong.items(), spellings)
         adds = address_form({k: v for k, v in keys.items() if v is not None})
         payload: dict[str, Any] = {
             "keys": adds | {key: None for key, values in keys.items() if values is None},
@@ -1619,13 +1649,11 @@ class _Curation:
             Give fields, {"<field>": value}, to set front matter fields of the article as you admit it, as its writers
             set them; the ones the wiki keeps itself are refused. Give fields {"linked": [<article id>, ...]} to link
             the article to the others it goes with, such as the one it belongs to, made or only proposed."""
-            keys = dict(keys or {})
+            keys = {k: v for k, v in read_keys([*(keys or {}).items(), ("domain", domain), ("alias", aliases)],
+                                               self.spellings()).items() if v}
             # a group given as a key would bind every article of it
-            named = [str(v) for v in keys.pop("group", []) or []]
+            named = [str(v) for v in keys.pop("group", [])]
             group = group.strip() or ", ".join(named)
-            for key, given in (("domain", domain), ("alias", aliases)):
-                if given:
-                    keys[key] = list(dict.fromkeys([*keys.get(key, []), *(str(v) for v in given)]))
             words, said = " ".join(instructions.split()), reason
             reason = f"{said.strip()} ({group})" if group and said.strip() else said
 

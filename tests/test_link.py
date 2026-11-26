@@ -102,13 +102,13 @@ def test_link_adds_fixes_and_takes_off_keys_and_replaces_a_writers_link_and_says
                                                   "2026-11-20T09:00:00Z"))
     [reply] = curate(store, tmp_path, [("link", {
         "article": "Alder", "reason": "its new address, and a code fixed", "keys": {
-            "email": ["ops@alder.example"], "code": ["t-2"], "alias": None, "Domain": None},
+            "email": ["ops@alder.example"], "code": ["t-2"], "alias": None, "tag": None},
         "wrong": {"code": ["t-9"]}, "linked": ["parts/birch"], "unlinked": ["parts/ash"]})])
     assert store.article("things/alder").identity.keys == {"domain": ["alder.example"], "code": ["t-1", "t-2"],
                                                            "email": ["ops@alder.example"]}
     assert store.article("things/alder").properties["linked"].value == ["parts/birch"]
     for said in ("email ops@alder.example added", "code t-2 added", "code t-9 taken off", "alias Alder Co taken off",
-                 "link parts/birch added", "link parts/ash taken off", "Domain was not on it"):
+                 "link parts/birch added", "link parts/ash taken off", "tag was not on it"):
         assert said in reply, reply
     assert [(p.kind, p.status) for p in proposals(store)] == [("article.link", "accepted")]
 
