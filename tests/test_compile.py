@@ -1496,6 +1496,10 @@ def test_a_subagent_cut_short_by_its_budget_lands_its_fields_only_with_text_that
     run.ran.clear()
     compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert sorted(run.ran) == ["briefs/subagents/people", "briefs/subagents/risks"]  # not done reading: not fresh
+    agents, store, _items, common = briefs(tmp_path / "instructed")  # a draft its composer wrote over never stands
+    run.runs["briefs/article"] = ScriptedRun(lambda p: "V [^r0].")
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
+    assert body(compiled.article) == "V [^r0]." and "level" not in store.article("briefs/alder").properties
 
 
 def test_a_composer_cut_short_by_its_budget_lands_its_fields_only_with_text_that_stands_and_runs_again_next_pass(
