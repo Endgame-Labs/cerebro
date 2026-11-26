@@ -333,7 +333,19 @@
    "answers": null,
    "want": "- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
    "dropped": [
-    "Overview: dropped \"Ours, all done:\": its cited evidence does not hold this lead"
+    "Overview: dropped \"Ours, all done:\": it cites nothing"
+   ]
+  },
+  {
+   "name": "a bold name that went heads every sentence after it, so a later one that opens with a pronoun goes",
+   "body": "**Jane Doe.** Acme Corp must finish its security review before its board meets [^f_1]. The Acme Corp rollout needs a sign-off [^f_2]. She signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": {
+    "l1": "states_unheld"
+   },
+   "want": "Acme Corp must finish its security review before its board meets [^f_1]. The Acme Corp rollout needs a sign-off [^f_2].\n",
+   "dropped": [
+    "Overview: removed the lead \"Jane Doe.\": its cited evidence does not hold it",
+    "Overview: dropped \"She signs off on the Acme Corp rollout.\": the name it read on from went, and nothing names its subject"
    ]
   },
   {

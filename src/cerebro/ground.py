@@ -1895,8 +1895,9 @@ class _Grounding:
             verdicts[i] = v
         ok = [held and not u and not g for held, u, g in
               zip(self.read_verdicts(heading, verdicts, sentences, texts, parts, own), uncited, aged)]
-        why = ["its cited evidence does not hold this lead" if p.bare else g or self.why(v, p.claim)
-               for p, g, v in zip(parts, aged, verdicts)]
+        unjudged = self.judge.decider is None  # no judge ran, or the cap stopped it: the words alone decided
+        why = [("it cites nothing" if p.label and unjudged else "its cited evidence does not hold this lead") if p.bare
+               else g or self.why(v, p.claim) for p, g, v in zip(parts, aged, verdicts)]
         skip = [u or a for u, a in zip(uncited, absent)]
         return _Prose(body, sentences, texts, parts, drafted, headed, ok, why, skip)
 
@@ -2034,8 +2035,8 @@ class _Grounding:
     def drop_orphans(self, heading: str, prose: _Prose) -> bool:
         """Drop each kept sentence that opens with a pronoun or a possessive under a lead that went, its own or a
         bold name or a lead on its own line that headed it, or right after the sentence before it in its paragraph
-        went: nothing names its subject. Under a lead that went, only the first sentence that stands reads on from
-        it. Says whether any went."""
+        went: nothing names its subject. Under a lead on its own line that went, only the first sentence that stands
+        reads on from it, but a bold name heads every sentence after it. Says whether any went."""
         texts, parts, drafted, headed = prose.texts, prose.parts, prose.drafted, prose.headed
         lost = [False] * len(texts)
         for i, d in enumerate(drafted):
@@ -2047,7 +2048,7 @@ class _Grounding:
                 while k < len(texts) and headed[k] == headed[i] and not drafted[k].bare and \
                         not (drafted[k].bold and drafted[k].carry):
                     lost[k] = True
-                    if texts[k]:
+                    if texts[k] and not d.carry:
                         break
                     k += 1
         for i in range(1, len(texts)):  # a sentence that read on from the one before it in its paragraph, which went
