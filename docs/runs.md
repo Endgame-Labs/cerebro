@@ -1,6 +1,6 @@
 # Runs
 
-See when your wiki updates, update it on demand, and cap what it spends. Cerebro works in rounds called passes: each pass reads what changed in your sources, then runs the agents that have something new to write.
+See when your wiki updates, update it on demand, and cap what it spends. Cerebro works in passes: each pass reads what changed in your sources, then runs the agents that have something new to write.
 
 ## Keep it current
 
