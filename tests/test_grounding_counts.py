@@ -166,6 +166,11 @@ def test_what_landing_made_safe_is_counted_per_article_and_each_line_kept_on_its
     assert "cleaned  digests/weekly: made 2 safety edits" in by_hand.output.splitlines(), by_hand.output
     assert "escaped raw HTML" not in by_hand.output and kept.get("notes") == passed["notes"], kept
     assert "kept invisible characters" in by_hand.output
+    by_article = CliRunner().invoke(cli.main, ["compile", "--article", "digests/weekly", "--workspace", str(root)])
+    with cli.open_workspace(root) as workspace:
+        kept = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data
+    assert "cleaned  digests/weekly: made 2 safety edits" in by_article.output.splitlines(), by_article.output
+    assert kept.get("notes") == passed["notes"], kept
 
 
 def test_off_a_terminal_and_in_status_the_counts_are_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
