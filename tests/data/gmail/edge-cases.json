@@ -108,23 +108,23 @@
  "reduce": [
   [
    "Thanks.\n\n-----Original Message-----\nAn earlier line.",
-   ""
+   "-----Original Message-----\nAn earlier line."
   ],
   [
    "Thanks.\n\n________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line.",
-   ""
+   "________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line."
   ],
   [
    "Thanks.\n\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line.",
-   ""
+   "From: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line."
   ],
   [
    "Thanks.\n\nOn Oct 8, 2026 Jane wrote:\nAn earlier line.",
-   ""
+   "On Oct 8, 2026 Jane wrote:\nAn earlier line."
   ],
   [
    "Thanks.\r\n\r\n-----Original Message-----\r\nAn earlier line.",
-   ""
+   "-----Original Message-----\nAn earlier line."
   ],
   [
    "-----Original Message-----\nAn earlier line.",
@@ -140,15 +140,35 @@
   ],
   [
    "Thanks.\n\n\u003e An earlier line.",
-   ""
+   "\u003e An earlier line."
   ],
   [
    "---------- Forwarded message ---------\nAn earlier line.",
    "---------- Forwarded message ---------\nAn earlier line."
   ],
   [
-   "---------- Forwarded message ---------\nFrom: Jane Doe <jane-doe@acme.example>\nDate: Monday\nTo: Lee Moss\n\nAn earlier line.",
-   "---------- Forwarded message ---------\nFrom: Jane Doe <jane-doe@acme.example>\nDate: Monday\nTo: Lee Moss\n\nAn earlier line."
+   "---------- Forwarded message ---------\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nDate: Monday\nTo: Lee Moss\n\nAn earlier line.\n\nThanks,\nJane",
+   "---------- Forwarded message ---------\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nDate: Monday\nTo: Lee Moss\n\nAn earlier line."
+  ],
+  [
+   "Best,\nSam\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line.",
+   "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
+  ],
+  [
+   "Get Outlook for iOS\u003chttps://outlook.example/ios\u003e\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line.",
+   "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
+  ],
+  [
+   "-- \nSam Rivera\nQuillmoor\n\n---------- Forwarded message ---------\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nDate: Monday\nTo: Lee Moss\n\nAn earlier line.",
+   "---------- Forwarded message ---------\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nDate: Monday\nTo: Lee Moss\n\nAn earlier line."
+  ],
+  [
+   "Sent from my iPhone\n\nOn Oct 8, 2026, at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\n\u003e An earlier line.",
+   "On Oct 8, 2026, at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\n\u003e An earlier line."
+  ],
+  [
+   "Sam Rivera\nAccount Executive | Quillmoor\nM: +1 555 0100\u003ctel:+15550100\u003e\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line.",
+   "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
   ],
   [
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line.",
