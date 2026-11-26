@@ -246,11 +246,17 @@ def test_a_key_named_in_another_case_or_spacing_is_read_as_the_name_its_source_w
     assert store.article("things/alder").identity.keys == {}
 
 
-def test_a_key_given_one_value_alone_holds_that_value_and_not_its_letters(tmp_path: Path) -> None:
+def test_a_key_named_exactly_is_itself_and_one_a_link_adds_in_another_spelling_is_the_sources_name(
+        tmp_path: Path) -> None:
     store, agent = MemoryStore(), things(tmp_path, admit=True)
-    curate(store, agent, [("admit", {"name": "Birch", "keys": {"code": "B-1"}, "reason": "a maker"}),
-                          ("link", {"article": "Birch", "keys": {"tag": "oak"}, "reason": "its tag"})], tmp_path)
-    assert store.article("things/birch").identity.keys == {"code": ["B-1"], "tag": ["oak"]}
+    curate(store, agent, [("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"})], tmp_path)
+    store.set_state("held:src", [asdict(Record(id=f"h-{n}", source="src", revision="1", keys=keys, into="things"))
+                                 for n, keys in enumerate([{"Code": ["X"]}, {"code": ["Y"]}, {"thing_code": ["T-2"]}])])
+    curate(store, agent, [("admit", {"name": "Birch", "keys": {"code": ["Y"]}, "reason": "a maker"}),
+                          ("link", {"article": "Alder", "keys": {"THING CODE": ["T-2"]}, "reason": "its code"})],
+           tmp_path)
+    assert store.article("things/birch").identity.keys == {"code": ["Y"]}
+    assert store.article("things/alder").identity.keys == {"Thing Code": ["T-1"], "thing_code": ["T-2"]}
 
 
 def test_one_key_given_in_two_spellings_lands_as_one_key_with_the_values_of_both(tmp_path: Path) -> None:

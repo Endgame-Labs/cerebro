@@ -40,7 +40,7 @@ import json
 import re
 import unicodedata
 import uuid
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -654,23 +654,21 @@ def address_form(keys: dict[str, list[Any]]) -> dict[str, list[str]]:
     return out
 
 
-def read_keys(given: Iterable[tuple[Any, Any]], spellings: Iterable[str]) -> dict[str, list[Any] | None]:
-    """Keys as a curator gives them, read as it means them. A name is read as the first of `spellings` that spells it
-    in any case and spacing, so `Thing Code` is a source's `thing_code`, else as it was first given, so two spellings
-    of one name are one key. One value given alone is that value, never its letters. A name given only null stays null."""
-    def word(name: Any) -> str:
-        return "_".join(str(name).casefold().replace("_", " ").split())
+def read_keys(given: Iterable[tuple[Any, list[Any]]], spellings: Sequence[str]) -> dict[str, list[Any]]:
+    """Keys as a curator gives them, read as it means them. A name that is one of `spellings` is itself. Any other is
+    read as the first of them that spells it in another case or spacing, so `Thing Code` is a source's `thing_code`,
+    else as it was first given, so two spellings of one name are one key."""
+    def word(name: str) -> str:
+        return "_".join(name.casefold().replace("_", " ").split())
 
     spelled: dict[str, str] = {}
     for name in spellings:
         spelled.setdefault(word(name), name)
-    out: dict[str, list[Any] | None] = {}
+    out: dict[str, list[Any]] = {}
     for name, values in given:
-        key = spelled.setdefault(word(name), str(name).strip())
-        if values is None:
-            out.setdefault(key, None)
-        else:
-            out[key] = [*(out.get(key) or []), *(values if isinstance(values, list) else [values])]
+        name = str(name).strip()
+        key = name if name in spellings else spelled.setdefault(word(name), name)
+        out[key] = [*out.get(key, []), *values]
     return out
 
 
@@ -1133,12 +1131,12 @@ class _Curation:
         return [p for p in proposals(self.store, "accepted") if p.id in self.answers]
 
     def spellings(self) -> list[str]:
-        """The key names a key given in another case or spacing is read as, the strongest first: those the engine and
-        the sources issue, the engine's `alias` and `group`, then those of the records its sources hold."""
-        weights = self.store.weights if self.store.weights is not None else key_weights()
-        return [*weights, "alias", "group", *(key for source in self.sources
-                                              for row in self.store.state(f"held:{source}") or []
-                                              for key in row.get("keys") or {})]
+        """The key names a key given in another case or spacing is read as, each once, in the order that decides
+        between two that fold alike: those the engine and the sources issue, the engine's `alias` and `group`, then
+        those of the records its sources hold."""
+        held = (key for source in self.sources for row in self.store.state(f"held:{source}") or []
+                for key in row.get("keys") or {})
+        return list(dict.fromkeys([*key_weights(), *(self.store.weights or {}), "alias", "group", *held]))
 
     def answering(self, ids: list[str] | None, kind: str, act: Callable[[], dict[str, Any]],
                   distinct: bool = False) -> dict[str, Any]:
@@ -1572,11 +1570,15 @@ class _Curation:
         another collection waits there."""
         other = self.other(collection)
         who = self.find(article, collection=other)
-        spellings = [*who.keys, *self.spellings()]  # what comes off is read as the article holds it
-        keys, wrong = read_keys(keys.items(), spellings), read_keys(wrong.items(), spellings)
-        adds = address_form({k: v for k, v in keys.items() if v is not None})
+        held = self.spellings() if keys or wrong else []
+        # a key goes on as the sources write it, and comes off as the article holds it
+        on, off = [*held, *who.keys], [*who.keys, *held]
+        adds = address_form(read_keys(((k, v) for k, v in keys.items() if v is not None), on))
+        cleared, wrong = read_keys(((k, []) for k, v in keys.items() if v is None), off), read_keys(wrong.items(), off)
+        # a key given null and values comes all off, then the values go on
+        wrong |= {k: [*wrong.get(k, []), *who.keys.get(k, [])] for k in cleared if k in adds}
         payload: dict[str, Any] = {
-            "keys": adds | {key: None for key, values in keys.items() if values is None},
+            "keys": adds | {key: None for key in cleared if key not in adds},
             "wrong": address_form(wrong),
             "linked": [p.strip() for p in linked if p.strip()], "unlinked": [p.strip() for p in unlinked if p.strip()]}
         payload = {k: v for k, v in payload.items() if v}
@@ -1649,8 +1651,8 @@ class _Curation:
             Give fields, {"<field>": value}, to set front matter fields of the article as you admit it, as its writers
             set them; the ones the wiki keeps itself are refused. Give fields {"linked": [<article id>, ...]} to link
             the article to the others it goes with, such as the one it belongs to, made or only proposed."""
-            keys = {k: v for k, v in read_keys([*(keys or {}).items(), ("domain", domain), ("alias", aliases)],
-                                               self.spellings()).items() if v}
+            given = [(k, v) for k, v in [*(keys or {}).items(), ("domain", domain), ("alias", aliases)] if v]
+            keys = read_keys(given, self.spellings() if given else [])
             # a group given as a key would bind every article of it
             named = [str(v) for v in keys.pop("group", [])]
             group = group.strip() or ", ".join(named)
