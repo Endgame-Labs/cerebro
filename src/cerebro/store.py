@@ -350,37 +350,40 @@ class Store:
 
         return masked(name, mask), replace(prop, value=_all_masked(prop.value, mask))
 
-    def landed(self, compilation: Compilation) -> tuple[Compilation, list[str]]:
-        """`compilation` as it is written, and a line for each thing cleaning changed: its text masked with `scrubbing`,
-        then cleaned under its heading, its heading and each citation's quote likewise on one line, as `clean.land`
-        says. A citation's id and source, which name a record, are left as they are: changed, they would name a
-        record that does not exist. Landing a part already landed gives it back the same."""
+    def landed(self, compilation: Compilation) -> tuple[Compilation, list[str], list[str]]:
+        """`compilation` as it is written, a line for each thing cleaning changed, and one for each thing it noted and
+        left as written: its text masked with `scrubbing`, then cleaned under its heading, its heading and each
+        citation's quote likewise on one line, as `clean.land` says. A citation's id and source, which name a record,
+        are left as they are: changed, they would name a record that does not exist. Landing a part already landed
+        gives it back the same."""
         from .clean import label, land, land_heading, land_line
 
         mask = self.scrubbing()
         landing = getattr(self, "_landing", {})  # the parts last landed, by key, each with the mask it took
         if (done_before := landing.get(_landing_key(compilation))) is not None and done_before[0] is mask:
             before = done_before[1]
-            return replace(compilation, heading=before.heading, text=before.text, citations=before.citations), []
+            return replace(compilation, heading=before.heading, text=before.text, citations=before.citations), [], []
         cited = tuple(c.id for c in compilation.citations)
         done = land(compilation.text, mask, top=1 if compilation.whole else 2, cited=cited)
-        said = done.removed + done.noted
+        changed, noted = list(done.removed), list(done.noted)
         heading = compilation.heading
         if not compilation.whole:
             title = land_heading(compilation.heading, mask)
             heading = title.text
-            said += [f"its heading: {line}" for line in title.removed + title.noted]
+            changed += [f"its heading: {line}" for line in title.removed]
+            noted += [f"its heading: {line}" for line in title.noted]
         citations = []
         for citation in compilation.citations:
             if citation.quote:
                 quote = land_line(citation.quote, mask)
-                said += [f"the footnote of [^{label(citation.id)}]: {line}" for line in quote.removed + quote.noted]
+                changed += [f"the footnote of [^{label(citation.id)}]: {line}" for line in quote.removed]
+                noted += [f"the footnote of [^{label(citation.id)}]: {line}" for line in quote.noted]
                 citation = replace(citation, quote=quote.text)
             citations.append(citation)
         out = replace(compilation, heading=heading, text=done.text.rstrip("\n"), citations=citations)
         kept = list(landing.items())[-(LANDINGS_KEPT - 1):]  # the newest, leaving room for this one
         self._landing = {**dict(kept), _landing_key(out): (mask, out)}
-        return out, list(dict.fromkeys(said))
+        return out, list(dict.fromkeys(changed)), list(dict.fromkeys(noted))
 
     def write_compilation(self, compilation: Compilation) -> list[str]:
         """Write one part, replacing that heading's earlier text in its place, landed as `landed` says, and give
@@ -1135,7 +1138,7 @@ class SQLiteStore(Store):
             db.executemany("insert into keys values (?,?,?)", [(identity.id, key, str(v).lower()) for v in values])
 
     def write_compilation(self, compilation: Compilation) -> list[str]:
-        compilation, said = self.landed(compilation)
+        compilation, changed, noted = self.landed(compilation)
         with self._tx() as db:
             self._collection(db, compilation.article)
             found = db.execute("select position from compilations where article_id = ? and heading = ?",
@@ -1146,7 +1149,7 @@ class SQLiteStore(Store):
                 compilation.article, compilation.heading, found[0] if found else last + 1,
                 json.dumps(asdict(compilation))))
             self._changed(db, "article", compilation.article)
-        return said
+        return [*changed, *noted]
 
     def delete_compilation(self, article: str, heading: str) -> None:
         with self._tx() as db:

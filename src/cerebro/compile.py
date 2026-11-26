@@ -143,11 +143,11 @@ class Compiled:
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
     grounded: list[str] = field(default_factory=list)  # the lines of `dropped` that are grounding's own
-    cleaned: list[str] = field(default_factory=list)  # a line for each thing landing made safe, which a pass counts
+    cleaned: list[str] = field(default_factory=list)  # a line for each change landing made to the text, counted
 
 
 def made_safe(n: int) -> str:
-    """What landing made safe on an article, as a count alone: made 3 safety edits."""
+    """How many changes landing made to an article's text to make it safe, as a count alone: made 3 safety edits."""
     return f"made {n} safety edit{'' if n == 1 else 's'}"
 
 
@@ -474,28 +474,31 @@ class _LeftAlone(Exception):
 
 
 def _land(store: Store, article: str, parts: list[_Part], digest_: str, writers: list[str],
-          after: Callable[[], None]) -> list[str]:
+          after: Callable[[], None]) -> tuple[list[str], list[str]]:
     """Write each part in order, after every other part of the article, stamped with its own digest or `digest_`,
     and delete each part one of `writers` left before that no part replaced.
 
     The parts land together in one write, with what `after` writes, or not at all: a process stopped part way leaves
     the article as it was, not old and new mixed. Each part is masked and cleaned as the store writes it
-    (`Store.landed`), and a line for each thing cleaning changed is given, but only for a part whose text or
-    footnotes land other than they stand, so a part landed the same on every pass says it once."""
+    (`Store.landed`), and a line for each thing cleaning changed is given, then each it noted and left, but only for
+    a part whose text or footnotes land other than they stand, so a part landed the same on every pass says it once."""
     current = store.article(article)
     standing = {s.heading: (s.text, s.citations) for s in current.compilations} if current is not None else {}
     written = {part.heading for part in parts} | {_heading(store, part.heading) for part in parts if not part.whole}
     gone = [s.heading for s in (current.compilations if current is not None else [])
             if s.by in writers and s.heading not in written]
-    dropped: list[str] = []
+    changed: list[str] = []
+    noted: list[str] = []
     landing = []
     for part in parts:
-        landed, said = store.landed(Compilation(article, part.heading, part.text, by=part.by,
-                                            digest=digest_ if part.digest is None else part.digest, at=part.at,
-                                            citations=_cited(part.text, part.citable), started=part.started,
-                                            whole=part.whole))
+        landed, edits, notes = store.landed(Compilation(article, part.heading, part.text, by=part.by,
+                                                   digest=digest_ if part.digest is None else part.digest, at=part.at,
+                                                   citations=_cited(part.text, part.citable), started=part.started,
+                                                   whole=part.whole))
         if standing.get(landed.heading) != (landed.text, landed.citations):
-            dropped += [f"{'' if part.whole else f'under {part.heading}: '}{line}" for line in said]
+            under = "" if part.whole else f"under {part.heading}: "
+            changed += [under + line for line in edits]
+            noted += [under + line for line in notes]
         landing.append(landed)
     with store.exclusive():
         found = store.article(article)
@@ -508,7 +511,7 @@ def _land(store: Store, article: str, parts: list[_Part], digest_: str, writers:
             store.delete_compilation(article, heading)
         after()
         unmirrored(store, article, True)  # with the parts: a copy cut off before it was written is written next pass
-    return dropped
+    return changed, noted
 
 
 HEADING_LINE = re.compile(r"#{1,6}(\s|$)")  # a markdown heading's line, which is no text of its own
@@ -1024,12 +1027,12 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
 
     finished = stamp_ if ended else ""  # a run cut short is not done reading: the next pass runs it
     try:
-        again = _land(store, article, parts, finished, [agent.id, *orphans], after)
+        again, noted = _land(store, article, parts, finished, [agent.id, *orphans], after)
     except _LeftAlone as left:
         return Compiled(run, store.article(article), skipped=True, waiting=str(left), left_alone=str(left), runs=[run])
     short = [] if run.status == "done" else [f"its run {run.status} ({run.note})"]
     short += [line for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)] if run.status == "done" else []
-    return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=short,
+    return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=[*short, *noted],
                                                     cleaned=again), grounding)
 
 
@@ -1218,7 +1221,7 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
     for n, line in enumerate(lines):
         line = scrub(line) if scrub is not None else line  # masked as the store masks a row, never cut
         if len(line) > room:
-            kept.append(f"and {len(lines) - n} more, not kept: the counts hold every one")
+            kept.append(f"and {len(lines) - n} more, not kept")
             break
         kept.append(line)
         room -= len(line)
@@ -1743,7 +1746,9 @@ class _Composing:
                 _keep_left(store, self.composer, article, self.lead, own.started_at)
 
         try:
-            compiled.cleaned += _land(store, article, plan, "", [*self.writers, *self.orphans], after)
+            cleaned, noted = _land(store, article, plan, "", [*self.writers, *self.orphans], after)
+            compiled.cleaned += cleaned
+            compiled.notes += noted
         except _LeftAlone as left:
             return replace(compiled, article=store.article(article), skipped=True, waiting=str(left), left_alone=str(left))
         return _finish(store, article, c.root, compiled, c.grounding)

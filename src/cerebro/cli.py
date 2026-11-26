@@ -355,8 +355,10 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
     elif compiled.article is not None:
         article = compiled.article.identity.id
         _echo(f"wrote    {article}  articles/{article}.md")
-    for line in [*compiled.dropped, *compiled.cleaned, *compiled.notes]:
+    for line in [*compiled.dropped, *compiled.notes]:
         _echo(f"warning  {key}: {line}")
+    if compiled.cleaned:  # each line of it is kept on its run's line, as a pass keeps it
+        _echo(f"cleaned  {key}: {made_safe(len(compiled.cleaned))}")
     if compiled.warning:
         _echo(f"warning  {compiled.warning}")
     if nothing or compiled.article is not None:
@@ -3741,14 +3743,14 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
     waiting = list(getattr(out, "after", ()))  # how many rows of the list wait
     after = [*already, *waiting]  # said after the summary
     out.result.warnings += out.lines
-    if screen is not None:  # on a terminal the last line is last: what waits is to check, which it names
+    if screen is not None:  # on a terminal the last line is last: what waits is to check first, which it names
         out.result.notices += already
-        out.result.warnings += waiting
+        out.result.warnings[:0] = waiting
         after = []
     agents = workspace.agents if workspace is not None else ()
     fails = _pass_fails(out.result, agents, admitted=sum(len(applied.accepted) for applied in out.applied))
-    if screen is not None:
-        _print_end(screen, _masked(out.result, root), fails, said=screen.lines_said)
+    if screen is not None:  # what waits is said once: by the last line, or above a last line that says it failed
+        _print_end(screen, _masked(out.result, root), fails, said=screen.lines_said | set([] if fails else waiting))
     else:
         _print(_masked(out.result, root))
     for line in after:  # after the summary

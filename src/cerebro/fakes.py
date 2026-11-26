@@ -251,7 +251,7 @@ class MemoryStore(Store):
         self.history.append(("article", identity.id))
 
     def write_compilation(self, compilation: Compilation) -> list[str]:
-        compilation, said = self.landed(compilation)
+        compilation, changed, noted = self.landed(compilation)
         self._known(compilation.article)
         compilations = self.compilations.setdefault(compilation.article, [])
         found = [n for n, s in enumerate(compilations) if s.heading == compilation.heading]
@@ -260,7 +260,7 @@ class MemoryStore(Store):
         else:
             compilations.append(deepcopy(compilation))
         self.history.append(("article", compilation.article))
-        return said
+        return [*changed, *noted]
 
     def delete_compilation(self, article: str, heading: str) -> None:
         compilations = self.compilations.get(article, [])
