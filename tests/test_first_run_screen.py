@@ -387,6 +387,7 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
     assert "    Summary: dropped one: it cites nothing" in shown
     for row in ("Sources checked   1", "Records landed    3", "Facts appended    7", "Articles written  1"):
         assert row in shown, row
+    assert "Agents run" not in shown  # a count of none is left out
     # each said once, under its row or on stderr, and the first named again by the last line
     assert shown.count("dropped one") == 2 and shown.count("a warning of no row") == 1
     assert "cerebro: warning: things/other: a warning of no row" in shown
@@ -395,6 +396,22 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
                    "1 more above)"
     assert all(len(row) < 100 for row in shown.split("\n"))
     assert "wrote     " not in shown and "listed    " not in shown
+
+
+def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follows_it(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_first_run import ADMITS, Script, lay_out_workspace, open_it, settled
+
+    from cerebro import cli
+    from cerebro.first_run import run
+
+    screen, out, _ = still()
+    with open_it(lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})) as workspace:
+        done = run(workspace, on=screen,
+                   choose=lambda pile: settled(pile, {r.id for r in pile.rows() if r.name == "Alder Works"}))
+        cli._print_first_run(done, workspace, screen=screen)
+    last = " ".join(screen_of(out.getvalue()).split("\n")[-2:])
+    assert "Check: 1 more is waiting. Run cerebro review" in last and capsys.readouterr().out == ""
 
 
 def test_ctrl_c_during_a_first_run_says_one_line_and_exits_130_with_no_traceback(

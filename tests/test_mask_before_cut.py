@@ -447,7 +447,7 @@ def test_a_first_run_says_and_returns_no_part_of_a_secret_a_source_or_a_curator_
             now[0] += timedelta(days=2)  # every source is due again, and lists while the list waits
             result = served(workspace, say=lines.append)
             assert result is not None
-            returned = [*result.failed.values(), *result.warnings]
+            returned = [*result.failed.values(), *result.warnings, *result.notices]
     text = "\n".join([*lines, *returned])
     assert "RuntimeError" in text
     assert not leaks(secret, text), leaks(secret, text)
@@ -709,7 +709,7 @@ def test_a_pass_keeps_prints_and_sends_nothing_of_a_record_whose_id_holds_a_stor
         reply = json.dumps(workspace.call(YOU, "query", {"from": "facts"}), ensure_ascii=False)
     kept = "\n".join(p.read_bytes().decode("utf-8", "ignore") for p in (root / ".cerebro").rglob("*") if p.is_file())
     assert not sent and secret not in reply and secret not in kept
-    assert [n for n in result.warnings if n.startswith('sources/desk: left out the record "Juniper" of 2026-11-16')]
+    assert [n for n in result.notices if n.startswith('sources/desk: left out the record "Juniper" of 2026-11-16')]
 
 
 def _kept_text(root: Path) -> str:
@@ -744,7 +744,7 @@ def test_a_record_left_out_for_its_id_is_listed_again_each_pass_and_lands_once_t
 
         def run() -> list[str]:
             clock[0] += timedelta(hours=1)
-            return [w for w in workspace.run_once().warnings if "left out" in w]
+            return [w for w in workspace.run_once().notices if "left out" in w]
 
         run()
         source.add(doc(f"doc-3-{value}"))
@@ -781,12 +781,13 @@ def test_a_file_left_out_for_its_path_is_never_marked_seen_and_lands_once_the_st
         workspace.run_once()
         (root / "local" / f"c-{value}.md").write_text("Note c says the review moved.\n")
         (root / "local" / "d.md").write_text("Note d says the review moved.\n")
-        refused = [workspace.run_once().warnings, workspace.run_once().warnings]
+        refused = [workspace.run_once().notices, workspace.run_once().notices]
         seen = workspace.connectors["local"].inner._seen(workspace.store.state("cursor:local"))[0]
         secrets.delete("site")
-        after = [workspace.run_once().warnings, workspace.run_once().warnings]
+        after = [workspace.run_once().notices, workspace.run_once().notices]
     held = "its id holds a value the secrets store keeps"  # the files source refuses it before the app's wrapper
-    assert all(len([w for w in said if held in w]) == 1 for said in refused) and after == [[], []]
+    assert all(len([w for w in said if held in w]) == 1 for said in refused)
+    assert not [w for said in after for w in said if held in w]
     assert not [id for id in seen if value in id]
     assert sorted(sent) == ["local/a.md", "local/b.md", f"local/c-{value}.md", "local/d.md"]
 

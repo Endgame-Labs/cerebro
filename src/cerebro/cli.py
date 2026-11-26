@@ -42,7 +42,7 @@ from .agent import Agent, refusal_of, refused_ids
 from .app import Cerebro, PassResult
 from .budget import BudgetSpent
 from .caller import KIND_WORDS, Caller
-from .compile import Compiled, left_alone, out_of_working_set, targets
+from .compile import Compiled, left_alone, made_safe, out_of_working_set, targets
 from .connector import one_line
 from .errors import CerebroError
 from .forget import Outside, claims_file, left_behind, of_workspace, remove, there
@@ -263,6 +263,8 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         for key, tally in result.grounding.items():
             if said := counted(tally):
                 _echo(f"grounding {key}: {said}")
+    for key, n in result.cleaned.items():  # each thing it made safe is kept on its run's line
+        _echo(f"cleaned   {key}: {made_safe(n)}")
     for agent, why in result.skipped.items():
         _echo(f"skipped   {agent}: {why}")
     for agent, why in result.held.items():
@@ -350,7 +352,7 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
     elif compiled.article is not None:
         article = compiled.article.identity.id
         _echo(f"wrote    {article}  articles/{article}.md")
-    for line in [*compiled.dropped, *compiled.notes]:
+    for line in [*compiled.dropped, *compiled.cleaned, *compiled.notes]:
         _echo(f"warning  {key}: {line}")
     if compiled.warning:
         _echo(f"warning  {compiled.warning}")
@@ -3733,14 +3735,16 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
         if out.next:  # what to run next
             _echo(f"next      {out.next}")
         return
-    out.result.warnings += out.lines
+    # how many rows of the list wait: on a terminal it is to check, which the last line names
+    after = list(getattr(out, "after", ()))
+    out.result.warnings += [*out.lines, *(after if screen is not None else [])]
     agents = workspace.agents if workspace is not None else ()
     fails = _pass_fails(out.result, agents, admitted=sum(len(applied.accepted) for applied in out.applied))
     if screen is not None:
         _print_end(screen, _masked(out.result, root), fails, said=screen.lines_said)
     else:
         _print(_masked(out.result, root))
-    for line in [*already, *getattr(out, "after", ())]:  # how many rows of the list wait, after the summary
+    for line in [*already, *(after if screen is None else [])]:  # how many rows of the list wait, after the summary
         _echo(line)
     if fails:
         raise SystemExit(1)
@@ -3948,9 +3952,9 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
         return
     shown = screen.shown_keys() | said
     p = screen.p
-    p.table([["Sources checked", str(len(result.listed))], ["Records landed", str(result.read)],
-             ["Facts appended", str(result.extracted)], ["Articles written", str(len(result.compiled))],
-             ["Agents run", str(len(result.runs))]])
+    p.table([[label, str(n)] for label, n in (
+        ("Sources checked", len(result.listed)), ("Records landed", result.read), ("Facts appended", result.extracted),
+        ("Articles written", len(result.compiled)), ("Agents run", len(result.runs))) if n])
     width = p.width()
     for kind, lines in (("refused", result.refused), ("notice", result.notices)):
         for line in lines:
@@ -4137,8 +4141,9 @@ def _serving(workspace: Cerebro, holder: list[Any], host: str | None, port: int 
         threading.Thread(target=hold, name="cerebro-ending", daemon=True).start()
         done.wait(max(0.3, left()))
         if under_way and gave:
-            said = (f"stopped   a pass was still under way after {JOIN:g} seconds: cerebro gave back its "
-                    f"{_count(gave[0], 'lease')} and stopped without waiting for it")
+            said = (f"stopped   a pass was still under way after {JOIN:g} seconds: cerebro "
+                    + (f"gave back its {_count(gave[0], 'lease')} and " if gave[0] else "")
+                    + "stopped without waiting for it")
         elif under_way or not done.is_set():
             said = (f"stopped   {'a pass was still under way after ' + format(JOIN, 'g') + ' seconds, and ' if under_way else ''}"
                     "the store is locked by another command, so any lease this process holds is left: the next start "

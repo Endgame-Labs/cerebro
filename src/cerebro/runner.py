@@ -84,6 +84,7 @@ from .compile import (
     fixed,
     keep_grounding,
     left_alone,
+    made_safe,
     material_key,
     targets,
     unmirrored,
@@ -200,6 +201,7 @@ class PassResult:
     # say each thing it repaired or dropped, which the run's line in the `agent-runs` log keeps
     grounding: dict[str, dict[str, int]] = field(default_factory=dict)
     grounded: set[str] = field(default_factory=set)
+    cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens
     on: Callable[[Progress], None] | None = field(default=None, repr=False, compare=False)  # an event as each happens
@@ -1001,7 +1003,8 @@ def _articles(connector: Connector, listed: _Listed, name: str, result: PassResu
         listing = connector.list(since=since)
         listed.back = listed.back or ([since] if listing.again else [])
         result.listed[name] += len(listing.records)
-        result.warnings += [f"sources/{name}: {line}" for line in listing.notices]
+        said = (f"sources/{name}: {line}" for line in listing.notices)  # a source may give each again on every page
+        result.notices += [line for line in dict.fromkeys(said) if line not in result.notices]
         listed.records += listing.records
         listed.removed += listing.removed
         listed.cursor, listed.moved = listing.cursor, True
@@ -2253,12 +2256,14 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         GROUND_LINES.reset(saying)
     compiled.grounding = dict(tally)
     # grounding's own lines of what went, as compile carries them in `dropped` among lines that are not
-    # grounding's, such as cleaning's, which are said as they come
+    # grounding's, which are said as they come
     compiled.grounded = [line for line in compiled.dropped if line in own or any(
         line.endswith(f": {said}") for said in own)]
     result.tell(_compiled_line(workspace, key, compiled))
     result.step("compile", "end", article, **_compiled_step(agent, compiled))
-    if said := counted(tally):  # what grounding did, as counts, under the article's row
+    # what grounding did and what landing made safe, as counts, under the article's row
+    safe = made_safe(len(compiled.cleaned)) if compiled.cleaned else ""
+    if said := ", ".join(n for n in (counted(tally), safe) if n):
         result.step("compile", "note", article, text=said)
     return compiled
 
@@ -2332,10 +2337,13 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
         turn.wrote.append(article)  # its clock moves; a failed run keeps it
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
-    if compiled.grounding:  # kept on its run's line, and counted for its end
-        keep_grounding(workspace.store, run, compiled.grounding, compiled.grounded)
+    # each line kept on its run's line, and counted for its end
+    keep_grounding(workspace.store, run, compiled.grounding, [*compiled.grounded, *compiled.cleaned])
+    if compiled.grounding:
         result.grounding[key] = compiled.grounding
         result.grounded.update(f"{key}: {line}" for line in compiled.grounded)
+    if compiled.cleaned:
+        result.cleaned[key] = len(compiled.cleaned)
     result.warnings += [f"{key}: {note}" for note in compiled.notes]
     if compiled.warning:
         result.warnings.append(compiled.warning)

@@ -73,13 +73,15 @@ def test_sigterm_stops_serve_as_ctrl_c_does_and_exits_0_once_the_pass_loop_ends(
     assert restored is own
 
 
+@pytest.mark.parametrize(("leased", "gave"), [(True, "gave back its 1 lease and "), (False, "")])
 def test_a_pass_still_under_way_when_serve_stops_is_cut_short_with_its_leases_given_back(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, leased: bool, gave: str) -> None:
     held, release, exits, store = threading.Event(), threading.Event(), [], MemoryStore()
     root = workspace_folder(tmp_path)
 
     def slow_pass(**kwargs: Any) -> None:
-        runner._lease(kwargs["workspace"], SimpleNamespace(id="projects/a"), "a-slow-pass")
+        if leased:  # with none, the line counts none
+            runner._lease(kwargs["workspace"], SimpleNamespace(id="projects/a"), "a-slow-pass")
         held.set()
         release.wait(10)  # a run on a model a stop cannot cancel
 
@@ -97,7 +99,7 @@ def test_a_pass_still_under_way_when_serve_stops_is_cut_short_with_its_leases_gi
         result = CliRunner().invoke(main, ["serve", "--workspace", str(root)])
     finally:
         release.set()
-    assert ("stopped   a pass was still under way after 0.1 seconds: cerebro gave back its 1 lease and stopped "
+    assert (f"stopped   a pass was still under way after 0.1 seconds: cerebro {gave}stopped "
             "without waiting for it") in result.output.splitlines()  # the process ends here, the exit stood in for
     assert exits[:1] == [130]  # a stop that outlasts its grace
     assert store.state("lease:projects/a") is None

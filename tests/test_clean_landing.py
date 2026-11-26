@@ -82,12 +82,12 @@ def test_a_compile_says_what_cleaning_changed_once_and_not_on_a_pass_that_lands_
     store, items, _, common = setup(tmp_path)
     write: Callable[[str], str] = lambda prompt: "Alder <b>shipped</b> [^r0]."
     first = compile_article(AGENT, agent_run=ScriptedRun(write), **common)
-    assert any('escaped raw HTML "<b>"' in line for line in first.dropped)
+    assert any('escaped raw HTML "<b>"' in line for line in first.cleaned)
     article = store.article("reports/weekly")
     assert article is not None and article.compilations[0].text == "Alder &lt;b>shipped&lt;/b> [^r0]."
     items.append("two")
     again = compile_article(AGENT, agent_run=ScriptedRun(write), **common)
-    assert not again.skipped and not any("escaped" in line for line in again.dropped)
+    assert not again.skipped and not any("escaped" in line for line in again.cleaned)
 
 
 def test_a_quote_cleaned_on_a_pass_whose_part_text_is_the_same_is_still_said(tmp_path: Path) -> None:
@@ -100,4 +100,4 @@ def test_a_quote_cleaned_on_a_pass_whose_part_text_is_the_same_is_still_said(tmp
     article = store.article("reports/weekly")
     assert article is not None and article.compilations[0].text == "Alder shipped [^r0]."
     assert article.compilations[0].citations[0].quote == "one &lt;img src=x onerror=alert(1)>"
-    assert any(line.startswith("the footnote of [^r0]: escaped raw HTML") for line in again.dropped)
+    assert any(line.startswith("the footnote of [^r0]: escaped raw HTML") for line in again.cleaned)
