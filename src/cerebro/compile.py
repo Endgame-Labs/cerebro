@@ -1333,6 +1333,12 @@ def _not_run(agent: Agent, article: str, error: BudgetSpent | Stopped, clock: Cl
     return Run("", agent.id, article, status, note=str(error), started_at=stamp(clock()), ended_at=stamp(clock()))
 
 
+def _ran_to_an_end(run: Run) -> bool:
+    """Whether a run ran to an end: done, wrote nothing, or its budget spent once it had handed in text. Only such a
+    run's fields land."""
+    return run.status in ("done", WROTE_NOTHING) or run.status == "budget spent" and run.result is not None
+
+
 def _stamp_of(*digests: str) -> str:
     return "sha256:" + hashlib.sha256("\0".join(digests).encode()).hexdigest()[:16]
 
@@ -1477,8 +1483,7 @@ class _Composing:
         if self.holds and len(self.holds) == len(self.ran) and not self.orphans:
             raise next(iter(self.holds.values()))  # nothing ran, so nothing was paid for: the pass holds it as a whole
         self.compiled = Compiled(None, None, runs=[run for n, run in self.ran.items() if n not in self.holds])
-        self.failed = [n for n, run in self.ran.items() if run.status not in ("done", WROTE_NOTHING)
-                       and not (run.status == "budget spent" and run.result)]
+        self.failed = [n for n, run in self.ran.items() if not _ran_to_an_end(run)]
         self.compiled.notes += [line for n, run in self.ran.items() if n not in self.failed
                                 for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)]
         for n in self.failed:
@@ -1666,7 +1671,7 @@ class _Composing:
                                                            self.sub_writes[n], run.ended_at)) \
                     and self.held[n].get("digest") == self.stamps[n]:  # one not done reading runs again
                 self.held[n]["digest"] = _stamp_of(read, self.composer.context)
-        if own is not None and own.status in ("done", WROTE_NOTHING):
+        if own is not None and _ran_to_an_end(own):
             self.own_read = _land_own(c, article, self.writers, self.composer, self.lead, self.writes,
                                       own.ended_at) or digest(self.composer, self.lead)
 

@@ -1477,16 +1477,28 @@ def test_a_writer_cut_short_by_its_budget_lands_the_fields_it_set_with_its_text(
     assert store.article("reports/weekly").properties["level"].value == "high"
 
 
-def test_a_subagent_cut_short_by_its_budget_lands_its_text_and_runs_again_next_pass(tmp_path: Path) -> None:
-    agents, _store, _items, common = briefs(tmp_path, JOINED)
+def test_a_subagent_cut_short_by_its_budget_lands_its_text_and_fields_and_runs_again_next_pass(tmp_path: Path) -> None:
+    agents, store, _items, common = briefs(tmp_path, JOINED)
     run = ByAgent({"briefs/subagents/risks": Short(lambda p: "R [^r0].", calls=[
         ("override", {"field": "level", "value": "high"})]),
                    "briefs/subagents/people": ScriptedRun(lambda p: "P [^r0].")})
     compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert body(compiled.article) == "## Risks\n\nR [^r0].\n\n## People\n\nP [^r0]."
+    assert store.article("briefs/alder").properties["level"].value == "high"
     run.ran.clear()
     compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert run.ran == ["briefs/subagents/risks"]  # not done reading: not fresh
+
+
+def test_a_composer_cut_short_by_its_budget_lands_the_fields_it_set_with_its_text(tmp_path: Path) -> None:
+    agents, store, _items, common = briefs(tmp_path)
+    run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: "R [^r0]."),
+                   "briefs/subagents/people": ScriptedRun(lambda p: "P [^r0]."),
+                   "briefs/article": Short(lambda p: "V [^r0].", calls=[
+                       ("override", {"field": "level", "value": "high"})])})
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
+    assert compiled.run.status == "budget spent" and body(compiled.article) == "V [^r0]."
+    assert store.article("briefs/alder").properties["level"].value == "high"
 
 
 @pytest.mark.parametrize("shape", ["joined", "instructed", "instructed, adds nothing", "instructed, all dropped",
