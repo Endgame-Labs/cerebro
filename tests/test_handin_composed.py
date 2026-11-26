@@ -193,12 +193,12 @@ def test_a_pass_where_one_subagent_fails_and_another_returns_lands_nothing_and_c
     lines = told.output.splitlines()
     assert (f"failed    things/article on things/alpha: {SUBAGENT_FAILED}: things/subagents/risks: run run_risks failed: "
             "a model error") in lines, lines
-    assert lines[-1] == "Done: 0 written, 1 failed.", lines
+    assert lines[-1] == "Done: 1 failed.", lines
     assert told.exit_code == 1, told.output  # nothing else landed: the facts were taken in before this pass
     assert workspace.article("things/alpha") is None or "A note on yard, number 0." not in workspace.article("things/alpha")
     workspace.at[0] = workspace.at[0].replace(hour=11)  # past the wait after a failure, nothing else moved
     again = workspace.cli("serve", "--once", "--plain")
-    assert again.output.splitlines()[-1] == "Done: 0 written, 1 failed.", again.output
+    assert again.output.splitlines()[-1] == "Done: 1 failed.", again.output
     byhand = workspace.cli("agents", "run", "things/article")
     assert byhand.exit_code == 1 and SUBAGENT_FAILED in byhand.stderr, byhand.output
 
@@ -262,7 +262,7 @@ def test_a_pass_that_stored_facts_beside_a_run_that_failed_exits_0(
     w.run.how["reports/weekly"] = "fail"
     told = w.cli("serve", "--once", "--plain")
     lines = told.output.splitlines()
-    assert lines[-1] == "Done: 0 written, 1 failed.", lines
+    assert lines[-1] == "Done: 1 failed.", lines
     assert any(line.startswith("facts     ") for line in lines), lines
     assert told.exit_code == 0, told.output
     w.at[0] = w.at[0].replace(minute=5)  # past the wait after a failure
@@ -285,7 +285,7 @@ def test_a_writer_whose_run_lands_nothing_over_text_citing_only_an_earlier_save_
     lines = told.output.splitlines()
     assert any(line.startswith("ran       reports/weekly: wrote nothing: ") for line in lines), lines
     assert not any(line.startswith("wrote ") for line in lines), lines
-    assert lines[-1] == "Done: 0 written, 1 ran and wrote nothing, 0 failed.", lines
+    assert lines[-1] == "Done: 1 ran and wrote nothing.", lines
     # the fact it cites is an earlier save's now, which counts as withdrawn: its line goes
     assert "A note on yard, number 0." not in (w.article("reports/weekly") or "") and parts
     assert w.stored("reports/weekly") == []
@@ -356,7 +356,7 @@ def test_a_curator_whose_run_ends_failed_is_counted_failed_and_the_pass_exits_1(
     lines = told.output.splitlines()
     assert "failed    things/curator: a model error" in lines, lines
     assert not any("changed nothing" in line for line in lines), lines
-    assert lines[-1] == "Done: 0 written, 1 failed.", lines
+    assert lines[-1] == "Done: 1 failed.", lines
     assert told.exit_code == 1, told.output
 
 
@@ -394,7 +394,7 @@ def test_a_composer_whose_own_run_fails_lands_nothing_is_counted_failed_and_wait
     lines = again.output.splitlines()
     assert "failed    things/article on things/alpha: run run_article wrote nothing: failed: a model error" in lines, \
         lines
-    assert lines[-1] == "Done: 0 written, 1 failed.", lines
+    assert lines[-1] == "Done: 1 failed.", lines
     assert again.exit_code == 1, again.output
     assert w.article("things/alpha") == before and w.stored("things/alpha") == parts
 
@@ -417,7 +417,7 @@ def test_a_composer_whose_own_run_failed_on_what_it_wrote_from_before_is_not_sai
     lines = told.output.splitlines()
     assert len(w.run.ran) == ran, w.run.ran[ran:]  # nothing it reads moved since the article landed
     assert not any(line.startswith("wrote") or " wrote articles/" in line for line in lines), lines
-    assert lines[-1] == "Done: 0 written, 0 failed.", lines
+    assert lines[-1] == "Done.", lines
     assert w.article("things/alpha") == before
 
 

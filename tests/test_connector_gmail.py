@@ -433,6 +433,7 @@ def test_a_separator_line_is_found_and_a_long_line_of_dashes_is_read_in_linear_t
     assert reduce("Thanks, see you then.\n\n-----Original Message-----\nFrom: x\nold text") == "Thanks, see you then."
     started = time.perf_counter()
     reduce("- " * 20000 + "x")
+    reduce("a<tel:1>" * 10000)
     assert time.perf_counter() - started < 0.5  # a backtracking pattern would take seconds on a line this long
 
 

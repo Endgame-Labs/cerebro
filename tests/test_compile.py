@@ -1477,16 +1477,50 @@ def test_a_writer_cut_short_by_its_budget_lands_the_fields_it_set_with_its_text(
     assert store.article("reports/weekly").properties["level"].value == "high"
 
 
-def test_a_subagent_cut_short_by_its_budget_lands_its_text_and_runs_again_next_pass(tmp_path: Path) -> None:
-    agents, _store, _items, common = briefs(tmp_path, JOINED)
+def test_a_subagent_cut_short_by_its_budget_lands_its_fields_only_with_text_that_stands_and_runs_again_next_pass(
+        tmp_path: Path) -> None:
+    agents, store, _items, common = briefs(tmp_path, JOINED)
     run = ByAgent({"briefs/subagents/risks": Short(lambda p: "R [^r0].", calls=[
         ("override", {"field": "level", "value": "high"})]),
-                   "briefs/subagents/people": ScriptedRun(lambda p: "P [^r0].")})
+                   "briefs/subagents/people": Short(lambda p: "P [^r0].", calls=[
+                       ("override", {"field": "tone", "value": "calm"})])})
+
+    def drop(agent: Any, parts: dict[str, str], *_: Any) -> Grounded:
+        return Grounded({}, ["dropped"]) if agent.id == "briefs/subagents/people" else Grounded(parts)
+
+    common["grounder"] = drop
     compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
-    assert body(compiled.article) == "## Risks\n\nR [^r0].\n\n## People\n\nP [^r0]."
+    assert body(compiled.article) == "## Risks\n\nR [^r0]."
+    assert store.article("briefs/alder").properties["level"].value == "high"
+    assert "tone" not in store.article("briefs/alder").properties  # none of its text stood
     run.ran.clear()
     compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
-    assert run.ran == ["briefs/subagents/risks"]  # not done reading: not fresh
+    assert sorted(run.ran) == ["briefs/subagents/people", "briefs/subagents/risks"]  # not done reading: not fresh
+    agents, store, _items, common = briefs(tmp_path / "instructed")  # a draft its composer wrote over never stands
+    run.runs["briefs/article"] = ScriptedRun(lambda p: "V [^r0].")
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
+    assert body(compiled.article) == "V [^r0]." and "level" not in store.article("briefs/alder").properties
+
+
+def test_a_composer_cut_short_by_its_budget_lands_its_fields_only_with_text_that_stands_and_runs_again_next_pass(
+        tmp_path: Path) -> None:
+    agents, store, _items, common = briefs(tmp_path)
+    run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: "R [^r0]."),
+                   "briefs/subagents/people": ScriptedRun(lambda p: "P [^r0]."),
+                   "briefs/article": Short(lambda p: "V [^r0].", calls=[
+                       ("override", {"field": "level", "value": "high"})])})
+
+    def drop(agent: Any, parts: dict[str, str], *_: Any) -> Grounded:
+        return Grounded({}, ["dropped"]) if agent.id == "briefs/article" else Grounded(parts)
+
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common | {"grounder": drop})
+    assert compiled.run.status == "budget spent"
+    assert body(compiled.article) == "## Risks\n\nR [^r0].\n\n## People\n\nP [^r0]."
+    assert "level" not in store.article("briefs/alder").properties  # none of its text stood
+    run.ran.clear()
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
+    assert run.ran == ["briefs/article"] and body(compiled.article) == "V [^r0]."  # not done reading: not fresh
+    assert store.article("briefs/alder").properties["level"].value == "high"
 
 
 @pytest.mark.parametrize("shape", ["joined", "instructed", "instructed, adds nothing", "instructed, all dropped",

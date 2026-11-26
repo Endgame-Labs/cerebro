@@ -1085,9 +1085,11 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
 
 
 def _step(session: dict[str, Any], agent: Agent) -> str:
-    passes = int(((session.get("lists") or {}).get(agent.id) or {}).get("passes") or 0) + 1
-    return (f"stage     discover: reviewing sources for {agent.target} collection" if passes == 1 else
-            f"stage     discover: reviewing sources again for {agent.target} collection, pass {passes}")
+    """A curator's turn as a plain line: again once it ran before, and past the first round, the round's number as
+    a terminal's heading says it."""
+    again = " again" if ((session.get("lists") or {}).get(agent.id) or {}).get("passes") else ""
+    of = f", round {session['rounds'] + 1}" if session.get("rounds") else ""
+    return f"stage     discover: reviewing sources{again} for {agent.target} collection{of}"
 
 
 def _pending(workspace: Cerebro) -> int:
@@ -1149,7 +1151,7 @@ def _landed(workspace: Cerebro, session: dict[str, Any], turn: _Turn, tell: Call
     """Say what one curator's turn did, and keep what became of it."""
     agent, result, passes, weighed, before = turn.agent, turn.result, turn.passes, turn.weighed, turn.before
     if turn.changed_only and agent.id not in result.skipped:  # a first round said it as it started
-        tell(_step({"lists": {agent.id: {"passes": passes - 1}}}, agent))
+        tell(_step(session, agent))
     session["runs"] = [*session.get("runs", []), *(run.id for run in result.runs if run.id)]
     new = [id for id in first_list(workspace, agent.id) if id not in before]
     session["order"] = [*(session.get("order") or []), *new]  # the curators' order, whichever finished first
@@ -1160,8 +1162,8 @@ def _landed(workspace: Cerebro, session: dict[str, Any], turn: _Turn, tell: Call
         state["passes"] = passes
     _keep_said(workspace, state, agent.id, result)
     what = _into(workspace, new, agent.target) if filed > 0 else f"nothing to {agent.target} collection"
-    said = (f"proposed  {what}" + (f" in pass {passes}" if passes > 1 else "") + (f" and left out {left}" if left > 0 else "")
-            + f", by agents/{agent.id}.md")
+    said = (f"proposed  {what}" + (f" in round {session['rounds'] + 1}" if session.get("rounds") else "")
+            + (f" and left out {left}" if left > 0 else "") + f", by agents/{agent.id}.md")
     if why := _failure(result, agent.id):
         note = workspace.mask_every()(f"discovery for {agent.target} collection did not finish: {why}")
         state.update(state="failed", note=note)
@@ -1396,6 +1398,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     `on` are the first pass's own."""
     for name, count in more.listed.items():
         into.listed[name] = into.listed.get(name, 0) + count
+    into.from_start |= more.from_start
     into.read += more.read
     into.extracted += more.extracted
     into.retracted += more.retracted
@@ -1675,7 +1678,8 @@ def served(workspace: Cerebro, *, say: Callable[[str], None] | None = None) -> P
     workspace.store.set_state(FAILED, None)
     result = out.result or PassResult()
     if out.result is None:
-        result.listed, result.failed = held.listed, {k: workspace.mask_every()(v) for k, v in held.failed.items()}
+        result.listed, result.from_start = held.listed, held.from_start
+        result.failed = {k: workspace.mask_every()(v) for k, v in held.failed.items()}
     said = [f"{line} {SERVED}" if line.startswith("the first run's list") else line for line in out.lines]
     lines = [workspace.mask(line) for line in said]
     session = _state(workspace)

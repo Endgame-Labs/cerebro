@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,33 @@ def test_a_later_rounds_curator_whose_evidence_did_not_move_ends_its_step_as_not
         "", "Round 3 of up to 4",
         "✓ Nothing new for parts collection  0.0s", "✓ Nothing new for things collection  0.0s",
         "✓ Reviewed 2 proposals  0.0s"]
+
+
+def test_off_a_terminal_a_later_round_is_named_by_its_own_number(tmp_path: Path) -> None:
+    from test_first_run_structure import Script, by_record, lay_out_workspace, open_it
+
+    from cerebro.first_run import run
+
+    said: list[str] = []  # parts has nothing to weigh until things proposes, so it is first asked in round 2
+    script = Script({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]})
+    with open_it(lay_out_workspace(tmp_path), script) as workspace:
+        run(workspace, choose=lambda pile: None, say=said.append)
+    assert [line for line in said if "parts collection" in line] == [
+        "stage     discover: reviewing sources for parts collection, round 2",
+        "proposed  1 article to parts collection in round 2, by agents/parts/curator.md"]
+
+
+def test_a_round_with_no_curator_to_ask_has_no_heading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from test_first_run_structure import Script, lay_out_workspace, open_it
+
+    from cerebro import Cerebro
+    from cerebro.first_run import run
+
+    monkeypatch.setattr(Cerebro, "weighs_nothing", lambda self, agent: True)
+    screen, out, _ = still()
+    with open_it(lay_out_workspace(tmp_path), Script({})) as workspace:
+        run(workspace, choose=lambda pile: None, on=screen)
+    assert "Round" not in screen_of(out.getvalue())
 
 
 def test_a_question_or_the_list_takes_the_screen_once_what_is_live_has_gone_after_a_blank_line() -> None:
@@ -403,11 +431,15 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
 
 
 def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follows_it(
-        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     from test_first_run import ADMITS, YOU, Script, lay_out_workspace, open_it, settled
 
     from cerebro import cli
+    from cerebro.fakes import FakeConnector
     from cerebro.first_run import run
+
+    listed = FakeConnector.list  # the source notes a line on its listing, which warns too
+    monkeypatch.setattr(FakeConnector, "list", lambda self, since=None: replace(listed(self, since), notices=["noted"]))
 
     def choose(pile: Any) -> Any:  # Alder and Initech ticked, and a no to Initech given while the list is open
         initech = next(r.id for r in pile.rows() if r.name == "Initech")
@@ -420,6 +452,7 @@ def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follo
         cli._print_first_run(run(workspace, on=screen, choose=choose), workspace, screen=screen)
     shown = screen_of(out.getvalue()).split("\n")
     assert any(line.startswith("notice    p_") and line.endswith(" is already rejected") for line in shown[:-2]), shown
+    assert "cerebro: warning: sources/crm: noted" in shown and sum("more is waiting" in line for line in shown) == 1
     assert "Check: 1 more is waiting. Run cerebro review" in " ".join(shown[-2:]) and capsys.readouterr().out == ""
 
 

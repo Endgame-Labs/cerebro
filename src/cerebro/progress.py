@@ -438,8 +438,8 @@ class FirstRunScreen:
     The sources are read on the step `Reading sources`, with a sub-line for each source in name order that counts
     what it listed, 0 until it lists, which resolves to `Read 239 records from 3 sources`, or with the warning mark
     and what failed. Each round of discovery stands under its heading, `Round 2 of up to 4`, since discovery may end
-    sooner. The first says `Running discovery for parts and things collections.` and each round gives each curator a
-    step, `Queued for things collection` until it starts, then `Reviewing sources for things
+    sooner. The first says `Running discovery for parts and things collections.` and gives each curator a step,
+    `Queued for things collection` until it starts. In every round a curator's step is `Reviewing sources for things
     collection`, its spinner and its clock turning while it runs, resolved in the round's order to `Proposed 4
     articles to things collection`, `Nothing new for things collection`, `Budget reached for things collection`
     or, with the failed mark, why it did not finish. The list is arranged on `Reviewing 12 proposals`, which resolves to

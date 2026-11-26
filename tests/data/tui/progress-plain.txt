@@ -7,4 +7,4 @@ listed    local: 1 record
 facts     1 record read, 2 facts extracted
 due       digests/weekly: change
 wrote     digests/weekly  articles/digests/weekly.md
-Done: 1 written, 0 failed.
+Done: 1 written.
