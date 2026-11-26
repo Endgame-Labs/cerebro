@@ -47,7 +47,7 @@ from .article import Identity, fields
 from .connector import Ours, Record
 from .facts import Fact
 from .models import Decider, DecisionError, TokenCount, YesNo
-from .store import MENTIONS, RECORD, SUBJECT, UNKNOWN, Store, own_key
+from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
 __all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "Judged", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
            "linked_keys", "naming_keys", "own_articles", "reached", "redirects", "tied", "working", "would_bind"]
@@ -254,12 +254,12 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
 
 
 def tied(store: Store, fact_id: str, articles: list[str]) -> str:
-    """The closest way a fact is tied to any of `articles`: `subject`, else `mentions`, which an unknown tie
-    counts as, else `record`, or "" when it is linked to none of them."""
+    """The closest way a fact is tied to any of `articles`: `subject`, else `mentions`, else `record`, or "" when it
+    is linked to none of them."""
     hows = {how for id, kept in store.ties_of(fact_id).items() if id in articles for how in kept}
     if SUBJECT in hows:
         return SUBJECT
-    if hows & {MENTIONS, UNKNOWN}:
+    if MENTIONS in hows:
         return MENTIONS
     return RECORD if RECORD in hows else ""
 

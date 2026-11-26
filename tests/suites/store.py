@@ -10,7 +10,7 @@ import pytest
 from cerebro.article import Citation, Compilation, Identity, Property
 from cerebro.caller import Caller
 from cerebro.connector import Record
-from cerebro.store import MENTIONS, RECORD, SUBJECT, UNKNOWN, PropertyError, Store, StoreError, Where
+from cerebro.store import MENTIONS, RECORD, SUBJECT, PropertyError, Store, StoreError, Where
 
 YOU = Caller("you", "person")
 SYNC = Caller("crm", "source")
@@ -415,17 +415,8 @@ def test_a_link_says_how_its_fact_is_tied_and_reads_each_fact_and_article_once(s
     assert store.ties_of("f_1")["projects/apollo"] == [SUBJECT, RECORD]
     store.unlink("f_1", ["projects/apollo"])
     assert store.ties_of("f_1") == {"people/ada": [MENTIONS]} and store.facts_of("projects/apollo") == ["f_2"]
-    with pytest.raises(StoreError, match="one of subject, mentions, record, unknown, and got 'filed'"):
+    with pytest.raises(StoreError, match="one of subject, mentions, record, and got 'filed'"):
         store.link("f_1", ["projects/apollo"], how="filed")
-
-
-def test_a_known_tie_takes_the_place_of_an_unknown_one(store: Store) -> None:
-    store.link("f_1", ["projects/apollo", "people/ada"], at=T1, how=UNKNOWN)
-    assert store.unknown_ties() == 2
-    store.link("f_1", ["projects/apollo"], at=T2, how=RECORD)
-    store.link("f_1", ["people/ada"], at=T2, how=UNKNOWN)
-    assert store.ties_of("f_1") == {"projects/apollo": [RECORD], "people/ada": [UNKNOWN]}
-    assert store.unknown_ties() == 1 and store.facts_of("projects/apollo", since=T2) == []
 
 
 def test_the_latest_row_per_id_reads_a_log_of_states(store: Store) -> None:

@@ -94,7 +94,7 @@ from .errors import CerebroError
 from .facts import Fact, superseded
 from .ground import quote_for
 from .held import FIRST_RUN_KEY, stand_ins
-from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult, sizes
+from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult
 from .records import Decision
 from .reply import SINCE_WRITTEN, article_text, outside
 from .run import ids_kept, masked_error
@@ -925,7 +925,10 @@ class _Surface:
         given = {k: v for k, v in args.items() if v is not None}
         if (scrub := self.workspace.store.scrubbing()) is not None:  # before `_capped` cuts a value: after, none is found
             given = masked_with(given, scrub)
-        row = {"at": at, "tool": name, "args": _capped(masked(given) if name in SIX else sizes(given)),
+        if name not in SIX:  # an app's arguments may be the text of its records: the log keeps each one's size alone
+            given = {k: f"{len(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str))} "
+                        "characters" for k, v in given.items()}
+        row = {"at": at, "tool": name, "args": _capped(masked(given) if name in SIX else given),
                "caller": _capped(caller.name), "result": "hit" if hit else "miss", "surface": via}
         row |= {"resolved": _capped(ids)} if ids else {}
         row |= {"client": _capped(client)} if client else {}

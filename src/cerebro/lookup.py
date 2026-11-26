@@ -12,8 +12,6 @@ seam, and `StoreLookup` answers it over a store, the facts layer, and the kinds 
   record at its latest revision, unless it says `latest: false`: then the facts earlier saves gave come too, each
   marked `superseded` with the revision it came from and when a later save replaced it. `record: document` names
   the kind, not a record: it keeps the facts of every document, as `Documents` tells one, whatever their date.
-  A context agent gets each `mcp-requests` row of a tool that is not one of the six with each argument's size in
-  place of its value, however old the row: an app's arguments may be the text of its records.
 - `read` gives up to 20 articles whole, or facts by id or by record. An outside caller and an agent get an article's
   text and the facts learned since it was written, never all of its facts: `query` with `from: facts` and
   `articles: <id>` gives those. `about` gives the article's facts that hold one of its words.
@@ -77,21 +75,11 @@ from .window import Span, WindowError, holds, read_time, shaped, span
 __all__ = [
     "CALLER_KINDS", "FIND_KEYS", "LOGS", "MAX_READ", "OPERATIONS", "ORDER_FIELDS", "REQUESTS", "Caller", "CallerError",
     "DecideResult", "Decision", "FindResult", "Lookup", "OperationError", "QueryResult", "ReadResult", "RetractResult",
-    "StoreLookup", "TellResult", "about_terms", "narrow", "sizes",
+    "StoreLookup", "TellResult", "about_terms", "narrow",
 ]
 
 OPERATIONS = ("find", "query", "read", "tell", "decide", "retract")
 REQUESTS = "mcp-requests"
-
-
-def sizes(args: Any) -> Any:
-    """Each argument of a call by its name with its size in characters, and none of its value: how the request log
-    keeps a call to a tool an app gives, whose arguments may be the text of the app's records."""
-    def size(value: Any) -> str:
-        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
-        return f"{len(text)} characters"
-
-    return {str(k): size(v) for k, v in args.items()} if isinstance(args, dict) else size(args)
 
 
 MAX_READ = 20
@@ -660,7 +648,7 @@ class StoreLookup(Lookup):
             result = self._listing(source, str(filters["collection"]))
         elif source in LOGS or app_kind:
             bare = self._facts_only(caller, source)
-            result = self._lines(source, filters, windows, where, order_by, descending, bare, caller.kind == "agent")
+            result = self._lines(source, filters, windows, where, order_by, descending, bare)
             if app_kind and result.items and not bare:
                 result.read_as = READ_AS
         else:
@@ -991,15 +979,12 @@ class StoreLookup(Lookup):
         return lines
 
     def _lines(self, source: str, filters: dict[str, Any], windows: dict[str, Span], where: list[Where] | None,
-               order_by: str | None, descending: bool, bare: bool = False, agent: bool = False) -> QueryResult:
+               order_by: str | None, descending: bool, bare: bool = False) -> QueryResult:
         literal = {k: v for k, v in filters.items() if k not in windows}
         zone = self.zone
         if source in LOGS:
             rows = self.store.latest(source) if source in BY_ID else self.store.rows(source)
             every = [row.data | {"seq": row.seq} for row in reversed(rows)]
-            if source == REQUESTS and agent:
-                every = [row | {"args": sizes(row.get("args", {}))} if row.get("tool") not in OPERATIONS else row
-                         for row in every]
             if source == "agent-runs":
                 every.sort(key=lambda row: str(row.get("ended_at") or ""), reverse=True)
         elif bare:

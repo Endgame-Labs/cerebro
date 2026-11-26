@@ -45,7 +45,6 @@ from .caller import KIND_WORDS, Caller, check_caller, describe
 from .clock import Clock, stamp, system_clock
 from .connector import Record
 from .errors import CerebroError
-from .facts import saved_revision
 from .identity import follow, link, link_to, redirects
 from .models import DECISION_MAX_BYTES, DEFAULTS, Answer, Choice, Decider, DecisionError, ModelSpec, Question, YesNo
 from .store import RECORD, Store, StoreBusy, StoreError, brief_wait, own_key
@@ -60,7 +59,6 @@ __all__ = [
     "CLAIMED",
     "KINDS",
     "MAX_DECIDE",
-    "MENDED",
     "RETRY",
     "SORT_LAYER",
     "TOLD",
@@ -78,7 +76,6 @@ __all__ = [
     "decide",
     "extract_told",
     "instructions_on",
-    "mend_told",
     "proposal_from",
     "proposals",
     "propose",
@@ -768,7 +765,6 @@ RETRY = own_key("failed", "tell")  # the state key of told records whose facts d
 CLAIMED = own_key("extracting", "tell")  # the told records whose extraction is under way: by whom, and until when
 CLAIM_LAPSE = 1800  # seconds a claim holds past its last renewal, as a pass's lease does
 CLAIM_RENEW = 300.0  # seconds between two renewals of a claim, while its holder extracts
-MENDED = own_key("mended", "tell")  # set once load has put back on RETRY each told record never extracted
 _HELD: set[str] = set()  # the claims this process holds
 
 
@@ -967,37 +963,6 @@ def told_waiting(store: Store) -> list[str]:
     """The ids of the told records that wait for a pass to extract their facts: those whose extraction failed, was
     cut, or is under way now."""
     return [str(id) for id in store.state(RETRY) or []]
-
-
-def mend_told(store: Store, extraction: Extraction | None) -> int:
-    """Put on `RETRY`, once, each told record with words to extract that the workspace kept and never
-    extracted: not taken back, no save of it taken in, and no fact of it in the layer, at any status. Gives how many.
-    With no facts layer, or one that cannot be read now, it leaves the work to a later load."""
-    if extraction is None or store.state(MENDED):
-        return 0
-    rows = proposals(store, ACCEPTED)
-    taken = {row.target for row in rows if row.kind == "record.retract"}
-    waiting = store.state(RETRY) or []
-    maybe = [r for r in store.records(TOLD) if r.extract == "facts" and r.id not in waiting and r.id not in taken
-             and not saved_revision(store, TOLD, r.id)]
-    try:
-        if maybe:
-            linked = {f for r in maybe if (article := _article(store, str(r.fields.get("target") or ""))) is not None
-                      for f in store.facts_of(article.identity.id)}
-            linked |= {row.target for row in rows if row.kind == "fact.retract"}
-            held = {f.record for f in extraction.facts(ids=sorted(linked))} if linked else set()
-            maybe = [r for r in maybe if r.id not in held and not extraction.facts(record=r.id, latest=False)]
-    except Exception:  # noqa: BLE001 - a layer that cannot be read now never stops a load: a later load mends
-        return 0
-    with store.exclusive():
-        if store.state(MENDED):
-            return 0
-        waiting = store.state(RETRY) or []
-        lost = [r.id for r in maybe if r.id not in waiting]
-        if lost:
-            store.set_state(RETRY, [*waiting, *lost])
-        store.set_state(MENDED, True)
-    return len(lost)
 
 
 def _keep(store: Store, record: Record, at: str, filed: Callable[[], None] | None = None) -> str:

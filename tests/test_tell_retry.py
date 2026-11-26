@@ -19,7 +19,7 @@ from cerebro import Caller, Cerebro, Record
 from cerebro.article import Identity
 from cerebro.facts import Extracted, ExtractionFailed
 from cerebro.fakes import FakeExtraction, MemoryStore, ScriptedRun
-from cerebro.records import CLAIMED, MENDED, RETRY, TOLD
+from cerebro.records import CLAIMED, RETRY, TOLD
 
 YOU = Caller("you", "person")
 HERE = Path(__file__).resolve().parent
@@ -285,28 +285,6 @@ def test_a_proposal_tell_waits_for_no_extraction(tmp_path: Path) -> None:
     assert said.proposals and workspace.store.state(RETRY) in (None, [])
 
 
-def test_a_told_record_kept_with_no_facts_is_put_back_for_extraction_once_at_load(tmp_path: Path) -> None:
-    layer = Failing(None)  # type: ignore[arg-type]
-    workspace = in_memory(tmp_path, layer)
-    store = workspace.store
-    done = workspace.tell(YOU, "The launch is on track.", "projects/harbor", "fact")
-    taken = workspace.tell(YOU, "The launch slipped.", "projects/harbor", "fact")
-    workspace.retract(YOU, taken.record or "", "wrong")
-    lost = Record(id="r_0lost0000000", source=TOLD, revision="1", at="2026-11-17T09:00:00Z", body=SAID, by=YOU,
-                  fields={"target": "projects/harbor", "as": "fact"}, extract="facts")
-    store.keep(lost)  # a told record kept with no facts, as when its process ended mid-extraction
-    store.set_state(MENDED, None)
-    store.set_state(RETRY, [])
-    again = make_workspace(tmp_path, layer, store)
-    assert "tell: 1 told record kept before its facts came out waits for the next pass" in again.notices
-    assert store.state(RETRY) == [lost.id]
-    calls = len(layer.calls)
-    again.run_once(agents=False)
-    assert layer.calls[calls:] == [lost.id] and [f.text for f in layer.facts(record=lost.id)] == [SAID]
-    assert done.record not in layer.calls[calls:]
-    assert not any("told record" in line for line in make_workspace(tmp_path, layer, store).notices)
-
-
 def test_an_apps_record_a_pass_was_cut_while_extracting_is_extracted_by_the_next_pass_once(tmp_path: Path) -> None:
     from cerebro.fakes import notes_app
 
@@ -463,49 +441,3 @@ def test_a_claim_of_a_dead_process_on_a_record_taken_back_is_dropped(tmp_path: P
                                                   "until": "2099-01-01T00:00:00Z"}})
     workspace.retract(YOU, said.record or "", "wrong")
     assert not workspace.store.state(CLAIMED) and workspace.store.state(RETRY) == []
-
-
-class Counted(FakeExtraction):
-    """The fake facts layer, counting its reads; with `down`, every read raises."""
-
-    def __init__(self, down: bool = False) -> None:
-        super().__init__()
-        self.down, self.reads = down, 0
-
-    def facts(self, **filters: Any) -> Any:
-        self.reads += 1
-        if self.down:
-            raise RuntimeError("the facts layer is locked")
-        return super().facts(**filters)
-
-
-def test_load_with_nothing_to_mend_never_reads_the_facts_layer(tmp_path: Path) -> None:
-    layer = Counted()
-    workspace = in_memory(tmp_path, layer)
-    workspace.tell(YOU, SAID, "projects/harbor", "fact")
-    workspace.store.set_state(MENDED, None)
-    layer.reads = 0
-    make_workspace(tmp_path, layer, workspace.store)
-    assert layer.reads == 0 and workspace.store.state(MENDED)
-
-
-def test_a_facts_layer_that_cannot_be_read_at_load_leaves_the_mend_to_a_later_load(tmp_path: Path) -> None:
-    store = in_memory(tmp_path, None).store
-    store.keep(Record(id="r_0lost0000000", source=TOLD, revision="1", at="2026-11-17T09:00:00Z", body=SAID, by=YOU,
-                      fields={"target": "projects/harbor", "as": "fact"}, extract="facts"))
-    make_workspace(tmp_path, Counted(down=True), store)
-    assert not store.state(MENDED) and not store.state(RETRY)
-    make_workspace(tmp_path, Counted(), store)
-    assert store.state(MENDED) and store.state(RETRY) == ["r_0lost0000000"]
-
-
-def test_a_told_record_whose_facts_were_all_superseded_is_not_extracted_again_at_load(tmp_path: Path) -> None:
-    layer = FakeExtraction()
-    workspace = in_memory(tmp_path, layer)
-    said = workspace.tell(YOU, SAID, "projects/harbor", "fact")
-    for fact in layer.by_record[said.record]:
-        fact.status = "superseded"  # a later fact superseded it, as the facts layer marks one
-    workspace.store.set_state(MENDED, None)
-    workspace.store.set_state(f"saved:tell/{said.record}", None)  # kept before the saved revision was written
-    make_workspace(tmp_path, layer, workspace.store)
-    assert workspace.store.state(RETRY) == []

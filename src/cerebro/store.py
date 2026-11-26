@@ -59,7 +59,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Self
 
-from .article import PROTECTED, Article, Citation, Compilation, Identity, Property, protected, stands
+from .article import Article, Citation, Compilation, Identity, Property, stands
 from .caller import Caller
 from .connector import Record
 from .errors import CerebroError
@@ -67,7 +67,7 @@ from .private import make_file, make_folder
 from .search import DurableIndex, Hit
 
 __all__ = [
-    "DEFAULT_PATH", "LOGS", "MENTIONS", "OPS", "RECORD", "RELATIONS", "SCHEMA_VERSION", "SETTINGS_KEYS", "SUBJECT", "TIES", "UNKNOWN", "LogRow", "PropertyError", "SQLiteIndex", "SQLiteStore", "SchemaError", "Store",
+    "DEFAULT_PATH", "LOGS", "MENTIONS", "OPS", "RECORD", "RELATIONS", "SCHEMA_VERSION", "SETTINGS_KEYS", "SUBJECT", "TIES", "LogRow", "PropertyError", "SQLiteIndex", "SQLiteStore", "SchemaError", "Store",
     "StoreError", "StoreSettingsError", "Where", "check_id", "check_tie", "check_value", "check_where", "compares", "made_unique", "open_store", "order_key", "own_key",
     "scrubbed", "update_state",
 ]
@@ -76,11 +76,10 @@ __all__ = [
 # -- What every store keeps, and how a value compares
 OPS = ("=", "<", "<=", ">", ">=", "in")
 
-# How a fact is tied to an article: it is about the article, it names it, it came from a record bound to it, or the
-# link says nothing of which.
-SUBJECT, MENTIONS, RECORD, UNKNOWN = "subject", "mentions", "record", "unknown"
+# How a fact is tied to an article: it is about the article, it names it, or it came from a record bound to it.
+SUBJECT, MENTIONS, RECORD = "subject", "mentions", "record"
 
-TIES = (SUBJECT, MENTIONS, RECORD, UNKNOWN)
+TIES = (SUBJECT, MENTIONS, RECORD)
 RELATIONS = (SUBJECT, MENTIONS)  # what a fact says of an article, as a person or a caller is shown it
 
 # The named logs Cerebro writes, each a query can read: proposals and merges, every agent run, every MCP call, the
@@ -484,7 +483,7 @@ class Store:
     def link(self, fact_id: str, article_ids: list[str], at: str = "", how: str = SUBJECT) -> None:
         """Link a fact to articles, tied as `how`, one of `TIES`. When the fact was learned is `at`, ISO 8601 with an
         offset, or empty for unknown, and a fact linked to an article already keeps the time it was first linked
-        there. A known tie takes the place of an `unknown` one. Linking again changes nothing."""
+        there. Linking again changes nothing."""
         raise NotImplementedError
 
     def unlink(self, fact_id: str, article_ids: list[str], how: str | None = None) -> None:
@@ -499,10 +498,6 @@ class Store:
     def ties_of(self, fact_id: str) -> dict[str, list[str]]:
         """How a fact is tied to each article it is linked to, by article id in the order first linked, each tie in
         the order of `TIES`."""
-        raise NotImplementedError
-
-    def unknown_ties(self) -> int:
-        """How many links say nothing of how their fact is tied."""
         raise NotImplementedError
 
     def facts_of(self, article_id: str, since: str | None = None) -> list[str]:
@@ -666,7 +661,6 @@ create table superseded (seq integer primary key autoincrement, save integer not
 create index superseded_record on superseded (source, record, save)
 """
 
-PROTECTED_STAMP = "store/protected-fields"  # the state key naming the protected fields the index was last built for
 OPEN_WAIT = 2.0  # seconds an open that must write waits for another process's write before it says the store is busy
 
 
@@ -926,9 +920,8 @@ class SQLiteStore(Store):
 
     def _stamp(self) -> None:
         """Create the schema in a new file, and refuse a file of another program or another schema version. A store
-        that needs nothing written is only read, so opening it never waits behind another process's write. One that
-        needs a write, a new file or a new index, waits for the write lock at most `OPEN_WAIT`
-        seconds before it says the store is busy."""
+        that needs nothing written is only read, so opening it never waits behind another process's write. A new
+        file waits for the write lock at most `OPEN_WAIT` seconds before it says the store is busy."""
         with self._snapshot() as db:
             if self._stamped(db):
                 return
@@ -936,18 +929,15 @@ class SQLiteStore(Store):
             self._stamp_now()
 
     def _stamped(self, db: sqlite3.Connection) -> bool:
-        """Whether the store holds this schema version and its protected fields indexed for today's list, so opening
-        it writes nothing. Refuses a file of another program or version."""
+        """Whether the store holds this schema version, so opening it writes nothing. Refuses a file of another
+        program."""
         owner = db.execute("pragma application_id").fetchone()[0]
         version = db.execute("pragma user_version").fetchone()[0]
         if owner == 0:
             return False  # a new file, which `_stamp_now` makes, or another program's, which it refuses
         if owner != APPLICATION_ID:
             raise _not_a_store(self.path or "the store", "it holds another program's tables")
-        if version != SCHEMA_VERSION:
-            return False  # refused under the write lock, in its own words
-        row = db.execute("select value from state where key = ?", (PROTECTED_STAMP,)).fetchone()
-        return row is not None and row[0] == json.dumps(sorted(PROTECTED))
+        return version == SCHEMA_VERSION  # another version is refused under the write lock, in its own words
 
     def _stamp_now(self) -> None:
         """`_stamp`'s write, under the store's write lock."""
@@ -966,23 +956,6 @@ class SQLiteStore(Store):
                     raise _not_a_store(name, "it holds another program's tables")
                 if (refused := _refused(name, owner, version, tables)) is not None:
                     raise refused
-            self._index_protected(db)  # in a new file, nothing to index yet: it stamps the list
-
-    def _index_protected(self, db: sqlite3.Connection) -> None:
-        """Index each protected field as it stands, once for each list of them, so no writer's value of a protected
-        field stays indexed. The stamp in `state` names the list it was last indexed for."""
-        stamp = json.dumps(sorted(PROTECTED))
-        row = db.execute("select value from state where key = ?", (PROTECTED_STAMP,)).fetchone()
-        if row is not None and row[0] == stamp:
-            return
-        for collection, field in db.execute("select distinct collection, field from properties join articles on "
-                                            "articles.id = properties.article_id").fetchall():
-            if protected(field):
-                for (article,) in db.execute("select distinct article_id from properties join articles on "
-                                             "articles.id = properties.article_id where collection = ? and field = ?",
-                                             (collection, field)).fetchall():
-                    self._reindex(db, collection, article, field)
-        db.execute("insert or replace into state values (?,?)", (PROTECTED_STAMP, stamp))
 
     def _read_alone(self, path: Path, line: str) -> None:
         """Open a store that cannot be written to read it alone, so reads answer and every write gives `line`. In a
@@ -1383,9 +1356,6 @@ class SQLiteStore(Store):
                                    (fact_id, article_id)).fetchone()
                 db.execute("insert or ignore into links values (?,?,?,?)",
                            (fact_id, article_id, how, learned if first is None else first[0]))
-                if how != UNKNOWN:
-                    db.execute("delete from links where fact_id = ? and article_id = ? and how = ?",
-                               (fact_id, article_id, UNKNOWN))
                 if first is None:
                     self._changed(db, "article", article_id)
 
@@ -1406,9 +1376,6 @@ class SQLiteStore(Store):
                                          (fact_id,)):
             found.setdefault(article_id, []).append(how)
         return {id: sorted(hows, key=TIES.index) for id, hows in found.items()}
-
-    def unknown_ties(self) -> int:
-        return self._all("select count(*) from links where how = ?", (UNKNOWN,))[0][0]
 
     def facts_of(self, article_id: str, since: str | None = None) -> list[str]:
         if since is not None:

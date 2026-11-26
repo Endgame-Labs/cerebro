@@ -76,7 +76,7 @@ from .models import PROVIDERS, Decider, HttpDecider, ModelSpec, Question, YesNo,
 from .models import Decision as Decided
 from .private import SIDE_FILES, tighten
 from .project import Project, WorkspaceError, agent_notices, fiscal_now, load, read_fiscal, read_ours
-from .records import SLUG_MOST, TOLD, Proposal, Review, mend_told, proposals, review, told_waiting
+from .records import SLUG_MOST, TOLD, Proposal, Review, proposals, review, told_waiting
 from .rendered import descriptions
 from .reply import outside
 from .rerank import RERANK_CALL_SECONDS, DecisionReranker, read_rerank
@@ -445,9 +445,6 @@ class Cerebro:
             self.index = SQLiteIndex(self.store if isinstance(self.store, SQLiteStore) else None)
         self.lookup = self._lookup(kinds)
         self.handle = Workspace(self.lookup, self.store, kinds, self.clock, mask=self.mask_every)
-        if mended := mend_told(self.store, self.extraction):
-            self.notices.append(f"tell: {mended} told record{' kept before its facts came out waits' if mended == 1 else
-                                's kept before their facts came out wait'} for the next pass")
 
     def _masked_connectors(self, sources: Sources, handed: Iterable[Connector]) -> dict[str, Connector]:
         """Each connector built from `sources/` and each handed in, by name, in `Masked`. A name Cerebro keeps for

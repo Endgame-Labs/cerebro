@@ -263,23 +263,6 @@ def test_a_writers_value_of_a_protected_field_is_never_indexed_or_read(kind: str
     assert store.query("things", [Where("status", "=", "gone")]) == []
 
 
-def test_a_store_indexes_its_protected_fields_once_not_on_every_open(tmp_path: Path) -> None:
-    import sqlite3
-
-    from cerebro.store import SQLiteStore, Where
-
-    path = tmp_path / "store.db"
-    SQLiteStore(path).close()
-    db = sqlite3.connect(path)  # a stray row an open would clear if it indexed again
-    db.execute("insert into articles values ('things/b', 'things', 'beta', ?)",
-               (json.dumps({"id": "things/b", "collection": "things", "title": "Beta"}),))
-    db.execute("insert into property_values values ('things', 'things/b', 'status', null, 'stray')")
-    db.commit()
-    db.close()
-    again = SQLiteStore(path)
-    assert [a.identity.id for a in again.query("things", [Where("status", "=", "stray")])] == ["things/b"]
-
-
 # -- a run counts its refusals where it makes them --------------------------------------------------------------------
 
 def test_a_run_counts_each_refusal_it_makes_from_the_reply_and_its_row_in_the_log_names_the_tool() -> None:
