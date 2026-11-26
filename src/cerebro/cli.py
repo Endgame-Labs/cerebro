@@ -42,7 +42,7 @@ from .agent import Agent, refusal_of, refused_ids
 from .app import Cerebro, PassResult
 from .budget import BudgetSpent
 from .caller import KIND_WORDS, Caller
-from .compile import Compiled, left_alone, made_safe, out_of_working_set, targets
+from .compile import Compiled, keep_grounding, left_alone, made_safe, out_of_working_set, targets
 from .connector import one_line
 from .errors import CerebroError
 from .forget import Outside, claims_file, left_behind, of_workspace, remove, there
@@ -1166,7 +1166,8 @@ def _closing(checks: list[str]) -> None:
     """The last line of `status` when something needs a look: done with warnings, and what to check, in the shape of
     `output.Printer`'s plain last line. It is written as every other line of `status` is, plain, so it carries no
     escape code and asks the terminal nothing."""
-    more = f" (and {len(checks) - 1} more above)" if len(checks) > 1 else ""
+    n = len(checks) - 1
+    more = f" (and {n} more warning{'' if n == 1 else 's'} above)" if n > 0 else ""
     _echo(f"[!] Done with warnings. Check: {checks[0]}{more}", err=True)
 
 
@@ -1960,6 +1961,9 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         return "fresh"
     if compiled.article is not None:
         _echo(f"wrote    {article}  articles/{article}.md")
+        if compiled.cleaned:  # each line of it kept on its run's line, as a pass keeps it
+            keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+            _echo(f"cleaned  {article}: {made_safe(len(compiled.cleaned))}")
         if compiled.warning:
             _echo(f"warning  {compiled.warning}")
         return "written"
