@@ -160,7 +160,7 @@ def test_show_prompt_with_empty_evidence_shows_it_as_a_run_sends_it(tmp_path: Pa
     before = w.snapshot()
     empty = w.run("agents", "run", "reports/weekly", "--show-prompt")
     assert empty.exit_code == 0, empty.output
-    assert "Nothing matched." in empty.output
+    assert "no fact matches source: notes" in empty.output
     assert "a run would not run it" not in empty.output  # a run runs it, told so
     assert w.snapshot() == before
 
