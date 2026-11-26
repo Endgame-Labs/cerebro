@@ -52,7 +52,6 @@ from .runner import (
     _shown,
     failing,
     failure,
-    held_runs,
     left_by_hand,
     let_go,
     ran_by_hand,
@@ -1316,7 +1315,7 @@ def agents_run(id: str, article: str | None, root: Path | None, show_prompt: boo
             for line in workspace.ready_by_hand(lists, articles):
                 _echo(f"warning  {line}")
             from .app import MissingModelKey
-            from .budget import BudgetSpent, HeldForRoom, UnpricedModel
+            from .budget import BudgetSpent, UnpricedModel
 
             # Every article runs, past the cap the rest wait, and a run that left anything
             # unfinished is no period's run.
@@ -1330,9 +1329,6 @@ def agents_run(id: str, article: str | None, root: Path | None, show_prompt: boo
                     continue
                 try:
                     compiled = workspace.compile(lists, this=article_id, scheduled=True, only=only)
-                except HeldForRoom:  # every part held: one line, with when it truly runs
-                    left.held[key] = f"held for room under the cap, {held_runs(workspace, lists, article_id)}"
-                    continue
                 except BudgetSpent as error:
                     if isinstance(error, UnpricedModel):
                         raise
@@ -1364,10 +1360,9 @@ def agents_run(id: str, article: str | None, root: Path | None, show_prompt: boo
                         _echo(f"failed   {key}: {failed[article_id]}")
                 elif new:
                     failed[article_id] = next(iter(new.values()))  # a part failed and the article stands: its line says it
-            for kind, lines in (("held     ", left.held), ("failed   ", left.failed)):
-                for told, why in lines.items():
-                    _echo(f"{kind}{told}: {why}")
-            if stopped is None and not only and not failed and not skipped and not (left.held or left.waiting_runs):
+            for told, why in left.failed.items():
+                _echo(f"failed   {told}: {why}")
+            if stopped is None and not only and not failed and not skipped and not left.waiting_runs:
                 ran_by_hand(workspace, lists, began)  # its whole job done, so a run by hand counts as its period's run
             if stopped is not None or left.waiting_runs:
                 why, stops = waits_by_hand(workspace, stopped or BudgetSpent(left.stopped["compilation"]),

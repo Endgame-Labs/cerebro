@@ -54,7 +54,7 @@ from .article import (
     pieces,
     protected,
 )
-from .budget import LOG, BudgetSpent, HeldForRoom, Ledger, Stopped, stopping, under
+from .budget import BudgetSpent, Ledger, Stopped, stopping, under
 from .caller import Caller
 from .clean import label, land_heading, underlined_as_atx, unlabeled
 from .clock import Clock, stamp, system_clock
@@ -93,10 +93,10 @@ from .ground import (
 )
 from .identity import follow, in_working_set, redirects
 from .lookup import LINKED, MAX_READ, Lookup, ReadResult
-from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
+from .models import Decider, ModelSpec, read_model
 from .records import proposals
 from .reply import outside
-from .run import STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
+from .run import STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked
 from .secrets import MARK
 from .store import PropertyError, Store, StoreError, check_value, own_key, update_state
 from .tokens import MASKED
@@ -767,25 +767,22 @@ class _Held(Decider):
 
 
 class _HeldRewriter(Rewriter):
-    """A repair's writing model held to the compilation cap call by call: reserved before each call, so calls made
-    side by side cannot all pass the cap together, and each call's spend recorded right after it, priced on the
-    writing model, also when the call failed once its provider was asked."""
+    """A repair's writing model held to the compilation cap call by call: each call is checked against the ledger
+    before it starts, and what each spent is recorded right after it, priced on the writing model, also when the call
+    failed once its provider was asked."""
 
     def __init__(self, inner: Rewriter, ledger: Ledger, model: ModelSpec, clock: Clock, run: str):
         self.inner, self.ledger, self.model, self.clock, self.run = inner, ledger, model, clock, run
 
     def rewrite(self, system: str, request: str) -> tuple[str, Any]:
-        ticket = self.ledger.reserve("compilation", self.clock(), self.model, tokens(system + request))
+        self.ledger.check("compilation", self.clock(), self.model)
         try:
             reply, usage = self.inner.rewrite(system, request)
         except RewriteFailed as error:
             self.ledger.record("compilation", self.clock(), self.model, error.spent, self.run)
             raise
-        else:
-            self.ledger.record("compilation", self.clock(), self.model, usage, self.run)
-            return reply, usage
-        finally:
-            self.ledger.release(ticket)
+        self.ledger.record("compilation", self.clock(), self.model, usage, self.run)
+        return reply, usage
 
 
 def _workspace(root: Path) -> str:
@@ -1328,8 +1325,8 @@ def _returned(subs: list[Agent], held: list[dict[str, Any]]) -> list[str]:
 
 
 def _not_run(agent: Agent, article: str, error: BudgetSpent | Stopped, clock: Clock) -> Run:
-    """A run refused before it started, with why: held for room under the cap, the cap spent, or serve stopping."""
-    status = STOPPED if isinstance(error, Stopped) else "held" if isinstance(error, HeldForRoom) else "budget spent"
+    """A run refused before it started, with why: the cap spent, or serve stopping."""
+    status = STOPPED if isinstance(error, Stopped) else "budget spent"
     return Run("", agent.id, article, status, note=str(error), started_at=stamp(clock()), ended_at=stamp(clock()))
 
 
@@ -1483,8 +1480,8 @@ class _Composing:
                                 for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)]
         for n in self.failed:
             if n in self.holds:
-                self.compiled.notes.append(f"{subs[n].id}: held for room under the cap ({self.ran[n].note}), so what "
-                                           "it returned before stands, and it runs when there is room")
+                self.compiled.notes.append(f"{subs[n].id}: did not start ({self.ran[n].note}), so what it returned "
+                                           "before stands, and it runs again")
         for n, run in self.ran.items():
             if n not in self.holds:
                 self.returned(n, run, seen[n])
@@ -1556,7 +1553,7 @@ class _Composing:
             self.everything = _citable(self.lead, *self.reads)
             store.set_state(_tool_reads(composer, article), sorted({f.id for f in self.own_seen}))
             _tried(store, composer, article, _stamp_of(digest(composer, self.lead), *_returned(subs, self.held)),
-                   c.clock(), own.status not in ("done", WROTE_NOTHING, "budget spent", "held"))
+                   c.clock(), own.status not in ("done", WROTE_NOTHING, "budget spent"))
             if own.status == "failed":  # nothing of the article's run lands, as for a subagent's failure: what the
                 compiled.run = own  # subagents returned is kept, not landed, for the run that runs again
                 return compiled
@@ -1734,29 +1731,6 @@ class _Composing:
         return _finish(store, article, c.root, compiled, c.grounding)
 
 
-ESTIMATE_MARGIN = 2.0  # a run is held at this many times what the agent's last run spent
-# A first run is held at its opening read this many times, as a run sends it again on each turn, and a reply of
-# FIRST_REPLY tokens.
-FIRST_TURNS = 4
-FIRST_REPLY = 4_000
-
-
-def _estimate(store: Store, agent: Agent, evidence: list[Evidence], model: ModelSpec | None) -> float | None:
-    """What a run of `agent` is held at against the caps: `ESTIMATE_MARGIN` times what its last run spent, or for an
-    agent with no run that spent anything yet, its opening read `FIRST_TURNS` times and a reply, priced on `model`.
-    None, its whole token budget, when neither can be priced."""
-    last = next((row.data["run"] for row in reversed(store.rows("agent-runs", {"agent": agent.id}))
-                 if row.data.get("run")), "")
-    spent = store.total(LOG, "usd", {"run": last}) if last else 0.0
-    if spent > 0:
-        return spent * ESTIMATE_MARGIN
-    if model is None or price_of(model.provider, model.model) is None:
-        return None
-    opening = tokens(agent.prompt) + sum(tokens(entry.heading) + sum(tokens(line) for line in entry.lines)
-                                         for entry in evidence)
-    return cost(model.provider, model.model, TokenCount(opening * FIRST_TURNS, FIRST_REPLY))
-
-
 def _cut(text: str, scrub: Callable[[str], str] | None, most: int) -> str:
     """`text` masked by `scrub`, then cut to `most` characters, never inside a mask: cut first, a secret across the
     cut would no longer match its mask."""
@@ -1773,15 +1747,14 @@ def _cut(text: str, scrub: Callable[[str], str] | None, most: int) -> str:
 def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], *, agent_run: AgentRun,
               store: Store, ledger: Ledger | None = None, model: ModelSpec | None = None,
               clock: Clock = system_clock) -> Run:
-    """The part every agent's run shares, a writer's, a subagent's, a composer's or a curator's: reserve what the run
-    may spend under the compilation cap, as `_estimate` gives it, run the agent with its tools on its evidence, and in every outcome, a run
-    that fails or raises included, record what it spent in the ledger and a row in the `agent-runs` log, then let
-    the reservation go. Raises `BudgetSpent` before the run when the cap is reached, or runs under way already hold
-    what is left of it, as `HeldForRoom`."""
+    """The part every agent's run shares, a writer's, a subagent's, a composer's or a curator's: check the compilation
+    cap, run the agent with its tools on its evidence, and in every outcome, a run that fails or raises included,
+    record what it spent in the ledger and a row in the `agent-runs` log. Raises `BudgetSpent` before the run when the
+    cap is reached. A run that started finishes past the cap, bounded by its own budget."""
     if stopping(store):
         raise Stopped(f"serve is stopping, so {agent.id} does not run: it runs on a later pass")
-    ticket = ledger.reserve("compilation", clock(), model, agent.budget.tokens_per_run,
-                            usd=_estimate(store, agent, evidence, model)) if ledger is not None else None
+    if ledger is not None:
+        ledger.check("compilation", clock(), model)
     run: Run | None = None
     interrupted = False  # an interrupt goes on up as itself, not as a stop of serve
     try:
@@ -1798,8 +1771,6 @@ def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., 
         spent = run.usage if run else Usage()
         if ledger is not None and model is not None:
             ledger.record("compilation", clock(), model, spent, run.id if run else "")
-        if ledger is not None and ticket is not None:
-            ledger.release(ticket)  # settled: what it spent is in the ledger now
         store.append("agent-runs", {
             "run": run.id if run else "", "agent": agent.id, "target": agent.target,
             "status": run.status if run else "failed", "provider": model.provider if model else "",

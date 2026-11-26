@@ -94,7 +94,6 @@ def test_once_serve_is_stopping_a_model_call_inside_an_agents_run_is_refused_and
     stop(store)
     assert stopping(store) and not stopping(MemoryStore())
     ledger.check("rerank", datetime.now(UTC))
-    ledger.reserve("compilation", datetime.now(UTC), None, 1000)
     with under(store), pytest.raises(Stopped):
         ledger.check("rerank", datetime.now(UTC))
 

@@ -23,8 +23,8 @@ The file follows the parts of a run:
   cut, its largest lists first, then its longest texts, with a line first that says how to ask for less. Once tool
   replies have used their room, or the run has made its `budget.tool_calls`, a tool is not run and the model is
   offered only the hand-in. Once the run holds its whole budget it ends as `budget spent`. A curator keeps no reserve,
-  and at its floor only its decisions run. Each request is checked against the spending cap before it is sent, and
-  each reply's cost counts the moment it comes.
+  and at its floor only its decisions run. Under a meter, as a first-run round's, the first request is checked
+  against its cap before it is sent, every request against its stop, and each reply's cost counts the moment it comes.
 - Masking. A run handed `masks`, which gives a mask of every value the secrets store holds, masks each request as it
   leaves for the model: the instructions, each message, each tool's description and reply, and the arguments the
   model gives a tool. Its result, note and transcript come masked the same way.
@@ -118,7 +118,7 @@ STOPPED = "stopped"  # a run its serve's stop cancelled, which runs again on a l
 
 @dataclass
 class Run:
-    """One agent run on one target. `status` is `done`, `wrote nothing`, `budget spent`, `cut` at its meter's cap,
+    """One agent run on one target. `status` is `done`, `wrote nothing`, `budget spent`, `cut` by its meter,
     `failed`, `refused` when the provider refuses the key, or `stopped`, with `note` saying why. `result` is what it
     handed in, or None: a run that said it had nothing to write gives its reason in `note`. `refused` names the tool
     of each call the run refused, in order: a reply that is `refused` and why."""
@@ -1111,8 +1111,8 @@ class _Asked:
 
 
 def _guarded(room: _Room, takes: _Candidates, asked: _Asked, masks: Masks | None, name: str) -> Any:
-    """The hooks around each model request of a run on the model `name`: before it, the spending cap and the run's
-    budget are checked, and the request masked; after it, what the reply cost and holds is counted, and a reply that
+    """The hooks around each model request of a run on the model `name`: before it, the run's meter and its budget
+    are checked, and the request masked; after it, what the reply cost and holds is counted, and a reply that
     handed in nothing is kept by `takes`."""
     from pydantic_ai.capabilities import Hooks
     from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
@@ -1123,11 +1123,11 @@ def _guarded(room: _Room, takes: _Candidates, asked: _Asked, masks: Masks | None
 
     @hooks.on.before_model_request
     async def hold_room(ctx: Any, request: Any) -> Any:
-        """End the run in place of a request past its budget, or one its meter's cap refuses, tell a curator
+        """End the run in place of a request past its budget, or one its meter refuses, tell a curator
         ahead of its turn, once, that its room is short while it still has its tools, offer only the hand-in once
         no tool may run, and mask what the request holds, as it leaves for the model."""
         if metered is not None:
-            metered.before()  # past the cap the round set: the run stops here, and keeps what its turns spent
+            metered.before()  # its first, past the cap the round set, or any once the round stops: it ends here
         if any(isinstance(m, ModelResponse) for m in request.messages) and room.spent():
             raise _OverBudget(f"the run holds {room.held} tokens, its budget of {room.budget}, counted once each: "
                               "its opening, each reply of the model and each tool reply")
@@ -1317,7 +1317,7 @@ class PydanticRun(AgentRun):
                 else:  # an error on a request, a refusal, or a call the loop refused until it gave up, whatever
                     # the run held
                     self._failed(result, error)
-            except RoundCut as error:  # its meter's cap was reached: stopped, keeping what it spent
+            except RoundCut as error:  # its meter refused a call: stopped, keeping what it spent
                 result.status, result.note = "cut", str(error)
             except (UsageLimitExceeded, _OverBudget) as error:
                 answer = next((m for m in reversed(messages) if isinstance(m, ModelResponse)), None)

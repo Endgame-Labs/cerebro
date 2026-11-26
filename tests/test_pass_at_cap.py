@@ -17,7 +17,6 @@ from click.testing import CliRunner
 
 from cerebro import Cerebro, Record, cli
 from cerebro.article import Identity
-from cerebro.budget import HeldForRoom
 from cerebro.cli import main
 from cerebro.fakes import FakeConnector, FakeExtraction, FakeSecrets, MemoryStore, ScriptedRun
 from cerebro.store import Store
@@ -205,7 +204,7 @@ ARTICLE = "---\nevidence:\n  - query: { from: facts, source: things }\nheartbeat
 
 def test_a_collection_writer_whose_second_run_waits_keeps_its_period_due(tmp_path: Path) -> None:
     """The run on the first article reaches the cap and the second waits: the agent's daily period stays due, so the
-    next pass once the cap lifts runs what waited, as a run held for room keeps its period."""
+    next pass once the cap lifts runs what waited."""
 
     space = Workspace(tmp_path, "budget: { daily_usd: 50 }\ncompile: { concurrency: 1 }\n")
     (space.root / "agents" / "reports" / "weekly.md").unlink()
@@ -408,31 +407,11 @@ def collection(tmp_path: Path, names: tuple[str, ...], settings: str = "budget: 
     return space
 
 
-def opener(space: Workspace, run: ScriptedRun, hold: set[str] | None = None) -> Any:
+def opener(space: Workspace, run: ScriptedRun) -> Any:
     def opened(folder: Path | None = None) -> Cerebro:
-        workspace = Cerebro(space.root, store=space.store, extraction=space.extraction, connectors=[space.things],
-                        clock=space.clock, secrets=FakeSecrets(KEYS), agent_run=run)
-        if hold:
-            real = workspace.compile
-
-            def compile(agent: Any, this: str | None = None, **kw: Any) -> Any:
-                if this in hold:
-                    raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold it")
-                return real(agent, this=this, **kw)
-            workspace.compile = compile  # type: ignore[method-assign]
-        return workspace
+        return Cerebro(space.root, store=space.store, extraction=space.extraction, connectors=[space.things],
+                       clock=space.clock, secrets=FakeSecrets(KEYS), agent_run=run)
     return opened
-
-
-def test_an_article_held_on_every_pass_leaves_the_written_one_alone(tmp_path: Path) -> None:
-    """Over five passes of one day with things/y held each time, things/x is written once."""
-    space = collection(tmp_path, ("x", "y"))
-    run = Runs(space)
-    opened = opener(space, run, hold={"things/y"})
-    for n in range(5):
-        space.clock.at = DAY + timedelta(minutes=5 * n)
-        opened().run_once()
-    assert run.by_article == {"things/x": 1}
 
 
 def test_what_waited_at_the_cap_runs_once_and_nothing_written_runs_again(tmp_path: Path) -> None:
@@ -579,7 +558,7 @@ def test_the_cap_inside_a_writer_with_subagents_is_said_and_counted(tmp_path: Pa
     result = opener(space, ScriptedRun(write))().run_once()
     assert result.stops and result.stops[0].startswith("Daily budget: $60.00 of $50.00 spent at 10:00 UTC.")
     assert "things/article on things/a" in result.waiting_runs
-    assert not [line for line in result.warnings if "held for room" in line], result.warnings
+    assert not [line for line in result.warnings if "did not start" in line], result.warnings
 
 
 def test_serve_says_a_stop_once_and_says_when_calls_resume(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -677,19 +656,6 @@ class Logged(ScriptedRun):
         return {target: n for (d, _, target), n in self.by.items() if d == day}
 
 
-def test_a_held_article_still_runs_after_another_spent_its_one_more_try(tmp_path: Path) -> None:
-    """Article b fails twice (its run and its one more try), d is held on the first two passes: d runs once that day."""
-    space = collection(tmp_path, ("a", "b", "c", "d"))
-    run, hold = Logged(space, breaks={"things/b": 2}), {"things/d"}
-    opened = opener(space, run, hold)
-    for n in range(6):
-        space.clock.at = DAY + timedelta(minutes=10 * n)
-        if n == 2:
-            hold.clear()
-        opened().run_once()
-    assert run.day() == {"things/a": 1, "things/c": 1, "things/d": 1}
-
-
 def test_an_article_that_waited_for_the_cap_runs_in_its_week_after_a_failure_spent_its_try(tmp_path: Path) -> None:
     """Weekly: d waits for the cap; b's one more try fails; the cap is raised: d runs that week."""
     space = Workspace(tmp_path, "budget: { daily_usd: 50 }\ncompile: { concurrency: 1 }\n")
@@ -755,34 +721,17 @@ def test_the_parts_the_cap_refused_run_once_and_a_paid_part_does_not_run_again(t
     assert ran == want
 
 
-@pytest.mark.parametrize("kind", ["held", "unpriced"])
-def test_a_part_refused_for_room_or_for_no_price_is_said_as_that(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str) -> None:
-    """No cap is reached. A part held for room is a hold; a part on its own model with no price fails with its
-    reason. Neither is a wait for the daily cap."""
-    import cerebro.compile as compile_module
-
+def test_a_part_refused_for_no_price_fails_with_its_reason_and_waits_for_no_cap(tmp_path: Path) -> None:
+    """No cap is reached. A part on its own model with no price fails with its reason: no wait for the daily cap."""
     space = composed(tmp_path)
     risks = space.root / "agents" / "things" / "subagents" / "risks.md"
-    if kind == "unpriced":  # its own model has no price, so the ledger refuses it while the cap is set
-        risks.write_text(DAILY_PART.format(h="Risks").replace(
-            "heartbeat: [daily]\n", "heartbeat: [daily]\nmodel: { provider: fireworks, model: made-up-7 }\n"))
-    else:
-        real = compile_module.run_agent
-
-        def refusing(agent: Any, *args: Any, **kwargs: Any) -> Any:
-            if agent.id.endswith("risks") and agent.target == "things/a":
-                raise HeldForRoom("held for room under the cap, runs next pass: compilation runs under way hold $1")
-            return real(agent, *args, **kwargs)
-        monkeypatch.setattr(compile_module, "run_agent", refusing)
+    risks.write_text(DAILY_PART.format(h="Risks").replace(  # its own model has no price, refused while the cap is set
+        "heartbeat: [daily]\n", "heartbeat: [daily]\nmodel: { provider: fireworks, model: made-up-7 }\n"))
     result = opener(space, ScriptedRun(cited))().run_once()
     key = "things/subagents/risks on things/a"
     assert result.stops == [] and "compilation" not in result.stopped and result.waiting_runs == []
     assert not [line for line in result.warnings if "waits for the daily cap" in line], result.warnings
-    if kind == "held":
-        assert key in result.held
-    else:
-        assert "UnpricedModel" in result.failed.get(key, ""), result.failed
+    assert "UnpricedModel" in result.failed.get(key, ""), result.failed
 
 
 def test_agents_run_at_the_cap_keeps_the_other_writers_waiting_runs(
@@ -840,21 +789,6 @@ def test_a_pass_that_begins_before_midnight_spends_the_period_it_began_in(tmp_pa
     assert sorted(opened().run_once().compiled) == ["things/a", "things/b", "things/c"]  # the 19th's own run
 
 
-def test_a_held_article_does_not_starve_a_change_on_another(tmp_path: Path) -> None:
-    """A writer on [change, daily] whose c is held all day still writes a's new evidence."""
-    space = collection(tmp_path, ("a", "b", "c"))
-    (space.root / "agents" / "things" / "article.md").write_text(ARTICLE.replace("[daily]", "[change, daily]"))
-    run = Logged(space)
-    opened = opener(space, run, hold={"things/c"})
-    opened().run_once()
-    space.things.add(Record(id="t9", source="things", revision="1", at="2026-11-19T10:30:00Z", body="A grew."))
-    before = run.day().get("things/a", 0)
-    for n in range(1, 4):
-        space.clock.at = DAY + timedelta(hours=n)
-        opened().run_once()
-    assert run.day().get("things/a", 0) > before
-
-
 def test_serve_says_the_next_days_stop_and_a_stop_that_changes_back(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The printer keeps only the last stop it said, and the crossing it names."""
@@ -881,11 +815,11 @@ def test_serve_says_the_next_days_stop_and_a_stop_that_changes_back(
     assert len(stops) == 2 and stops[-1] == back.stops[0], stops
 
 
-@pytest.mark.parametrize("case", ["held", "cap", "failed"])
+@pytest.mark.parametrize("case", ["cap", "failed"])
 def test_a_run_by_hand_that_left_a_part_unfinished_leaves_its_period_owed(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
-    """A person's `agents run` of a writer with subagents where one part on things/b was held for room, refused at a
-    reached cap (the composer's own run), or failed: no run with a waiting or failed outcome is recorded, so the
+    """A person's `agents run` of a writer with subagents where one part on things/b was refused at a reached cap
+    (the composer's own run), or failed: no run with a waiting or failed outcome is recorded, so the
     period is not spent, the part is said on screen, and the next pass runs it."""
     import cerebro.compile as compile_module
     from cerebro.budget import BudgetSpent
@@ -901,8 +835,6 @@ def test_a_run_by_hand_that_left_a_part_unfinished_leaves_its_period_owed(
 
     def refusing(agent: Any, *args: Any, **kwargs: Any) -> Any:
         if agent.id == who and agent.target == "things/b":
-            if case == "held":
-                raise HeldForRoom("held for room under the cap, runs next pass: compilation runs under way hold $1")
             if case == "cap":
                 space.spent("2026-11-19T11:00:00Z", "compilation", 60.0)
                 raise BudgetSpent("model calls spent $60.00 of the $50 daily cap on 2026-11-19 (UTC): they wait")
@@ -913,14 +845,10 @@ def test_a_run_by_hand_that_left_a_part_unfinished_leaves_its_period_owed(
     ran = space.cli(monkeypatch, "agents", "run", "things/article")
     monkeypatch.setattr(compile_module, "run_agent", real)
     lines = ran.output.splitlines()
-    key = f"{who} on things/b"
-    said = {"held": f"held     {key}: held for room under the cap, runs next pass",
-            "cap": "waiting  things/article on things/b: the daily budget is spent",
+    said = {"cap": "waiting  things/article on things/b: the daily budget is spent",
             "failed": "failed   things/article on things/b: a subagent's run failed, so nothing of the article's run "
                       "lands: things/subagents/risks: run run_x failed: the provider broke"}[case]
     assert said in lines, ran.output
-    if case == "held":  # one line, not the compile's note beside it
-        assert [line for line in lines if who in line] == [said], ran.output
     if case == "cap":
         space.settings("budget: { daily_usd: 5000 }\ncompile: { concurrency: 1 }\n")
     before = run.by.copy()

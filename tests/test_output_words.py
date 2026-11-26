@@ -758,18 +758,16 @@ def test_the_lines_a_stop_of_serve_says_and_the_refusal_of_a_stopped_call_say_no
         assert not re.search(r"\b(sections?|brains?|pages?)\b", line, re.IGNORECASE), line
 
 
-def test_the_lines_said_of_work_a_daily_cap_or_a_hold_kept_from_starting_say_no_section_brain_or_page(
+def test_the_lines_said_of_work_a_daily_cap_kept_from_starting_say_no_section_brain_or_page(
         tmp_path: Path, monkeypatch: Any) -> None:
     """Each of these lines a person sees, as it prints: a part's note when it waits for the daily cap
-    or did not run for want of a price, a part held for room, the `waiting` line and stop line of `agents run`, and
-    `serve`'s line when calls resume."""
+    or did not run for want of a price, the `waiting` line and stop line of `agents run`, and `serve`'s line when
+    calls resume."""
     from datetime import timedelta
 
     from test_pass_at_cap import DAILY_PART, DAY, Logged, collection, composed, opener
 
-    import cerebro.compile as compile_module
     from cerebro import cli
-    from cerebro.budget import HeldForRoom
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
@@ -781,18 +779,6 @@ def test_the_lines_said_of_work_a_daily_cap_or_a_hold_kept_from_starting_say_no_
         "heartbeat: [daily]\n", "heartbeat: [daily]\nmodel: { provider: fireworks, model: made-up-7 }\n"))
     unpriced = opener(priced, Logged(priced))().run_once()
     seen += unpriced.warnings + [f"failed    {key}: {why}" for key, why in unpriced.failed.items()]
-    held = composed(tmp_path / "held")
-    real = compile_module.run_agent
-
-    def refusing(agent: Any, *args: Any, **kwargs: Any) -> Any:
-        if agent.id.endswith("risks") and agent.target == "things/a":
-            raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold $1")
-        return real(agent, *args, **kwargs)
-
-    monkeypatch.setattr(compile_module, "run_agent", refusing)
-    monkeypatch.setattr(held, "open", opener(held, Logged(held)))
-    seen += held.cli(monkeypatch, "agents", "run", "things/article").output.splitlines()
-    monkeypatch.setattr(compile_module, "run_agent", real)
     waits = collection(tmp_path / "waits", ("a", "b"))
     monkeypatch.setattr(waits, "open", opener(waits, Logged(waits, cross_at=1)))
     seen += waits.cli(monkeypatch, "agents", "run", "things/article").output.splitlines()
@@ -804,8 +790,8 @@ def test_the_lines_said_of_work_a_daily_cap_or_a_hold_kept_from_starting_say_no_
     waits.clock.at = DAY + timedelta(days=1)
     printed(workspace.run_once(scheduled=True))
     seen += said
-    for wording in ("waits for the daily cap (", "did not run, since", "held     things/subagents/risks on things/a",
-                    "waiting  things/b: the daily budget is spent", "so model calls resume"):
+    for wording in ("waits for the daily cap (", "did not run, since", "waiting  things/b: the daily budget is spent",
+                    "so model calls resume"):
         assert any(wording in line for line in seen), (wording, seen)
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
@@ -813,15 +799,12 @@ def test_the_lines_said_of_work_a_daily_cap_or_a_hold_kept_from_starting_say_no_
 def test_the_lines_said_of_runs_that_did_not_finish_say_no_section_brain_or_page(
         tmp_path: Path, monkeypatch: Any) -> None:
     """Each line a person sees of a run that did not finish, as it prints: a pass's line for an article a part
-    failed, `agents run`'s line for a failed article and its count, a run that spent its own budget, when a held part
-    runs, and `serve`'s lines when a cap read again lifts or a settings file does not read."""
-    from datetime import timedelta
+    failed, `agents run`'s line for a failed article and its count, a run that spent its own budget, and `serve`'s
+    lines when a cap read again lifts or a settings file does not read."""
 
-    from test_pass_at_cap import DAY, Logged, collection, composed, opener
+    from test_pass_at_cap import collection, composed, opener
     from test_unfinished_runs import RISKS, Unfinished, passes
 
-    import cerebro.compile as compile_module
-    from cerebro.budget import HeldForRoom
     from cerebro.runner import _read_caps
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
@@ -836,20 +819,6 @@ def test_the_lines_said_of_runs_that_did_not_finish_say_no_section_brain_or_page
     own = collection(tmp_path / "own", ("a", "b"))
     monkeypatch.setattr(own, "open", opener(own, Unfinished(own, "things/article", "things/b", how="own")))
     seen += own.cli(monkeypatch, "agents", "run", "things/article").output.splitlines()
-    held = composed(tmp_path / "held")
-    passes(held, Logged(held), 1)
-    held.clock.at = DAY + timedelta(hours=1)
-    real = compile_module.run_agent
-
-    def refusing(agent: Any, *args: Any, **kwargs: Any) -> Any:
-        if agent.id == RISKS and agent.target == "things/b":
-            raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold $1")
-        return real(agent, *args, **kwargs)
-
-    monkeypatch.setattr(compile_module, "run_agent", refusing)
-    monkeypatch.setattr(held, "open", opener(held, Logged(held)))
-    seen += held.cli(monkeypatch, "agents", "run", "things/article").output.splitlines()
-    monkeypatch.setattr(compile_module, "run_agent", real)
     capped = collection(tmp_path / "capped", ("a",))
     capped.spent("2026-11-19T00:05:00Z", "compilation", 60.0)
     workspace, kept = capped.open(), {}
@@ -859,8 +828,7 @@ def test_the_lines_said_of_runs_that_did_not_finish_say_no_section_brain_or_page
     _read_caps(workspace, kept, seen.append)
     for wording in ("a subagent's run failed, so nothing of the article's run lands",
                     "failed   things/article on things/a: run", "Error: things/article: 1 of 2 runs failed",
-                    "spent its own budget, not a daily cap",
-                    "runs at its writer's next scheduled run, from", "so the daily budget keeps the caps serve read",
+                    "spent its own budget, not a daily cap", "so the daily budget keeps the caps serve read",
                     "Daily budget: cap is now $500.00, so model calls resume"):
         assert any(wording in line for line in seen), (wording, seen)
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen

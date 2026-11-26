@@ -66,7 +66,6 @@ from .budget import (
     BudgetError,
     BudgetSpent,
     Caps,
-    HeldForRoom,
     Stopped,
     UnpricedModel,
     read_caps,
@@ -134,7 +133,7 @@ if TYPE_CHECKING:
     from .app import Cerebro
 
 __all__ = ["CHECKED", "FULL", "Ahead", "Decision", "LeaseHeld", "PassResult", "ahead_of", "checks", "decide", "first_list",
-           "first_list_line", "fulls", "held_runs", "hold", "hold_sources", "left_by_hand", "let_go", "past_bound", "ran_by_hand",
+           "first_list_line", "fulls", "hold", "hold_sources", "left_by_hand", "let_go", "past_bound", "ran_by_hand",
            "run_curators", "run_forever", "run_pass", "waits_by_hand"]
 
 SCHEDULES = ("hourly", "daily", "weekly")
@@ -164,8 +163,8 @@ class Progress:
 class PassResult:
     """What one pass did: records listed by source, read whole, and the facts extracted, retracted and linked; the
     articles compiled and the runs; and why each agent was due, ran and wrote nothing, failed or was skipped. `held`
-    names each run held for room under a cap, which runs on a later pass and is no failure. `notices` name what was
-    read but not acted on, and `warnings` what went wrong around an article that stands.
+    names each curator a daily cap kept from starting, with why, which runs on a later pass and is no failure.
+    `notices` name what was read but not acted on, and `warnings` what went wrong around an article that stands.
 
     Work a daily cap kept from starting waits for the next pass and is no failure: `stops` holds the line of each cap
     reached, `stopped` each layer it holds, with the ledger's words, `crossed` the crossing its first refusal met,
@@ -1219,13 +1218,11 @@ def _curate_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result:
         # a run the runtime gave back as failed, a server error, a timeout or a dropped connection, fails as a raise does
         why = f"{type(error).__name__}: {error}" if error is not None else (run.note or "its run failed") if (
             broke and run is not None) else ""
-        if isinstance(error, HeldForRoom) or error is not None and _paused(workspace, "compilation", result, error):
-            why = "held for room under the cap" if isinstance(error, HeldForRoom) else "waits for the daily cap"
-            if not isinstance(error, HeldForRoom):
-                result.waiting_runs.append(agent.id)
+        if error is not None and _paused(workspace, "compilation", result, error):
+            result.waiting_runs.append(agent.id)
             result.held[agent.id] = str(error)  # no failure: a first run reads it here as a curator that did not finish
-            result.tell(f"ran       {agent.id}: {why}, for the next pass")
-            result.step("agents", "end", agent.id, mark="skipped", text=why)
+            result.tell(f"ran       {agent.id}: waits for the daily cap, for the next pass")
+            result.step("agents", "end", agent.id, mark="skipped", text="waits for the daily cap")
             continue  # its heartbeat stands, so it is due again on the next pass
         stopped = _settle_curated(workspace, agent, curated, why, result)
         if why or (curated is not None and curated.run is not None):
@@ -2235,9 +2232,6 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
                                  hold=_hold(workspace, agent, article, served) if change else None,
                                  only=_marked(workspace, agent, article) if parts else "")
-    except HeldForRoom:
-        result.step("compile", "end", article, mark="skipped", text="held for room under the cap")
-        raise
     except Stopped:
         result.step("compile", "end", article, mark="skipped", text="serve stopped before it ended")
         raise
@@ -2272,7 +2266,7 @@ class _Turn:
     run: Run | None = None  # the first run any of its compiles made
     skipped: bool = True  # every compile of it skipped
     failed: bool = False
-    held: bool = False  # a compile of it held for room, waiting for a cap, or leaving parts to run next
+    held: bool = False  # a compile of it waiting for a cap, or leaving parts to run next
     stopped: bool = False  # a stop of serve cut it off: due again, with what ran recorded
     waits: str = ""  # why it skipped: its cooldown, or a back-off after failed runs
     wrote: list[str] = field(default_factory=list)  # the articles its runs wrote on, or ran on and wrote nothing
@@ -2281,18 +2275,14 @@ class _Turn:
 
 def _settle(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, error: BaseException | None,
             result: PassResult) -> None:
-    """Keep on `result` and on `turn` how one compile of `turn.agent` on `article` ended: stopped, held for room,
-    waiting for a daily cap, failed, skipped, or ran, with each of its parts that did not run and waits or runs next."""
+    """Keep on `result` and on `turn` how one compile of `turn.agent` on `article` ended: stopped, waiting for a daily
+    cap, failed, skipped, or ran, with each of its parts that did not run and waits or runs next."""
     agent, key = turn.agent, _key(turn.agent, article)
     if isinstance(error, Stopped):
         turn.skipped, turn.stopped = False, True
         return
-    if isinstance(error, HeldForRoom):
-        result.held[key] = str(error)
-        turn.skipped, turn.held, turn.left[article] = False, True, "whole"
-        return
     if error is not None and _paused(workspace, "compilation", result, error):
-        result.waiting_runs.append(key)  # no run started, so nothing was paid for: it waits, as a hold does
+        result.waiting_runs.append(key)  # no run started, so nothing was paid for: it waits
         turn.skipped, turn.held, turn.left[article] = False, True, "whole"
         return
     if error is not None:
@@ -2374,52 +2364,45 @@ def _side_by_side(workspace: Cerebro, jobs: list[Callable[[], Any]]) -> list[tup
     return out
 
 
-HELD_PART = "{}: held for room under the cap ("  # how compile's note opens for a part it did not start
+NOT_STARTED = "{}: did not start ("  # how compile's note opens for a part it did not start
 
 
-def _why_not_run(workspace: Cerebro, who: str) -> tuple[str, BudgetSpent | None]:
+def _why_not_run(workspace: Cerebro, who: str) -> BudgetSpent | None:
     """Why a run of the agent `who` was refused before it started, asked of the ledger now with that agent's own
-    model: `unpriced`, `cap` with the ledger's refusal, or `held`, for room under a cap that is not reached."""
+    model, or None when the ledger refuses it no more."""
     agent = next(agent for agent in workspace.agents if agent.id == who)  # it ran, or was refused, in this compile
     try:
         workspace.ledger.check("compilation", workspace.clock(), workspace.model_of(agent))
-    except UnpricedModel as error:
-        return "unpriced", error
     except BudgetSpent as error:
-        return "cap", error
-    return "held", None
+        return error
+    return None
 
 
-def _parts_not_run(workspace: Cerebro, agent: Agent, article: str, compiled: Any, result: PassResult,
-                   when: str = "runs next pass") -> list[str]:
+def _parts_not_run(workspace: Cerebro, agent: Agent, article: str, compiled: Any, result: PassResult) -> list[str]:
     """The parts of `agent`'s run on `article`, a writer with subagents, refused before they started, each said and
-    counted by its kind: a daily cap reached waits and is counted in the stop line, a hold for room is a hold, and a
-    model with no price fails with its reason. The composer's own refused run is a `Run` with no id, `held` or
-    `budget spent`. A subagent's is not handed back as a run, so it is found by the note compile writes for it, which
-    names the subagent first: that is the one line of compile's text read here, for which part, never for why. Gives
-    the parts to run next, held or waiting: each is marked so the next compile, which runs only what is stale, runs
-    it, and no part already paid for runs again. `when` says when a held part runs: a pass's own run owes it to the
-    next pass."""
+    counted by its kind: a daily cap reached waits and is counted in the stop line, and a model with no price fails
+    with its reason. The composer's own refused run is a `Run` with no id and `budget spent`. A subagent's is not
+    handed back as a run, so it is found by the note compile writes for it, which names the subagent first: that is
+    the one line of compile's text read here, for which part, never for why. Gives the parts to run next: each is
+    marked so the next compile, which runs only what is stale, runs it, and no part already paid for runs again."""
     found: dict[str, int | None] = {run.agent: None for run in compiled.runs
-                                    if not run.id and run.status in ("held", "budget spent")}
+                                    if not run.id and run.status == "budget spent"}
     for n, note in enumerate(compiled.notes):
-        found |= {sub: n for sub in agent.subagent_ids if note.startswith(HELD_PART.format(sub))}
+        found |= {sub: n for sub in agent.subagent_ids if note.startswith(NOT_STARTED.format(sub))}
     again = []
     for who, n in found.items():
-        kind, error = _why_not_run(workspace, who)
+        error = _why_not_run(workspace, who)
         key = f"{who} on {article}"
-        if kind == "unpriced":
+        if isinstance(error, UnpricedModel):
             result.failed[key] = f"{type(error).__name__}: {error}"
             if n is not None:
                 compiled.notes[n] = f"{who}: did not run, since {error}, so what it returned before stands"
             continue
-        if kind == "cap" and _paused(workspace, "compilation", result, error):
+        if _paused(workspace, "compilation", result, error):
             result.waiting_runs.append(key)
             if n is not None:
                 compiled.notes[n] = (f"{who}: waits for the daily cap ({error}), so what it returned before stands, "
                                      "and it runs on the next pass")
-        else:
-            result.held[key] = f"held for room under the cap, {when}"
         again.append(who)
     if again:
         _run_again(workspace, agent, article, again)
@@ -2594,11 +2577,8 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     refused before it started, said by its kind and marked to run next, with when that is, and each run that went and
     did not finish. Of those, one the budget cut before it handed in text waits while a daily cap holds, and with none
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
-    landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
-    `held` line says it once, with when it runs."""
-    held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
-    compiled.notes[:] = [note for note in compiled.notes if not any(
-        note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]
+    landed it. The article's own run that wrote nothing is its caller's line."""
+    _parts_not_run(workspace, agent, article, compiled, result)
     broke = any(run.id and run.status == "failed" for run in compiled.runs)  # the article fails whole
     for run in compiled.runs:
         if not run.id or run.status in ("done", WROTE_NOTHING) or run.status == "budget spent" and run.result:
@@ -2615,21 +2595,6 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
                                   f"budget: {{ tokens_per_run, tool_calls }} in agents/{run.agent}.md sets it{note}")
         else:
             result.failed[key] = f"run {run.id} {run.status}{note}"
-
-
-def held_runs(workspace: Cerebro, agent: Agent, article: str) -> str:
-    """When a part a run by hand of `agent` left held on `article` runs: the next pass, while its period's run is owed
-    there, or else the writer's next run, which runs every part that did not run. A period whose earlier run left
-    other articles to do owes only those."""
-    zone, words = zone_of(workspace.settings), _words(workspace, agent)
-    word, _, _ = _wake(agent, words, _beat(workspace, agent), workspace.clock(), zone)
-    if word is not None and ((owed := _left(workspace, agent, word)) is None or article in owed):
-        return "runs next pass"
-    local = workspace.clock().astimezone(zone)
-    nexts = [_period(word, local)[1] for word in words if word in SCHEDULES]
-    when = (["on a pass for a change"] if "change" in words else []) + (
-        [f"at its writer's next scheduled run, from {min(nexts):%Y-%m-%d %H:%M}"] if nexts else [])
-    return f"runs {', or '.join(when)}" if when else "runs when its writer is run by hand again"
 
 
 def ran_by_hand(workspace: Cerebro, agent: Agent, began: datetime) -> None:
@@ -2658,8 +2623,8 @@ STOPPED = own_key("stopped")  # what the last passes left waiting for a daily ca
 
 
 def _capped(error: BaseException) -> bool:
-    """Whether `error` is a daily cap reached: a model with no price, or a run held for room, is not."""
-    return isinstance(error, BudgetSpent) and not isinstance(error, (HeldForRoom, UnpricedModel))
+    """Whether `error` is a daily cap reached: a model with no price is not."""
+    return isinstance(error, BudgetSpent) and not isinstance(error, UnpricedModel)
 
 
 def _paused(workspace: Cerebro, layer: str, result: PassResult, error: BaseException | None = None,

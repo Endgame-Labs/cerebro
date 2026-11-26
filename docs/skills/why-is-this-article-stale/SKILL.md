@@ -14,6 +14,6 @@ description: Find out why an article in this Cerebro workspace was not rewritten
      listed records, and that its `evidence:` names that source.
    - `failed ...` names the reason. Do what the line says.
    - `skipped sources/<name> ... no facts layer` means no records are extracted yet.
-3. Run `cerebro status` for what today cost: a model call stops for the day past the budget in `settings.yaml`.
+3. Run `cerebro status` for what today cost: past the budget in `settings.yaml`, no new run starts that day.
 4. Rebuild it now with `cerebro agents run <agent> <id>`, which runs whether or not anything moved.
    `cerebro compile --article <id>` runs it only when what it reads moved.

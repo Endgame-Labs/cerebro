@@ -143,7 +143,9 @@ budget:
   first_run_usd: 10          # what a first run may spend proposing articles
 ```
 
-Every model call is checked against its cap before it starts. Past a cap, that job stops until midnight UTC and the others go on. `find`, `read` and `query` keep working past every cap. A `query` with `matching` costs a few tokens, counted as extraction, and past that cap it searches articles alone.
+Every agent run, and every model call outside one, is checked against its cap before it starts. Past a cap, that job starts nothing new until midnight UTC and the others go on. A run already under way finishes, so a day can end over its cap by what those runs spend. A first run's curators start no new run once `first_run_usd` is spent.
+
+`find`, `read` and `query` keep working past every cap. A `query` with `matching` costs a few tokens, counted as extraction, and past that cap it searches articles alone.
 
 `cerebro status` shows the day so far:
 

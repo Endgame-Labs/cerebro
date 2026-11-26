@@ -26,11 +26,11 @@ Spend is kept as rows of the store's `spend` log: when, which layer, dollars, pr
 are only appended, one per call or run, so runs that finish at once never lose one another's spend. A layer's spend
 for a day is the sum of that day's rows.
 
-Before a model call a caller asks `may_spend`; after it, `record`. Past its cap a layer's calls stop until 00:00 UTC
-and the other layers carry on. A call that began finishes and counts, so a day can pass a cap by what was in
-flight. Reads never touch the ledger, so they keep working. A model with no known price is refused while its layer
-has a cap, since it would count $0; with no cap it runs and is kept at $0, marked unpriced. The time is always an
-argument: nothing here reads the clock.
+Before an agent's run, or a model call outside one, a caller asks `check` or `may_spend`; after it, `record`. Past its
+cap a layer starts nothing new until 00:00 UTC and the other layers carry on. A run or call that began finishes and
+counts, so a day can pass a cap by what was under way, each run within its own budget. Reads never touch the ledger,
+so they keep working. A model with no known price is refused while its layer has a cap, since it would count $0; with
+no cap it runs and is kept at $0, marked unpriced. The time is always an argument: nothing here reads the clock.
 """
 
 from __future__ import annotations
@@ -65,7 +65,6 @@ __all__ = [
     "BudgetSpent",
     "CallRefused",
     "Caps",
-    "HeldForRoom",
     "Ledger",
     "Meter",
     "MeterTurn",
@@ -113,16 +112,17 @@ class CallRefused(BudgetSpent):
 
 
 class RoundCut(BudgetSpent):
-    """A model call a meter refused: the spend it meters, of runs under way and runs ended, has reached its cap, so
-    the run stops where it is, keeping what its turns spent."""
+    """A run a meter refused: at its first model call once the spend it meters, of runs under way and runs ended, has
+    reached its cap, so it does not start, or at any call once the meter is stopped, so it stops where it is, keeping
+    what its turns spent."""
 
 
 class Meter:
     """The spend of a set of runs side by side, held to one cap, as a first-run round is metered: every
-    model call of a run under it is checked against the cap before it starts, and what each reply cost is counted
-    the moment it comes, so a run under way is cut as soon as the cap is reached, not once it ends. `base` gives what
-    the set spent before, as the ledger has it. A run opens a `turn` of it, which the `METER` context variable holds
-    while the run is under way, and `stop` cuts every run at its next call, as a signal or a refusal does."""
+    run under it is checked against the cap before its first model call, and what each reply cost is counted the
+    moment it comes, so once the cap is reached no run starts, and each run under way finishes. `base` gives what the
+    set spent before, as the ledger has it. A run opens a `turn` of it, which the `METER` context variable holds while
+    the run is under way, and `stop` cuts every run at its next call, as a signal or a host's refusal does."""
 
     def __init__(self, cap: float, base: Callable[[], float]):
         self.cap, self.base = cap, base
@@ -153,17 +153,19 @@ class Meter:
 
 
 class MeterTurn:
-    """One run's share of a `Meter`: `before` refuses a call once the meter's cap is reached, `add` counts what a
-    reply cost, and `close` says the run ended and the ledger has its spend."""
+    """One run's share of a `Meter`: `before` refuses the run's first call once the meter's cap is reached, and any
+    call once the meter is stopped, `add` counts what a reply cost, and `close` says the run ended and the ledger has
+    its spend."""
 
     def __init__(self, meter: Meter, name: str):
-        self.meter, self.name, self.usd, self.closed, self.cut = meter, name, 0.0, False, False
+        self.meter, self.name, self.usd, self.closed, self.cut, self.begun = meter, name, 0.0, False, False, False
 
     def before(self) -> None:
-        if self.meter.stopped or self.meter.spent() >= self.meter.cap:
+        if self.meter.stopped or not self.begun and self.meter.spent() >= self.meter.cap:
             self.cut = True
-            raise RoundCut(self.meter.stopped or f"the cap of ${self.meter.cap:g} was reached while {self.name} ran, "
-                                                 "so its run stopped there")
+            raise RoundCut(self.meter.stopped or f"the cap of ${self.meter.cap:g} was reached before {self.name} "
+                                                 "started, so it did not run")
+        self.begun = True
 
     def add(self, usd: float) -> None:
         with self.meter._lock:
@@ -174,11 +176,6 @@ class MeterTurn:
 
 
 METER: ContextVar[MeterTurn | None] = ContextVar("cerebro_meter", default=None)  # the run's turn of a meter, if any
-
-
-class HeldForRoom(BudgetSpent):
-    """A run that would fit under the cap, held only because runs under way already hold the room it needs. It is
-    no spent budget: it runs on a later pass, once they have ended."""
 
 
 class Stopped(BaseException):
@@ -416,42 +413,7 @@ class Ledger:
         self.caps = caps
         self.refused = refused  # raises `CallRefused` once a host model calls go through refused one this pass
         self._lock = threading.Lock()
-        self._held: dict[int, tuple[str, str, float]] = {}  # each run under way: its layer, its UTC day, its dollars
-        self._next = 0
         self.recorded = 0  # the calls and runs this ledger kept the cost of: what its command paid for
-
-    def reserve(self, layer: str, at: datetime, model: ModelSpec | None, tokens: int, usd: float | None = None) -> int:
-        """Hold what a run may spend, `tokens` priced as input on `model`, before it starts, and give the ticket that
-        `release` settles once its spend is recorded. Under one lock, so runs side by side cannot all pass the cap
-        together: past `check`, a run is refused when runs under way already hold dollars and its own would carry
-        the layer past its cap, or all runs under way, of every layer, would carry the total past its cap. The first run of a layer under its cap always starts, as one call does.
-        `usd`, when given, is an estimate of what the run will spend, held in place of `tokens` when it is less."""
-        with self._lock:
-            self.check(layer, at, model)
-            day = _utc(at).date().isoformat()
-            held = sum(usd for lay, d, usd in self._held.values() if d == day and lay == layer)
-            whole = cost(model.provider, model.model, TokenCount(input_tokens=tokens)) if model is not None and \
-                price_of(model.provider, model.model) is not None else 0.0
-            usd = whole if usd is None else min(max(usd, 0.0), whole)
-            cap = self.caps.of(_layer(layer))
-            spent_layer = self.spent(at, layer) if cap is not None and held else 0.0
-            if cap is not None and held and spent_layer + held + usd > cap:
-                raise HeldForRoom(f"held for room under the cap, runs next pass: {layer} runs under way hold "
-                                  f"${held:.2f} of its ${cap:g} cap on {day} (UTC), with ${spent_layer:.2f} spent")
-            every = sum(usd for _, d, usd in self._held.values() if d == day)  # every layer's, against the total
-            total = self.caps.total
-            spent_all = self.spent(at) if total is not None and every else 0.0
-            if total is not None and every and spent_all + every + usd > total:
-                raise HeldForRoom(f"held for room under the cap, runs next pass: runs under way hold ${every:.2f} of "
-                                  f"the ${total:g} daily cap on {day} (UTC), with ${spent_all:.2f} spent")
-            self._next += 1
-            self._held[self._next] = (layer, day, usd)
-            return self._next
-
-    def release(self, ticket: int) -> None:
-        """Let go of what a run held, once what it spent is recorded."""
-        with self._lock:
-            self._held.pop(ticket, None)
 
     def spent(self, at: datetime, layer: str | None = None) -> float:
         """Dollars spent on the UTC day of `at`, by one layer, or by every layer with no layer."""

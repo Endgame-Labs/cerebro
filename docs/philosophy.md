@@ -34,7 +34,7 @@ Code holds the lines that must never break, whatever a model says:
 
 - Cerebro runs a workspace only from a folder you trust.
 - Secrets are masked in everything stored, logged, returned, and sent to a model.
-- Every model call is checked against your spending cap before it starts. Once the cap is met, nothing new starts.
+- Every agent run, and every model call outside one, is checked against your spending cap before it starts. Once the cap is met, nothing new starts, and what is under way finishes.
 - Records are never changed. Only a run writes an article.
 - Every HTTP request needs a live token.
 - A curator does not undo your decision until something new about it arrives.

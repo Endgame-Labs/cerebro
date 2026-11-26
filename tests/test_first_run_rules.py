@@ -489,7 +489,7 @@ def test_a_run_under_a_meter_is_cut_at_its_next_call_and_keeps_what_its_turns_sp
     meter = Meter(1.0, lambda: 0.0)
 
     def reply(messages: object, info: object) -> ModelResponse:
-        meter.stop("another run of the round spent the rest of the cap")  # the cap is reached while this one runs
+        meter.stop("the round stopped: the provider refused the key")  # the round stops while this one runs
         return ModelResponse(parts=[ToolCallPart("lookup_tool", {"id": "n"})])
 
     turn = meter.turn(AGENT.id)
@@ -498,7 +498,7 @@ def test_a_run_under_a_meter_is_cut_at_its_next_call_and_keeps_what_its_turns_sp
         run = PydanticRun(FunctionModel(reply)).run(AGENT, EVIDENCE, [lookup_tool], Budget())
     finally:
         METER.reset(held)
-    assert run.status == "cut" and turn.cut and "spent the rest of the cap" in run.note
+    assert run.status == "cut" and turn.cut and "the provider refused the key" in run.note
     assert run.usage.requests == 1 and run.usage.input_tokens > 0  # the turn it made counts
 
 
@@ -534,12 +534,14 @@ def test_an_interrupt_keeps_the_spend_of_the_turns_a_run_made(tmp_path: Path) ->
 
 class Turns:
     """A curator's run of several model calls, each checked against the round's meter before it starts and counted on
-    it as it ends, as a run on Pydantic AI is: cut, it stops there, and its turns made count."""
+    it as it ends, as a run on Pydantic AI is: cut, it stops there, and its turns made count. Each run waits after its
+    first call until `together` runs have made theirs, so they are all under way before any of them spends."""
 
-    def __init__(self, turns: int, tokens: int, usd: float) -> None:
+    def __init__(self, turns: int, tokens: int, usd: float, together: int = 1) -> None:
         import threading
 
         self.turns, self.tokens, self.usd, self.ran, self.lock = turns, tokens, usd, [], threading.Lock()
+        self.begun = threading.Barrier(together, timeout=5)
 
     def run(self, agent, evidence, tools, budget):  # type: ignore[no-untyped-def]
         import time
@@ -558,6 +560,8 @@ class Turns:
             except RoundCut as error:
                 status, note = "cut", str(error)
                 break
+            if made == 0:
+                self.begun.wait()
             time.sleep(0.005)
             made += 1
             if turn is not None:
@@ -573,12 +577,12 @@ def _eight(root: Path, cap: float) -> Path:
     for name in EIGHT:
         (root / "agents" / name).mkdir(parents=True)
         (root / "agents" / name / "curator.md").write_text(MEMBERS)
-    (root / "settings.yaml").write_text(f"budget:\n  first_run_usd: {cap}\ncompile:\n  concurrency: 8\n")
+    (root / "settings.yaml").write_text(f"budget:\n  first_run_usd: {cap}\ncompile:\n  concurrency: 4\n")
     return root
 
 
 @pytest.mark.usefixtures("every_curator_weighs")
-def test_eight_curators_at_once_are_held_to_the_cap_within_one_reply_each(tmp_path: Path) -> None:
+def test_past_the_cap_the_curators_under_way_finish_and_none_starts(tmp_path: Path) -> None:
     from cerebro import Cerebro
     from cerebro.budget import spent_by_runs
     from cerebro.fakes import FakeConnector, FakeExtraction
@@ -591,17 +595,18 @@ def test_eight_curators_at_once_are_held_to_the_cap_within_one_reply_each(tmp_pa
         spec = workspace.model_of(workspace.agents[0])
     usd = cost(spec.provider, spec.model, TokenCount(input_tokens=tokens))
     assert usd > 0
-    cap = 6 * usd  # eight curators of ten turns each would spend 80
-    run = Turns(10, tokens, usd)
+    cap = 6 * usd  # four curators side by side of ten turns each spend 40
+    run = Turns(10, tokens, usd, together=4)
     said: list[str] = []
     with Cerebro(_eight(tmp_path / "w", cap), agent_run=run, extraction=FakeExtraction(),
                  connectors=[FakeConnector("src", [])]) as workspace:
         pile = discover(workspace, say=said.append)
         session = workspace.store.state(KEY)
         spent = spent_by_runs(workspace.store, [row.data["run"] for row in workspace.store.rows("agent-runs")])
-        assert spent >= cap and spent <= cap + 8 * usd + 1e-9, (spent / usd)  # cut the moment it is reached
+        assert spent == pytest.approx(40 * usd), (spent / usd)  # the four under way finished, past the cap
+        assert len(run.ran) == 4  # and none started after them
         assert pile is not None and pile.stopped.startswith("Discovery stopped at its budget")
-        assert session["status"] == "stopped" and session["unfinished"]  # the cut ones are asked again first
+        assert session["status"] == "stopped" and len(session["unfinished"]) == 4  # asked again first
     starts = [n for n, line in enumerate(said) if line.startswith("stage     discover: reviewing sources for ")]
     assert len(starts) >= 2 and starts[1] < min(n for n, line in enumerate(said) if line.startswith("stopped  "))
 
@@ -615,10 +620,23 @@ def test_a_paused_budget_stops_the_round_which_does_not_count_and_its_curators_a
     from cerebro.first_run import RoundStopped
 
     class Paused(Script):
+        """While things/curator's run is under way, the day's cap refuses parts/curator's: things/curator makes its
+        next call after the round has stopped."""
+
         def run(self, agent, evidence, tools, budget):  # type: ignore[no-untyped-def]
+            import time
+
+            from cerebro.budget import METER
+
             if agent.id == "parts/curator" and self.paused:
                 self.ran.append(agent.id)
+                self.started.wait(5)
                 raise BudgetSpent("compilation spent $5.00 of its $5 cap on 2026-11-18 (UTC)")
+            if agent.id == "things/curator" and self.paused and (turn := METER.get()) is not None:
+                turn.before()
+                self.started.set()
+                time.sleep(0.2)  # the round stops meanwhile
+                turn.before()
             return super().run(agent, evidence, tools, budget)
 
     script = Paused({"things/curator": [by_record("T1")], "parts/curator": []})
@@ -628,6 +646,7 @@ def test_a_paused_budget_stops_the_round_which_does_not_count_and_its_curators_a
             run(workspace, choose=None, say=lambda line: None)
         session = workspace.store.state(KEY)
         assert session["rounds"] == 0 and "parts/curator" in session["todo"]  # the round does not count
+        assert "things/curator" in script.ran  # its run under way finished
         script.paused = False
         out = run(workspace, choose=None, say=lambda line: None)
         assert out is not None and script.ran.count("parts/curator") >= 2  # asked again on the next run

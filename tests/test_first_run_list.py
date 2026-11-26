@@ -191,6 +191,7 @@ def test_the_cap_in_a_later_round_names_the_cut_curators_and_keeps_them_to_ask(t
     from test_first_run_rules import Turns
 
     from cerebro import Cerebro
+    from cerebro.budget import LOG
     from cerebro.fakes import FakeConnector, FakeExtraction
     from cerebro.first_run import KEY, _begin, _save, discover
     from cerebro.models import TokenCount, cost
@@ -204,36 +205,17 @@ def test_the_cap_in_a_later_round_names_the_cut_curators_and_keeps_them_to_ask(t
     with Cerebro(root, agent_run=Turns(10, 100_000, usd), extraction=FakeExtraction(),
                  connectors=[FakeConnector("src", [])]) as workspace:
         session = _begin(workspace)
-        session.update(read=True, rounds=1)  # round 1 is behind it: a later round, as after a proposal woke them
+        session.update(read=True, rounds=1, runs=["run_earlier"])  # a later round, as after a proposal woke them
         _save(workspace, session)
+        workspace.store.append(LOG, {"at": "2026-11-19T08:00:00Z", "day": "2026-11-19", "layer": "compilation",
+                                     "usd": 4 * usd, "provider": "x", "model": "y", "run": "run_earlier"})
         pile = discover(workspace, say=said.append, ask_more=lambda spent, more: False)
         session = workspace.store.state(KEY)
         cut = sorted({r.data["agent"] for r in workspace.store.rows("agent-runs") if r.data["status"] == "cut"})
-        assert cut  # the cap cut curators under way
+        assert len(cut) == 4  # round 1 met the cap, so each is refused at its first call
         assert sorted(session.get("unfinished") or []) == cut  # cut at the cap: asked again first
         assert all(((session.get("lists") or {}).get(id) or {}).get("state") == "budget" for id in cut)
         assert pile is not None and pile.stopped and all(f"stopped   {id}:" in "\n".join(said) for id in cut)
-
-
-@pytest.mark.usefixtures("every_curator_weighs")  # no source holds a record
-def test_room_other_curators_hold_under_the_days_cap_does_not_stop_the_round(tmp_path: Path) -> None:
-    from datetime import UTC, datetime
-
-    from test_first_run_rules import Turns
-
-    from cerebro import Cerebro
-    from cerebro.budget import LOG
-    from cerebro.fakes import FakeConnector, FakeExtraction
-    from cerebro.first_run import discover
-
-    now = datetime(2026, 11, 19, 12, tzinfo=UTC)
-    root = _four(tmp_path, "budget:\n  compilation_daily_usd: 1\n  first_run_usd: 10\ncompile:\n  concurrency: 4\n")
-    with Cerebro(root, agent_run=Turns(3, 0, 0.0), extraction=FakeExtraction(), clock=lambda: now,
-                 connectors=[FakeConnector("src", [])]) as workspace:
-        workspace.store.append(LOG, {"at": "2026-11-19T08:00:00Z", "day": "2026-11-19", "layer": "compilation",
-                                 "usd": 0.999, "provider": "x", "model": "y", "run": ""})  # earlier today's work
-        discover(workspace, say=lambda line: None)  # a signal, a refusal or a paused meter stops the round, no more
-        assert workspace.ledger.spent(now, "compilation") < 1
 
 
 # -- an address goes from a bracket, and the curator's other words in it stay

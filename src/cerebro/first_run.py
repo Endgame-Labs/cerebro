@@ -25,12 +25,12 @@ library call (`Cerebro.run_once`) never begins one: `serve --once` and the loop 
 - **Build.** Once anything is approved, or nothing waits, each curator makes the accepted rows of its collection, then
   a pass with no curator reads the sources for the articles and compiles them. A curator still in its own first run after that, as one that reads facts and found
   none before they existed, runs once more in proposal mode: its list is late, and waits alone.
-- **The cap.** Discovery spends at most `budget.first_run_usd`, $10 when the key is left out, counted from the ledger
-  by the curators' run ids, and every model call of a round is metered against it: once it is reached the runs under
-  way stop at their next call. A run's spend lands whole when it ends, so the cap is checked before each curator
-  starts. At a terminal the run asks whether to go on for about what the curators left would spend; otherwise it
-  stops with the line that says what to raise. The late round counts toward it too, and a curator
-  the cap cut runs only when a person asks, at that question or by `cerebro agents run`, which goes through `by_hand`.
+- **The cap.** Discovery spends up to `budget.first_run_usd`, $10 when the key is left out, counted from the ledger
+  by the curators' run ids, and for the runs under way as each reply comes: once it is reached no curator's run
+  starts, and the runs under way finish, each within its own budget. At a terminal the run asks whether to go on for
+  about what the curators left would spend; otherwise it stops with the line that says what to raise. The late round
+  counts toward it too, and a curator the cap cut runs only when a person asks, at that question or by `cerebro agents
+  run`, which goes through `by_hand`.
 
 Every string a list shows from a workspace's files or a model passes through `shown`.
 """
@@ -1002,12 +1002,12 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
            width: int, pool: ThreadPoolExecutor, tell: Callable[[str], None],
            ask_more: Callable[[float, float], bool] | None) -> bool:
     """Ask the curators of `todo` side by side: each starts in the round's order once a slot is free, and lands, said
-    and kept, once those before it have, whichever finished first. Every model call is metered against the first
-    run's cap as each reply comes, so once it is reached the runs under way are cut at their next call and no curator
-    starts; a curator it cut stays in `todo`, asked again first. A paused budget or a provider's refusal stops the
-    round as `RoundStopped`, and an interrupt goes on up: the curators that did not finish stay in `todo`, and the
-    round does not count. A curator held for room the runs under way hold is no failure: it is asked again once they
-    land, and if nothing else runs the round stops as `RoundStopped`. True when the cap stopped discovery."""
+    and kept, once those before it have, whichever finished first. What each reply cost counts toward the first run's
+    cap as it comes, so once the cap is reached no curator's run starts, and the runs under way finish; a curator it
+    kept from starting stays in `todo`, asked again first. A paused budget or a provider's refusal stops the round as
+    `RoundStopped`, and an interrupt goes on up: the curators that did not finish stay in `todo`, and the round does
+    not count. A provider's refusal and an interrupt cut the runs under way at their next call. True when the cap
+    stopped discovery."""
     ended: list[str] = []  # the runs of the round that ended, whose spend the ledger has
     meter = Meter(_cap(workspace, session), lambda: spent_by_runs(workspace.store, list(dict.fromkeys(
         [*session.get("runs", []), *ended]))))
@@ -1016,7 +1016,6 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
         order = list(todo)
         started: list[Future[_Turn]] = []
         landed, stop = 0, ""
-        waits: dict[str, str] = {}  # the curators held for room, each with why
         try:
             while landed < len(order):
                 while landed < len(started) and started[landed].done():
@@ -1031,10 +1030,8 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
                         _emit(workspace, "discover", "end", turn.agent.id, mark="failed", why=turn.stops,
                               text=f"Discovery for {turn.agent.target} collection did not finish")
                         stop = stop or turn.stops
-                        meter.stop(f"the round stopped: {turn.stops}")
-                        continue
-                    if turn.held:
-                        waits[turn.agent.id] = turn.held
+                        if turn.cuts:
+                            meter.stop(f"the round stopped: {turn.stops}")
                         continue
                     _landed(workspace, session, turn, tell)
                     todo.remove(turn.agent.id)
@@ -1069,12 +1066,6 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
                                           "again on the next run"))
         if not todo:
             return False
-        if waits and not meter.reached():
-            if len(waits) < len(order):
-                continue  # those that held the room have landed: ask the held ones again
-            _save(workspace, session)
-            raise RoundStopped(workspace.mask(f"discovery waits: {next(iter(waits.values()))}: nothing failed, and "
-                                              "the curators that did not run are asked again on the next run"))
         more = _more(workspace, todo)  # the cap cut the round, in any round
         if ask_more is not None and ask_more(_spent(workspace, session), more):
             _raise(workspace, session, more)
@@ -1106,9 +1097,9 @@ class _Turn:
     passes: int
     changed_only: bool
     result: PassResult
-    capped: bool = False  # the round's cap cut its run
+    capped: bool = False  # the round's meter cut its run: at its cap before its first call, or at a stop
     stops: str = ""  # what stopped its run that would meet every curator of the round
-    held: str = ""  # why it did not start: runs under way hold the room the day's cap has left
+    cuts: bool = False  # what stopped it cuts the runs under way too: a host's refusal, where the day's cap does not
 
 
 def _turn(workspace: Cerebro, session: dict[str, Any], agent: Agent, changed_only: bool, meter: Meter,
@@ -1128,14 +1119,15 @@ def _turn(workspace: Cerebro, session: dict[str, Any], agent: Agent, changed_onl
         ended += [run.id for run in result.runs if run.id]
         turn.close()
     failed = result.failed.get(agent.id, "")
-    paused = result.held.get(agent.id, "") if agent.id in result.waiting_runs else ""  # a daily cap: a pass waits
+    paused = result.held.get(agent.id, "")  # a daily cap: a pass waits
     # what stops the round meets every curator of it: the day's spent budget or a
-    # provider's refusal (an interrupt goes on up). Room the runs under way hold is no stop and no failure: it waits
+    # provider's refusal (an interrupt goes on up)
+    refused = next((f"{run.note or 'the provider refused the key'}" for run in result.runs if run.status == "refused"),
+                   "")
     stops = (failed if failed.startswith(f"{BudgetSpent.__name__}:") else "") or (
-        f"{BudgetSpent.__name__}: {paused}" if paused else "") or next(
-        (f"{run.note or 'the provider refused the key'}" for run in result.runs if run.status == "refused"), "")
+        f"{BudgetSpent.__name__}: {paused}" if paused else "") or refused
     return _Turn(agent, before, weighed, passes, changed_only, result, capped=turn.cut, stops=stops,
-                 held="" if paused else result.held.get(agent.id, ""))
+                 cuts=bool(refused or workspace.gateway.said))
 
 
 def _failure(result: PassResult, agent: str) -> str:

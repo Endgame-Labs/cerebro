@@ -1494,8 +1494,8 @@ class Slow(Counts):
 
 def test_a_run_the_runs_before_it_may_leave_no_room_for_under_the_cap_is_not_known(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Six articles side by side under a daily cap one run's reservation fills: the pass holds all but one for room.
-    The dry run lists stale only a run nothing can come before, and each other run as not known, never stale."""
+    """Six articles side by side after one run under a daily cap that run may spend: the dry run lists stale only a
+    run nothing can come before, and each other run as not known, never stale."""
     names = ["gamma", "delta", "epsilon", "zeta"]
     w = Workspace(tmp_path, monkeypatch, *[note(f"n-{n}", f"{n.title()} moved its launch to March 3.")
                                            for n in ["alpha", "beta", *names]], settings="budget:\n  daily_usd: 0.0001\n")
@@ -1504,14 +1504,14 @@ def test_a_run_the_runs_before_it_may_leave_no_room_for_under_the_cap_is_not_kno
             workspace.store.create(Identity(f"things/{n}", "things", n.title()))
     dry = w.run("compile", "--dry-run")
     w.model = Slow(w.hands, tmp_path)
-    passed = w.run("serve", "--once")
+    w.run("serve", "--once")
     asked, rows = set(w.model.asked), dry_rows(dry.output)
     stale = {key for key, status in rows.items() if status == "stale"}
     maybe = {key for key, status in rows.items() if status == "not known"}
     assert stale == {("reports/weekly", "reports/weekly")} and len(maybe) == 6, dry.output
-    assert stale <= asked <= stale | maybe and "held for room" in passed.output, (dry.output, asked)
+    assert stale <= asked <= stale | maybe, (dry.output, asked)
     named = w.run("compile", "--dry-run", "--article", "things")
-    assert "whether it runs or waits for room is not known" in named.output, named.output
+    assert "whether it runs or waits for the cap is not known" in named.output, named.output
     w.model = Refuses()
 
 

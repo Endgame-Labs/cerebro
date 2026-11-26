@@ -33,7 +33,7 @@ The usual way to handle a judgment is a few hundred lines of deterministic code:
 
 - Cerebro runs a workspace only from a folder its owner trusts.
 - Secrets are never printed or stored in the clear, and are masked in everything stored, logged, returned and sent to a model.
-- Every model call is checked against a spending cap before it starts. The cap is a soft limit: once it is met nothing new starts, and a run may end over it by the calls already under way. A few cents over is fine. Dollars over is not. Do not build holds, reservations or estimates to make the cap exact.
+- Every agent run, and every model call outside a run, is checked against a spending cap before it starts. The cap is a soft limit: once it is met nothing new starts, and what is under way finishes. Each run is bounded by its own budget, so a day ends over its cap by at most what was under way. A few cents over is fine. Dollars over is not. Do not build holds, reservations or estimates to make the cap exact.
 - Inputs are append-only. Only a run writes an article.
 - Every HTTP request needs a live token.
 - A curator does not undo what a caller decided until something new about it arrives. A caller's instruction outranks an agent's. A caller is anyone who sends a command, at the command line or over MCP or the JSON API with a live token. A curator, an agent and an app are not callers.

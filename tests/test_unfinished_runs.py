@@ -1,7 +1,7 @@
 """Runs that went and did not finish: a part that failed gets one more try in its
 period and no part that finished runs again, a part the cap cut runs once room is back, `agents run` runs every
-article and says each failure, waits at a cap reached mid-run, tells a run's own budget from a daily cap and says
-truly when a held part runs, and `serve` reads a raised cap at its next wake. Stand-in store, fake extraction and
+article and says each failure, waits at a cap reached mid-run, tells a run's own budget from a daily cap, and
+`serve` reads a raised cap at its next wake. Stand-in store, fake extraction and
 scripted runs: no model is called and no key is real."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from test_pass_at_cap import DAY, Logged, Workspace, collection, composed, opene
 
 import cerebro.compile as compile_module
 from cerebro import cli
-from cerebro.budget import HeldForRoom
+from cerebro.budget import BudgetSpent
 from cerebro.run import Run
 from cerebro.runner import run_forever
 
@@ -83,14 +83,15 @@ def test_a_part_that_fails_all_day_fails_its_article_twice_and_no_note_says_it_r
     assert not any(result.compiled or result.failed or result.warnings for result in rest)
 
 
-def test_a_held_part_beside_a_failed_one_fails_its_article(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_part_the_cap_refused_beside_a_failed_one_fails_its_article(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     space = composed(tmp_path)
     space.clock.at = DAY
     real = compile_module.run_agent
 
     def held(agent: Any, *args: Any, **kwargs: Any) -> Any:
         if (agent.id, agent.target) == (PEOPLE, "things/b"):
-            raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold it")
+            raise BudgetSpent("model calls spent $60.00 of the $50 daily cap on 2026-11-19 (UTC): they wait")
         return real(agent, *args, **kwargs)
 
     monkeypatch.setattr(compile_module, "run_agent", held)
@@ -227,35 +228,6 @@ def test_agents_run_tells_a_runs_own_budget_from_a_daily_cap(
     assert (f"failed   {COMPOSER} on things/b: run run_scripted spent its own budget, not a daily cap, before it "
             f"handed in text: budget: {{ tokens_per_run, tool_calls }} in agents/{RISKS}.md sets it: the run holds "
             "41000 tokens, its budget of 40000") in ran.output.splitlines()
-
-
-def test_a_part_agents_run_left_held_after_its_periods_run_is_said_once_and_runs_at_the_next_scheduled_run(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    space = composed(tmp_path)
-    passes(space, Logged(space), 1)  # the day's scheduled run
-    space.clock.at = DAY + timedelta(hours=1)
-    real = compile_module.run_agent
-
-    def held(agent: Any, *args: Any, **kwargs: Any) -> Any:
-        if (agent.id, agent.target) == (RISKS, "things/b"):
-            raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold it")
-        return real(agent, *args, **kwargs)
-
-    monkeypatch.setattr(compile_module, "run_agent", held)
-    run = Logged(space)
-    monkeypatch.setattr(space, "open", opener(space, run))
-    ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
-    monkeypatch.setattr(compile_module, "run_agent", real)
-    said = (f"held     {RISKS} on things/b: held for room under the cap, runs at its writer's next scheduled run, "
-            "from 2026-11-20 00:00")
-    assert [line for line in ran.output.splitlines() if RISKS in line] == [said], ran.output
-    for later in (timedelta(hours=2), timedelta(hours=5)):
-        space.clock.at = DAY + later
-        opener(space, run)().run_once(scheduled=True)
-    assert run.by[("2026-11-19", RISKS, "things/b")] == 0
-    space.clock.at = DAY + timedelta(days=1, minutes=1)
-    opener(space, run)().run_once(scheduled=True)
-    assert run.by[("2026-11-20", RISKS, "things/b")] == 1
 
 
 def test_serve_reads_a_raised_cap_at_its_next_wake_and_says_calls_resume(
@@ -410,26 +382,6 @@ def test_a_failed_part_and_a_cut_one_on_an_article_take_one_more_try_between_the
     assert run.tries[f"{RISKS} on things/b"] == 2 and run.tries[f"{PEOPLE} on things/b"] == 2
 
 
-def test_a_held_part_is_said_to_run_next_pass_only_when_the_period_owes_its_article(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    space = composed(tmp_path)
-    run = Unfinished(space, RISKS, "things/a")  # the day's pass leaves things/a owed for one more try
-    opener(space, run)().run_once(scheduled=True)
-    space.clock.at = DAY + timedelta(minutes=5)
-    real = compile_module.run_agent
-
-    def held(agent: Any, *args: Any, **kwargs: Any) -> Any:
-        if (agent.id, agent.target) == (PEOPLE, "things/b"):
-            raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold it")
-        return real(agent, *args, **kwargs)
-
-    monkeypatch.setattr(compile_module, "run_agent", held)
-    monkeypatch.setattr(space, "open", opener(space, run))
-    ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
-    assert (f"held     {PEOPLE} on things/b: held for room under the cap, runs at its writer's next scheduled run, "
-            "from 2026-11-20 00:00") in ran.output.splitlines()
-
-
 def test_agents_run_waits_for_a_part_the_cap_cut_and_fails_nothing(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     space = composed(tmp_path)
@@ -457,24 +409,3 @@ def test_one_article_by_hand_whose_run_spent_its_own_budget_says_it_as_a_pass_do
             f"{{ tokens_per_run, tool_calls }} in agents/{RISKS}.md sets it: the run holds 41000 tokens, its budget of "
             "40000, and it handed in nothing before then, so nothing lands")
     assert ran.exit_code == 1 and ran.output.splitlines() == [said], ran.output
-
-
-def test_an_article_every_part_of_which_is_held_by_hand_gets_one_held_line(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    space = composed(tmp_path)
-    passes(space, Logged(space), 1)  # the day's scheduled run
-    space.clock.at = DAY + timedelta(hours=1)
-    real = compile_module.run_agent
-
-    def held(agent: Any, *args: Any, **kwargs: Any) -> Any:
-        if agent.target == "things/b" and agent.id in (RISKS, PEOPLE):
-            raise HeldForRoom("held for room under the cap, runs next pass: runs under way hold it")
-        return real(agent, *args, **kwargs)
-
-    monkeypatch.setattr(compile_module, "run_agent", held)
-    monkeypatch.setattr(space, "open", opener(space, Logged(space)))
-    ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
-    assert ran.exit_code == 0, ran.output
-    said = (f"held     {COMPOSER} on things/b: held for room under the cap, runs at its writer's next scheduled run, "
-            "from 2026-11-20 00:00")
-    assert ran.output.splitlines() == ["wrote    things/a  articles/things/a.md", said], ran.output

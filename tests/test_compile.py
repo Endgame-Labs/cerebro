@@ -539,16 +539,12 @@ def test_a_composer_stopped_by_the_cap_leaves_the_paid_drafts_standing(tmp_path:
         def __init__(self) -> None:
             self.checks = 0
 
-        def reserve(self, *args: Any, **kwargs: Any) -> int:
+        def check(self, *args: Any) -> None:
             self.checks += 1
             if self.checks > 2:
                 raise BudgetSpent("compilation spent its cap")
-            return self.checks
 
         def record(self, *args: Any) -> None:
-            pass
-
-        def release(self, ticket: int) -> None:
             pass
 
     run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: {"Risks": "R [^r0]."}),
@@ -586,9 +582,6 @@ def test_grounding_past_the_cap_asks_no_model(tmp_path: Path) -> None:
 
     class Spent:
         def check(self, *args: Any) -> None:
-            raise BudgetSpent("compilation spent its cap")
-
-        def reserve(self, *args: Any) -> None:
             raise BudgetSpent("compilation spent its cap")
 
     _, _, _, common = setup(tmp_path)
@@ -776,34 +769,19 @@ def test_a_repair_is_held_to_the_cap_and_recorded_on_the_writing_model_call_by_c
     assert "grounded by the words alone" in spent.notes[0]
 
 
-class _WrongOnce:
-    """Ungrounded the first time each sentence is asked, grounded for a rewrite."""
-
-    def decide(self, state: Any, questions: Any) -> Any:
-        from cerebro.fakes import FakeDecider
-
-        plain = {s["id"]: ("grounded" if "moved" not in s["sentence"] else "unsupported") for s in state["sentences"]}
-        return FakeDecider(plain).decide(state, questions)
-
-
-def test_repairs_made_side_by_side_cannot_all_pass_the_cap(tmp_path: Path) -> None:
-    import json as _json
-    import time
-
+def test_a_repair_past_the_cap_is_refused_before_its_model_is_asked() -> None:
+    from cerebro.budget import BudgetSpent, Caps, Ledger
+    from cerebro.compile import _HeldRewriter
     from cerebro.fakes import FakeRewriter
-    from cerebro.models import DEFAULTS
+    from cerebro.models import DEFAULTS, TokenCount
 
-    def slow(r: dict[str, Any]) -> str:
-        time.sleep(0.1)  # so the calls overlap, as real ones do
-        return _json.dumps({"claim": "Beta shipped.", "fact_ids": [r["facts"][0]["id"]]})
-
-    cited = {f"r{i}": Citation("row", f"r{i}", quote=f"Item {i} shipped.") for i in range(8)}
-    text = " ".join(f"Item {i} shipped and moved [^r{i}]." for i in range(8))
-    grounding, ledger = _held_grounding(tmp_path, _WrongOnce(), cap=0.0002)
-    grounding.rewriter, grounding.writer = (rewriter := FakeRewriter(slow)), DEFAULTS["compilation"]
-    grounding(AGENT, {"Summary": text}, cited, [])
-    repairs = [r.data for r in ledger.store.rows("spend") if r.data["run"].startswith("repair")]
-    assert len(rewriter.asked) == 1 and len(repairs) == 1
+    at, model = datetime(2026, 11, 17, tzinfo=UTC), DEFAULTS["compilation"]
+    ledger = Ledger(MemoryStore(), Caps(compilation=1.0))
+    ledger.record("compilation", at, model, TokenCount(1_000_000, 0))  # $1.40, past the cap
+    asked = FakeRewriter(lambda r: "")
+    with pytest.raises(BudgetSpent):
+        _HeldRewriter(asked, ledger, model, lambda: at, "r").rewrite("system", "request")
+    assert asked.asked == []
 
 
 def test_a_repair_call_that_fails_after_its_provider_was_asked_still_counts_what_it_read() -> None:
@@ -840,62 +818,6 @@ def test_settings_turn_repair_off_and_refuse_a_value_that_is_not_true_or_false(t
         Cerebro(tmp_path, store=MemoryStore(), agent_run=ScriptedRun(lambda p: {}))
 
 
-def test_a_run_is_held_at_twice_its_agents_last_spend_and_six_side_by_side_still_cannot_pass_the_cap() -> None:
-    from cerebro.budget import BudgetSpent, Caps, Ledger
-    from cerebro.compile import _estimate
-    from cerebro.models import DEFAULTS, TokenCount
-
-    store = MemoryStore()
-    ledger = Ledger(store, Caps(total=1.0))
-    model, now = DEFAULTS["compilation"], datetime(2026, 11, 18, 9, tzinfo=UTC)
-    agents = [replace(AGENT, id=f"reports/r{n}", budget=Budget(tokens_per_run=2_000_000)) for n in range(6)]
-    assert _estimate(store, agents[0], [], None) is None  # with no price, a first run is held at its whole budget
-    for n, agent in enumerate(agents):  # each agent's last run, yesterday, cost $0.10
-        store.append("agent-runs", {"run": f"run_{n}", "agent": agent.id})
-        ledger.record("compilation", datetime(2026, 11, 17, 9, tzinfo=UTC), model, TokenCount(71_428, 0), f"run_{n}")
-    held = []
-    for agent in agents:
-        try:
-            held.append(ledger.reserve("compilation", now, model, agent.budget.tokens_per_run,
-                                       usd=_estimate(store, agent, [], model)))
-        except BudgetSpent:
-            pass
-    assert len(held) == 5  # five held at $0.20 each fill the $1 cap, and the sixth waits
-    with pytest.raises(BudgetSpent):  # held at its whole budget, $2.80, a run waits while any other is under way
-        ledger.reserve("compilation", now, model, agents[0].budget.tokens_per_run)
-
-
-def test_a_run_is_held_at_twice_what_its_agents_latest_run_spent_not_its_first() -> None:
-    from cerebro.budget import Caps, Ledger
-    from cerebro.compile import _estimate
-    from cerebro.models import DEFAULTS, TokenCount
-
-    store, model = MemoryStore(), DEFAULTS["compilation"]
-    ledger = Ledger(store, Caps())
-    for run, tokens in (("run_old", 714_286), ("run_new", 71_429)):  # $1.00, then $0.10
-        store.append("agent-runs", {"run": run, "agent": AGENT.id})
-        ledger.record("compilation", datetime(2026, 11, 17, 9, tzinfo=UTC), model, TokenCount(tokens, 0), run)
-    assert _estimate(store, AGENT, [], model) == pytest.approx(0.2, abs=0.001)
-
-
-def test_a_first_run_is_held_at_its_opening_read_a_few_times_not_its_whole_budget_so_a_small_cap_runs_many() -> None:
-    from cerebro.budget import Caps, Ledger
-    from cerebro.compile import FIRST_REPLY, FIRST_TURNS, _estimate
-    from cerebro.evidence import Evidence
-    from cerebro.models import DEFAULTS, TokenCount, cost
-    from cerebro.run import tokens
-
-    store, model = MemoryStore(), DEFAULTS["compilation"]
-    evidence = [Evidence("Facts", ["- [^fact_1] " + "x" * 9_000])]  # about 3,600 tokens
-    held = _estimate(store, AGENT, evidence, model)
-    opening = tokens(AGENT.prompt) + tokens("Facts") + tokens(evidence[0].lines[0])
-    assert held == pytest.approx(cost(model.provider, model.model, TokenCount(opening * FIRST_TURNS, FIRST_REPLY)))
-    assert held < cost(model.provider, model.model, TokenCount(AGENT.budget.tokens_per_run, 0)) / 3
-    ledger, now = Ledger(store, Caps(compilation=1.0)), datetime(2026, 11, 18, 9, tzinfo=UTC)
-    twelve = [ledger.reserve("compilation", now, model, AGENT.budget.tokens_per_run, usd=held) for _ in range(12)]
-    assert len(twelve) == 12  # twelve first runs side by side fit a $1 cap, as a composer's subagents start
-
-
 def _capped(cap: float) -> tuple[MemoryStore, Any, Any, Callable[[], datetime]]:
     from cerebro.budget import Caps, Ledger
     from cerebro.models import DEFAULTS
@@ -905,45 +827,34 @@ def _capped(cap: float) -> tuple[MemoryStore, Any, Any, Callable[[], datetime]]:
                                                                                                     tzinfo=UTC)
 
 
-def test_under_a_cap_a_run_lets_go_of_what_it_held_so_the_next_run_starts() -> None:
-    from cerebro.compile import run_agent
-
-    store, ledger, model, clock = _capped(1.0)
-    big = replace(AGENT, budget=Budget(tokens_per_run=2_000_000))  # its whole budget, $2.80, is over the cap
-    for _ in range(2):
-        run = run_agent(big, [], [], agent_run=ScriptedRun(lambda p: {"Summary": "s"}), store=store, ledger=ledger,
-                        model=model, clock=clock)
-        assert run.status == "done"
-
-
-def test_beside_a_run_under_way_a_cheap_run_starts_on_its_estimate_and_so_does_a_first_run_on_its_opening() -> None:
+def test_a_run_starts_while_the_cap_has_room_finishes_past_it_and_once_the_cap_is_met_none_starts() -> None:
     from cerebro.budget import BudgetSpent
     from cerebro.compile import run_agent
     from cerebro.models import TokenCount
+    from cerebro.run import Usage
 
     store, ledger, model, clock = _capped(1.0)
-    agents = {name: replace(AGENT, id=f"reports/{name}", budget=Budget(tokens_per_run=2_000_000))
-              for name in ("outer", "cheap", "new")}
-    for name in ("outer", "cheap"):  # each one's last run, yesterday, cost $0.10
-        store.append("agent-runs", {"run": f"run_{name}", "agent": agents[name].id})
-        ledger.record("compilation", datetime(2026, 11, 17, 9, tzinfo=UTC), model, TokenCount(71_429, 0),
-                      f"run_{name}")
+    store.append("agent-runs", {"run": "run_last", "agent": "reports/outer"})  # its last run, yesterday, cost $0.70
+    ledger.record("compilation", datetime(2026, 11, 17, 9, tzinfo=UTC), model, TokenCount(500_000, 0), "run_last")
     beside: dict[str, str] = {}
 
-    def outer(prompt: str) -> dict[str, str]:
-        """While the outer run holds $0.20, two more runs try to start beside it."""
-        for name in ("cheap", "new"):
-            try:
-                beside[name] = run_agent(agents[name], [], [], agent_run=ScriptedRun(lambda p: {"Summary": "s"}),
-                                         store=store, ledger=ledger, model=model, clock=clock).status
-            except BudgetSpent as error:
-                beside[name] = str(error)
-        return {"Summary": "s"}
+    class Spends(AgentRun):
+        """Each run spends $1.40, past the $1 cap. While the outer run is under way, one run starts beside it before
+        any spend lands, and one more tries once the one beside it has spent past the cap."""
 
-    run_agent(agents["outer"], [], [], agent_run=ScriptedRun(outer), store=store, ledger=ledger, model=model,
-              clock=clock)
-    assert beside["cheap"] == "done"  # held at $0.20 beside $0.20: under the $1 cap
-    assert beside["new"] == "done"  # a first run is held at its opening read a few times, not at its whole $2.80
+        def run(self, agent: Agent, evidence: Any, tools: Any, budget: Budget) -> Run:
+            for name in ("beside", "after") if agent.id == "reports/outer" else ():
+                try:
+                    beside[name] = run_agent(replace(AGENT, id=f"reports/{name}"), [], [], agent_run=self,
+                                             store=store, ledger=ledger, model=model, clock=clock).status
+                except BudgetSpent as error:
+                    beside[name] = type(error).__name__
+            return Run(f"run_{agent.id}", agent.id, agent.target, "done", usage=Usage(input_tokens=1_000_000))
+
+    outer = run_agent(replace(AGENT, id="reports/outer", budget=Budget(tokens_per_run=2_000_000)), [], [],
+                      agent_run=Spends(), store=store, ledger=ledger, model=model, clock=clock)
+    assert beside == {"beside": "done", "after": "BudgetSpent"}  # room under the cap starts a run, and none past it
+    assert outer.status == "done" and ledger.spent(clock(), "compilation") == pytest.approx(2.8)  # both count
 
 
 def test_a_stop_part_way_through_landing_leaves_the_article_as_it_was_and_the_next_compile_runs(
@@ -1202,20 +1113,20 @@ def test_with_no_material_a_failed_subagent_leaves_the_article_as_it_was_and_one
         assert "## Risks\n\nR [^r0]." in body(article)
 
 
-def test_a_subagent_held_for_room_stands_aside_and_the_others_content_lands_once(tmp_path: Path) -> None:
-    from cerebro.budget import HeldForRoom
+def test_a_subagent_the_cap_refused_stands_aside_and_the_others_content_lands_once(tmp_path: Path) -> None:
+    from cerebro.budget import BudgetSpent
 
     class Held(AgentRun):
         def run(self, agent: Any, evidence: Any, tools: Any, budget: Budget) -> Run:
-            raise HeldForRoom("runs under way hold the room left under the compilation cap")
+            raise BudgetSpent("compilation spent its cap")
 
     agents, store, _items, common = briefs(tmp_path, JOINED)
     run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: "R [^r0]."), "briefs/subagents/people": Held()})
     compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert body(compiled.article) == "## Risks\n\nR [^r0]."
-    assert any("briefs/subagents/people: held for room under the cap" in note for note in compiled.notes)
-    for _ in range(4):  # it alone is due, and held: nothing is paid for again
-        with pytest.raises(HeldForRoom):
+    assert any("briefs/subagents/people: did not start" in note for note in compiled.notes)
+    for _ in range(4):  # it alone is due, and refused: nothing is paid for again
+        with pytest.raises(BudgetSpent):
             compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert run.ran.count("briefs/subagents/risks") == 1 and body(store.article("briefs/alder")) == "## Risks\n\nR [^r0]."
 

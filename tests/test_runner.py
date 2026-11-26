@@ -201,25 +201,6 @@ def test_a_workspace_past_its_compilation_cap_calls_no_model(tmp_path: Path) -> 
     assert result.compiled == [] and called == [] and result.failed == {} and result.waiting_runs == ["reports/weekly"]
 
 
-def test_a_run_held_for_room_under_the_cap_is_held_not_failed_and_runs_on_the_next_pass(tmp_path: Path) -> None:
-    from datetime import UTC, datetime
-
-    called: list[str] = []
-    cerebro = workspace(tmp_path, extraction=FakeExtraction())
-    (tmp_path / "settings.yaml").write_text("budget:\n  compilation_daily_usd: 1\n")
-    at = datetime(2026, 11, 17, 12, tzinfo=UTC)
-    capped = Cerebro(tmp_path, store=cerebro.store, extraction=FakeExtraction(), clock=lambda: at,
-                     connectors=[FakeConnector("notes", NOTES)],
-                     agent_run=ScriptedRun(lambda prompt: called.append(prompt) or cited(prompt)))
-    under_way = capped.ledger.reserve("compilation", at, capped.models["compilation"], 0, usd=0)
-    capped.ledger._held[under_way] = ("compilation", "2026-11-17", 0.999)  # a run under way holds nearly all of it
-    held = capped.run_once()
-    assert called == [] and "reports/weekly" not in held.failed
-    assert held.held["reports/weekly"].startswith("held for room under the cap, runs next pass")
-    capped.ledger.release(under_way)  # the run under way ended
-    assert capped.run_once().compiled == ["reports/weekly"] and len(called) == 1
-
-
 def test_a_note_whose_header_names_an_article_links_its_facts(tmp_path: Path) -> None:
     from cerebro.article import Identity
 

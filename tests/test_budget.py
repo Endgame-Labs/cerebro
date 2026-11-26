@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from cerebro.budget import LOG, BudgetError, BudgetSpent, Caps, HeldForRoom, Ledger, UnpricedModel, read_caps
+from cerebro.budget import LOG, BudgetError, BudgetSpent, Caps, Ledger, UnpricedModel, read_caps
 from cerebro.fakes import MemoryStore
 from cerebro.models import ModelSpec
 from cerebro.run import Usage
@@ -125,38 +125,6 @@ def test_a_cost_is_kept_on_the_utc_day_it_was_spent() -> None:
     evening = datetime(2026, 11, 17, 20, 0, tzinfo=timezone(timedelta(hours=-8)))
     row = Ledger(MemoryStore(), Caps()).record("compilation", evening, ModelSpec("fireworks", "glm-5p3"), Usage())
     assert row["day"] == "2026-11-18" and row["at"] == "2026-11-18T04:00:00Z"
-
-
-def test_runs_side_by_side_reserve_their_budget_so_they_cannot_all_pass_the_cap_together() -> None:
-    ledger, at = Ledger(MemoryStore(), Caps(compilation=1.0)), datetime(2026, 11, 17, 9, tzinfo=UTC)
-    model = ModelSpec("fireworks", "glm-5p3")
-    first = ledger.reserve("compilation", at, model, 2_000_000)  # the first run under the cap always starts
-    with pytest.raises(HeldForRoom, match="held for room under the cap, runs next pass: compilation runs under way hold"):
-        ledger.reserve("compilation", at, model, 2_000_000)
-    ledger.record("compilation", at, model, Usage(input_tokens=1000))
-    ledger.release(first)
-    ledger.release(ledger.reserve("compilation", at, model, 2_000_000))  # once settled, the next one starts
-
-
-def test_an_estimate_is_held_between_nothing_and_the_whole_budget_and_only_on_its_own_day() -> None:
-    at, model = datetime(2026, 11, 17, 9, tzinfo=UTC), ModelSpec("fireworks", "glm-5p3")
-    ledger = Ledger(MemoryStore(), Caps(compilation=1.0))
-    ledger.reserve("compilation", at, model, 100_000, usd=10.0)  # held at its whole budget, $0.14, not $10
-    ledger.reserve("compilation", at, model, 100_000)
-    ledger = Ledger(MemoryStore(), Caps(compilation=1.0))
-    ledger.reserve("compilation", at, model, 2_000_000, usd=-5.0)  # held at nothing, never below
-    ledger.reserve("compilation", at, model, 2_000_000)
-    with pytest.raises(BudgetSpent, match="runs under way hold"):
-        ledger.reserve("compilation", at, model, 100_000)
-    ledger.reserve("compilation", at + timedelta(days=1), model, 2_000_000)  # the next UTC day holds none of it
-
-
-def test_reservations_are_held_against_the_total_cap_too_as_init_writes_it() -> None:
-    ledger, at = Ledger(MemoryStore(), Caps(total=1.0)), datetime(2026, 11, 17, 9, tzinfo=UTC)
-    model = ModelSpec("fireworks", "glm-5p3")
-    ledger.reserve("compilation", at, model, 2_000_000)
-    with pytest.raises(BudgetSpent, match=r"runs under way hold .* of the \$1 daily cap"):
-        ledger.reserve("extraction", at, model, 2_000_000)
 
 
 def test_an_extraction_that_fails_after_its_model_calls_still_books_what_they_cost() -> None:

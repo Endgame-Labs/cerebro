@@ -116,8 +116,8 @@ NO_TOOL = "sent with tool_choice none: its opening fills the room its budget lea
 HAND_IN_ONLY = NO_TOOL + " but the two that hand in its text or say it has nothing to write"
 BY_HAND = "compile --article runs it again whether or not anything moved"
 NEXT_PASS = "What the next pass, cerebro serve --once, would run now:"
-ROOM = ("the runs before it may spend or hold what is left under the day's spending cap, so whether it runs or waits "
-        "for room is not known until they do")
+ROOM = ("the runs before it may spend what is left under the day's spending cap, so whether it runs or waits for the "
+        "cap is not known until they do")
 FIRST_RUN = ("The workspace is in its first run: the next cerebro serve --once runs it in place of a pass, and its "
              "curators propose what the wiki holds, which asks a model: their runs are not listed here. If none of "
              "them proposes anything, it then builds at once, runs the writers below and may ask once more a curator "
@@ -768,9 +768,9 @@ def _room(reading: _Reading, out: Stale, side_by_side: bool) -> None:
     """Make `not known` each stale run that the runs before it could leave no room for under the day's caps, in the
     order its command runs them: a pass runs its curators one at a time and then each collection's articles side by
     side, one collection after another, as `compile_groups` gives them, and `compile --article` runs one at a time.
-    A run waits when the caps are spent before it starts, or, as `Ledger.reserve` holds it, when runs under way beside
-    it hold the room it needs. What a run spends is not known before it runs, so each is taken at the most its budget
-    lets it spend; a run that nothing could come before always starts, as the ledger lets the first run start."""
+    A run waits when the caps are spent before it starts, and a run under way finishes. What a run spends is not known
+    before it runs, so each that may end before it starts is taken at the most its budget lets it spend; a run that
+    nothing could come before always starts."""
     workspace = reading.workspace
     caps, at = workspace.ledger.caps, workspace.clock()
     limits = [(cap, workspace.ledger.spent(at, layer)) for cap, layer in ((caps.of("compilation"), "compilation"),
@@ -804,8 +804,8 @@ def _room(reading: _Reading, out: Stale, side_by_side: bool) -> None:
         spend = {n: most(out.rows[n].agent) for n in group}
         whole = sum(spend.values())
         for n in group:
-            worst = before + whole - spend[n]  # what may be spent or held before it starts
-            if out.rows[n].status == "stale" and worst > 0 and (worst >= left or worst + spend[n] > left):
+            worst = before + whole - spend[n]  # what may be spent before it starts
+            if out.rows[n].status == "stale" and worst > 0 and worst >= left:
                 out.rows[n] = replace(out.rows[n], status="not known", why=ROOM)
         before += whole
 

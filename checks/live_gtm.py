@@ -163,7 +163,7 @@ def show(n: int | str, result: PassResult, seconds: float, reasons: list[str]) -
     for key, why in result.failed.items():
         print(f"  failed  {key}: {why}")
         reasons.append(f"pass {n}: {key} failed: {why}")
-    for key, why in result.held.items():  # held for room under the cap: it runs on the next pass
+    for key, why in result.held.items():  # a curator the daily cap kept from starting: it runs on the next pass
         print(f"  held    {key}: {why}")
     for line in result.notices:
         if "with no model" in line:

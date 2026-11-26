@@ -1,6 +1,6 @@
 """Nothing enters the wiki, or leaves it, with nobody deciding: after any way a first run fails or is declined, the
-next run is a first run again; a curator whose model call failed without raising failed; a curator held for room
-waits and fails nothing; a row a person left unchecked comes back only as a proposal; and under `serve` a failed
+next run is a first run again; a curator whose model call failed without raising failed; a row a person left
+unchecked comes back only as a proposal; and under `serve` a failed
 first run says so, names what mends it, and is not paid for again on every wake. Neutral collections only: `things`
 and `parts`. Fakes and stand-in models only."""
 
@@ -19,7 +19,7 @@ from test_first_run_structure import NOW, RECORDS, by_record, lay_out_workspace,
 from cerebro import Cerebro
 from cerebro.curate import proposing
 from cerebro.fakes import FakeConnector, FakeExtraction
-from cerebro.first_run import KEY, Choices, RoundStopped, in_first_run, run, served
+from cerebro.first_run import KEY, Choices, in_first_run, run, served
 from cerebro.records import proposals
 
 ADMITS_ALONE = "---\nauthority: { admit: true }\n"
@@ -174,52 +174,6 @@ def test_a_failed_run_beside_a_list_that_goes_on_is_a_line_to_check_and_is_asked
                    for line in out.lines)
         assert any(line.startswith("failed    parts/curator") for line in said)
         assert any(line.startswith("stage     late: asking agents/parts/curator.md again") for line in said)
-
-
-# -- a curator held for room waits, and fails nothing
-
-
-def _capped(root: Path, cap: str) -> Path:
-    (root / "settings.yaml").write_text(f"budget:\n  compilation_daily_usd: {cap}\n")
-    return root
-
-
-def test_a_curator_its_siblings_hold_the_room_from_runs_once_they_end_and_the_list_is_offered(tmp_path: Path) -> None:
-    import time
-
-    class Slow(Script):
-        def run(self, agent, evidence, tools, budget):  # type: ignore[no-untyped-def]
-            time.sleep(0.2)  # both curators of the round are under way at once
-            return super().run(agent, evidence, tools, budget)
-
-    script = Slow({"things/curator": [by_record("T1"), by_record("T2")], "parts/curator": []})
-    said: list[str] = []
-    shown: list[Any] = []
-    with open_it(_capped(lay_out_workspace(tmp_path), "0.000001"), script) as workspace:
-        out = run(workspace, choose=lambda pile: shown.append(pile) or None, say=said.append)
-        assert out is not None and not out.failed
-        assert not any(line.startswith("failed") or "held for room" in line for line in said)
-        assert set(script.ran) == {"parts/curator", "things/curator"}  # both ran, the held one once room was free
-        assert shown and shown[0].waiting() == 2  # the list, once every curator has run
-        assert sum("reviewing sources for" in line for line in said) == 2  # each said once, as it first started
-
-
-def test_a_first_run_held_for_room_by_other_work_stays_a_first_run_and_asks_again(tmp_path: Path) -> None:
-    script = Script({"things/curator": [by_record("T1")], "parts/curator": []})
-    with open_it(_own_authority(_capped(lay_out_workspace(tmp_path), "1")), script) as workspace:
-        curator = workspace.agent("things/curator")
-        ticket = workspace.ledger.reserve("compilation", NOW, workspace.model_of(curator), 10**10, usd=1.0)  # all of the cap
-        with pytest.raises(RoundStopped, match="held for room"):
-            run(workspace, choose=Choices.starter)
-        assert script.ran == []  # nobody ran, and nobody failed
-        session = workspace.store.state(KEY)
-        assert session is not None and session["status"] == "discovering" and in_first_run(workspace)
-        assert not any((state or {}).get("state") == "failed" for state in (session.get("lists") or {}).values())
-        workspace.ledger.release(ticket)
-        shown: list[Any] = []
-        out = run(workspace, choose=lambda pile: shown.append(pile) or None)
-        assert out is not None and shown[0].waiting() == 1 and set(script.ran) == {"parts/curator", "things/curator"}
-        assert _landed_alone(workspace) == [] and _articles(workspace) == []
 
 
 # -- a row a person left unchecked comes back as a proposal, and lands only when a person approves it
