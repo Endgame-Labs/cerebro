@@ -1,13 +1,12 @@
 note: >-
   Synthetic. The next steps of one made-up call article, each case one part as its writer drafted it, with labels over
-  parts of its lists, for a check of grounding on the real decision model: run by checks/live_list_labels.py. Every
-  case was labelled by hand before anything ran against it. supported-in-other-words: every label and item in it
-  should land; truly-unsupported: one of its labels claims what the facts under it do not hold, and should go. Every
-  person and firm is invented.
+  parts of its lists, for a check of grounding on the real decision model: run by `cerebro eval
+  checks/list_label_cases.yaml` in a workspace, on the decision model its settings name. Every case was labelled by
+  hand before anything ran against it. supported-in-other-words: every label and item in it should land;
+  truly-unsupported: one of its labels claims what the facts under it do not hold, and should go. Every person and
+  firm is invented.
 today: "2026-11-20"
 context: A workspace for a team that plans freight depots with the firms it works with.
-article: calls/2026-11-18-quillfield-depot-review
-heading: Next steps
 facts:
   - id: f_q01
     text: Tobin Marsh will send Quillfield Freight the revised depot layout by Friday.
@@ -131,3 +130,30 @@ cases:
 
       - Odile Brand will share the loading-dock schedule [^f_q03].
       - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: k08
+    label: supported-in-other-words
+    sentence: |
+      Tobin Marsh took on two next steps:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+  - id: u05
+    label: truly-unsupported
+    sentence: |
+      Quillfield Freight signed the depot lease on the call and took on these steps:
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: u06
+    label: truly-unsupported
+    sentence: |
+      Top 3 risks:
+
+      - Odile Brand still has to confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: u07
+    label: truly-unsupported
+    sentence: |
+      We agreed 4 next steps:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
