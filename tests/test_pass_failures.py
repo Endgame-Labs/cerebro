@@ -61,7 +61,7 @@ def test_a_curators_run_that_fails_inside_the_model_loop_is_a_failure_of_the_pas
     ran = next(line for line in lines if line.startswith("ran       things/curator"))
     assert ran.startswith("ran       things/curator: failed, ") and "changed nothing" not in done.output, done.output
     assert any(line.startswith("failed    things/curator: ") for line in lines), done.output
-    assert lines[-1] == "Done: 0 written, 1 failed.", done.output
+    assert lines[-1] == "Done: 1 failed.", done.output
     assert done.exit_code == 1  # a failure with nothing landed fails the pass
 
 
@@ -111,7 +111,7 @@ def test_a_curator_that_stops_at_its_budget_says_so_counts_as_a_run_and_waits_fo
             f"evidence: raise {key} in agents/things/curator.md")
     assert f"ran       things/curator: {stop}, $" in done.output and "changed nothing" not in done.output, done.output
     assert f"warning   things/curator: {stop}" in done.output, done.output
-    assert done.output.splitlines()[-1] == "Done: 0 written, 0 failed." and done.exit_code == 0, done.output
+    assert done.output.splitlines()[-1] == "Done." and done.exit_code == 0, done.output
     waited = serve_once(root)  # nothing moved, and its budget is as it was: no run, no spend
     assert stand.asked == ["things/curator"], waited.output
     why = (f"its run stopped at its budget with nothing decided, so it waits until agents/things/curator.md changes: "
@@ -149,7 +149,7 @@ def test_a_curator_whose_run_failed_waits_and_the_pass_and_status_say_until_when
     line = next(line for line in waited.output.splitlines() if line.startswith("skipped   things/curator: "))
     assert re.fullmatch(r"skipped   things/curator: its run failed 1 time, so it waits until \S+Z before it runs "
                         r"again, or until its file, workspace\.md or settings\.yaml changes", line), waited.output
-    assert waited.exit_code == 0 and waited.output.splitlines()[-1] == "Done: 0 written, 0 failed.", waited.output
+    assert waited.exit_code == 0 and waited.output.splitlines()[-1] == "Done.", waited.output
     shown = CliRunner().invoke(main, ["status", "--workspace", str(root)])
     assert "waiting   " + line.removeprefix("skipped   ") in shown.output.splitlines(), shown.output
 
@@ -162,7 +162,7 @@ def test_a_curator_that_fails_beside_one_that_ran_and_changed_nothing_exits_0(
     done = serve_once(root)
     assert "ran       others/curator: changed nothing" in done.output, done.output
     assert any(line.startswith("failed    things/curator: ") for line in done.output.splitlines()), done.output
-    assert done.output.splitlines()[-1] == "Done: 0 written, 1 failed.", done.output
+    assert done.output.splitlines()[-1] == "Done: 1 failed.", done.output
     assert done.exit_code == 0, done.output  # a run that did not fail landed
 
 
@@ -307,7 +307,7 @@ def test_a_first_run_curator_that_failed_then_ran_is_a_warning_and_not_a_failure
     assert "failed    parts/curator" not in done.output and done.exit_code == 0, done.output
     assert ("warning   parts/curator: failed in this first run, and did not fail when it ran after: discovery for "
             "parts collection did not finish: the stand-in failed") in done.output, done.output
-    assert done.output.splitlines()[-1] == "Done: 0 written, 0 failed.", done.output
+    assert done.output.splitlines()[-1] == "Done.", done.output
 
 
 def test_a_first_run_that_stops_on_an_error_still_says_what_failed_before(

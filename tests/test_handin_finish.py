@@ -46,13 +46,13 @@ def test_a_pass_names_each_run_that_wrote_nothing_and_its_closing_line_counts_th
 def test_a_pass_with_no_run_that_wrote_nothing_keeps_its_closing_line_without_that_part(
         capsys: pytest.CaptureFixture[str]) -> None:
     cli._print(PassResult(compiled=["things/first"], held={"things/article": "held for room"}))
-    assert capsys.readouterr().out.splitlines()[-1] == "Done: 1 written, 0 failed, 1 held for the next pass."
+    assert capsys.readouterr().out.splitlines()[-1] == "Done: 1 written, 1 held for the next pass."
 
 
 def test_a_pass_whose_only_run_wrote_nothing_does_not_say_no_agent_ran(capsys: pytest.CaptureFixture[str]) -> None:
     cli._print(PassResult(ran={"reports/weekly": HANDED_NOTHING}))
     out = capsys.readouterr().out
-    assert "agents    none" not in out and out.splitlines()[-1] == "Done: 0 written, 1 ran and wrote nothing, 0 failed."
+    assert "agents    none" not in out and out.splitlines()[-1] == "Done: 1 ran and wrote nothing."
 
 
 # -- 2. a run by hand

@@ -175,6 +175,7 @@ class PassResult:
     began, and `waiting_runs` the agent runs."""
 
     listed: dict[str, int] = field(default_factory=dict)
+    from_start: set[str] = field(default_factory=set)  # each source listed with no cursor kept: its whole window
     read: int = 0
     extracted: int = 0
     retracted: int = 0
@@ -967,6 +968,8 @@ def _list_one(workspace: Cerebro, name: str, listed: _Listed, result: PassResult
     full = changes and _full_due(workspace, name, listed.cursor)
     relisted = False  # listed again in full, in this pass, after its cursor was dropped
     while True:
+        if listed.cursor is None:
+            result.from_start.add(name)
         try:
             if relisted:
                 listed.cursor = inner.cursor_for(None, full=True)

@@ -213,7 +213,7 @@ def test_init_then_a_note_then_serve_once_then_status(tmp_path: Path, stand_ins:
     assert "facts     2 current, from 1 record: 2 from local\n" in status.output  # what the pass made, said plainly
     if template is None:
         assert "agents    none: write one with cerebro agents new <collection>/<name>" in passed.output
-        assert passed.exit_code == 0 and passed.output.splitlines()[-1] == "Done: 0 written, 0 failed."
+        assert passed.exit_code == 0 and passed.output.splitlines()[-1] == "Done."
         assert "agents    0 loaded" in status.output and "articles  none yet" in status.output
         assert "working   0 articles in the working set" in status.output
     else:
@@ -359,7 +359,7 @@ def test_serve_runs_passes_beside_the_mcp_server_and_stops_them_when_it_ends(tmp
     taken_port(monkeypatch)
     served = run("serve", "--workspace", str(tmp_path))
     assert served.exit_code == 0, served.output
-    assert passed.is_set() and "a pass every 30 seconds" in served.output and "Done: 0 written" in served.output
+    assert passed.is_set() and "a pass every 30 seconds" in served.output and "Done." in served.output.splitlines()
 
 
 def test_a_new_workspace_keeps_a_key_at_once_and_init_and_status_name_every_key_a_pass_needs(

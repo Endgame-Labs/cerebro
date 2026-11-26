@@ -1396,6 +1396,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     `on` are the first pass's own."""
     for name, count in more.listed.items():
         into.listed[name] = into.listed.get(name, 0) + count
+    into.from_start |= more.from_start
     into.read += more.read
     into.extracted += more.extracted
     into.retracted += more.retracted
@@ -1675,7 +1676,8 @@ def served(workspace: Cerebro, *, say: Callable[[str], None] | None = None) -> P
     workspace.store.set_state(FAILED, None)
     result = out.result or PassResult()
     if out.result is None:
-        result.listed, result.failed = held.listed, {k: workspace.mask_every()(v) for k, v in held.failed.items()}
+        result.listed, result.from_start = held.listed, held.from_start
+        result.failed = {k: workspace.mask_every()(v) for k, v in held.failed.items()}
     said = [f"{line} {SERVED}" if line.startswith("the first run's list") else line for line in out.lines]
     lines = [workspace.mask(line) for line in said]
     session = _state(workspace)
