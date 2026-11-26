@@ -84,18 +84,38 @@ _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", 
 
 def reduce(text: str) -> str:
     """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
-    quote with nothing but a signature, a sign-off or a footer above it is kept from where it begins, less its own
-    signature, so its words are not lost. Line endings become \\n, the end of each line is trimmed, and runs of blank
-    lines shrink to one."""
+    quote with nothing but a signature or a footer above it is kept from where it begins, less its own signature, so
+    its words are not lost. Line endings become \\n, the end of each line is trimmed, and runs of blank lines shrink
+    to one."""
     lines = _split_lines(text)
     kept = _drop_quoted(lines)
     own = _drop_signature(kept)
-    start = next((k for k, line in enumerate(kept) if line != lines[k]), len(kept))  # kept is lines up to the first one dropped
-    if start < len(lines) and not any(_written(line) for line in own[:_closing_block(own)]):
+    # kept and lines part at the first line dropped: there the quote or forward begins
+    start = next((k for k, line in enumerate(kept) if line != lines[k]), len(kept))
+    if start < len(lines) and _signed_only(kept, own):
         while start and not _written(lines[start - 1]):
             start -= 1
         own = _drop_signature(lines[start:])
     return _collapse_blank("\n".join(own))
+
+
+def _signed_only(kept: list[str], own: list[str]) -> bool:
+    """Whether the lines above a quote or a forward, `kept`, hold nothing their sender wrote, `own` being what is
+    left of them without their signature: only a footer, a signature, a sign-off with a name under it, or a closing
+    block with an address, a site or a phone number in it. A sign-off with nothing under it is the message."""
+    above = _trim_blank_end(_drop_contact_block(_trim_blank_end(kept)))
+    if above and _SIGN_OFF.match(above[-1].strip()):
+        return False
+    return not any(_written(line) for line in _drop_contact_block(own))
+
+
+def _drop_contact_block(lines: list[str]) -> list[str]:
+    """The lines without a closing block that holds an address, a site or a phone number: a short reply can read as
+    a name and a title, but it holds none of those."""
+    start = _closing_block(lines)
+    contact = any("@" in line or "://" in line or "www." in line or sum(c.isdigit() for c in line) >= 7
+                  for line in lines[start:])
+    return lines[:start] if contact else lines
 
 
 def _written(line: str) -> bool:
