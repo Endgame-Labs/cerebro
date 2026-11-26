@@ -24,10 +24,10 @@ A part meets four steps.
    part, with each cited fact once by id, the `checks` code found of its names, numbers and dates, and the `claims`
    code listed: each link of cause, condition or sequence, and each word of a plan over a fact that says only a want.
    An answer under `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, a lean to names or
-   states_held keeps a lead, any other lean fails it, and a claim whose lead failed stands only on a firm grounded. A
-   listed claim with no fact behind it fails its sentence. With no decider, or once it raises `BudgetSpent`, the
-   words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words must be in what it cites, and
-   `Grounded.spent` says why.
+   states_held keeps a lead whose figures its cited facts hold, any other lean fails it, and a claim whose lead failed
+   stands only on a firm grounded. A listed claim with no fact behind it fails its sentence. With no decider, or
+   once it raises `BudgetSpent`, the words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words must be in
+   what it cites, and `Grounded.spent` says why.
 4. What failed. With a `Rewriter`, a failed sentence is rewritten once from its cited facts on the bundled `repair`
    prompt, refused by code when it adds a word neither its draft nor its facts hold, loses a name, a date or a
    figure, or copies a fact, and judged again. Then whatever leaned on what went goes too: a sentence that opens with
@@ -1708,9 +1708,9 @@ class _Judge:
 
     def verdict(self, i: int, a: _Ask, answers: Mapping[str, Answer], listed: dict[str, list[dict[str, str]]]
                 ) -> _Verdict:
-        """How the answers on one ask read: a lean keeps a lead when it is to names or states_held, both of which
-        keep it, and the lead's figures are in its cited facts, and a claim code listed under an item that the judge
-        finds no fact behind fails that item."""
+        """How the answers on one ask read. Names and states_held both keep a lead. Names keeps it only when the
+        lead's figures are in its cited facts, and so does a lean to states_held. A firm states_held keeps it as it
+        is. A claim code listed under an item that the judge finds no fact behind fails that item."""
         def unbacked(id: str) -> bool:
             return any((answer := answers.get(c["id"])) is not None and answer.choice.endswith(":none") and
                        _firm(answer) for c in listed.get(id, []))
