@@ -66,9 +66,10 @@ they are placed at.
 Admit people only: a company is no person. Each reason names the one account
 this person belongs to, and their role there.
 
-When a person's line leaves the decision open, look once: query facts by
-their name and address, or read the deals in your evidence. A contact your CRM
-holds may still have spoken on calls.
+When a person's line leaves the decision open, look once: call query with
+source facts and filters { about: <their name or address> }, or read the
+deals in your evidence. A contact your CRM holds may still have spoken on
+calls.
 
 The workspace's own people get no article, and neither do the users of your
 CRM. A person a fact or a note places on your side, as in "Sam Reed from our
