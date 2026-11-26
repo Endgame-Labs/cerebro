@@ -11,7 +11,7 @@ Cerebro builds a wiki from your sources so your agents give more accurate, consi
 
 Without Cerebro, an agent starts from scratch on every question. It digs through raw call transcripts, documents and email threads, spending time and tokens. Ask again tomorrow, and you might get a different answer.
 
-With Cerebro, the answer's already written, before anyone asks. Everyone gets the same short article, and every sentence cites the fact behind it. It works for any subject your sources cover:
+With Cerebro, the answer's already written, before anyone asks. Everyone gets the same well-cited article, and it stays fresh as new information arrives. It works for any subject your sources cover:
 
 ```markdown
 ---
@@ -44,7 +44,7 @@ uv tool install .
 cerebro init ~/wikis/team-wiki
 ```
 
-`init` asks a few questions, from a template and a daily budget to your model keys, sources and AI tools, then runs a first pass. If it has nothing to read yet, go to the workspace with `cd ~/wikis/team-wiki`. Drop a note in `local/` or connect a source with `cerebro connect`, then run `cerebro serve --once`. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
+`init` asks a few questions, from a template and a daily budget to your model keys, sources and AI tools, then runs a first pass. If it has nothing to read yet, go to the workspace with `cd ~/wikis/team-wiki`. Drop a note in `local/` or connect a source with `cerebro connect`, then run `cerebro serve --once`. Leave `cerebro serve` running to keep the wiki current. The [quickstart](docs/quickstart.md) walks through each step, from your first note to asking your agent about it.
 
 ## Status
 
