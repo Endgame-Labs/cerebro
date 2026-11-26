@@ -301,6 +301,22 @@ def test_an_ask_rejected_beside_an_accept_is_told_as_no_deferral_and_one_not_tak
     assert proposing(store, "people/curator")  # p_c closed as not taken: no person decided an admit of its
 
 
+def test_carrying_out_a_persons_own_ask_ends_proposal_mode_for_neither_the_curator_nor_a_row_it_folds_in(
+        tmp_path: Path) -> None:
+    from cerebro.curate import proposing
+    from cerebro.held import FIRST_RUN_KEY
+
+    store = MemoryStore()
+    store.set_state(FIRST_RUN_KEY, {"status": "done", "at": stamp(NOW)})
+    asked = told(store, "article.admit", "things/alder", "keep Alder", hour(1))
+    propose(store, Proposal("p_waits", "article.admit", "things/alder", Caller("people/curator", "agent"),
+                            stamp(hour(1)), payload={"name": "Alder"}))
+    curate(store, things(tmp_path, admit=True), [("admit", {"name": "Alder", "reason": "asked",
+                                                            "proposals": [asked, "p_waits"]})], tmp_path, at=hour(2))
+    assert store.article("things/alder") is not None
+    assert proposing(store, "things/curator") and proposing(store, "people/curator")  # no person decided their admit
+
+
 def test_two_things_that_share_a_name_are_never_made_one_article(tmp_path: Path) -> None:
     from cerebro.records import Proposal, propose
 
@@ -575,6 +591,15 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     run(store, (ARCHIVE[0], {**ARCHIVE[1], "proposals": [gone]}), at=hour(1))
     assert f"a caller archived things/alder in {gone}: we stopped buying: an admit of it" in run(
         store, TWO[0], at=hour(2))[0]
+
+    # a caller's archive asked on a merged-away path holds on the article it landed on, once the path is split out
+    store = MemoryStore()
+    run(store, *TWO, at=hour(0))
+    run(store, ("merge", {"article": "things/alder", "other": "things/alder-works", "reason": "one"}), at=hour(1))
+    gone = told(store, "article.archive", "things/alder-works", "we stopped buying", hour(2))
+    run(store, ("archive", {"article": "things/alder-works", "reason": "asked", "proposals": [gone]}), at=hour(2))
+    run(store, ("split", {"article": "things/alder-works", "reason": "two makers"}), at=hour(3))
+    assert f"a caller archived things/alder in {gone}" in run(store, TWO[0], at=hour(4))[0]
 
     # a caller's merge, carried out, moves old facts: the split is refused until news of either article
     store = MemoryStore()

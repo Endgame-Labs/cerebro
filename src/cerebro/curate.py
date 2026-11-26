@@ -357,10 +357,10 @@ def turned_down(store: Store, extraction: Extraction | None, sources: Collection
     the act carries out, `named`, are their caller's latest word on their own things, so they never refuse it."""
     named = list(named)
     act = KEEP if kind == "article.merge" and payload.get("distinct") else kind
-    rows = [replace(p, target=str(p.applied.get("article") or p.target)) if p.kind == "article.admit" else p
+    rows = [replace(p, target=str(p.applied.get("article") or p.target))  # a yes carried out is of the article it landed on
             for p in proposals(store) if p.decided_by is not None and p.decided_by.kind == "person"
             and p.status in ("accepted", "rejected") and p.kind in (kind, OPPOSITE.get(kind, kind))
-            and all(p.id != q.id for q in named)]  # an admit carried out is of the article it landed on
+            and all(p.id != q.id for q in named)]
     if kind == "article.link":
         return _link_turned_down(store, extraction, sources, target, payload, rows, named)
     moved = redirects(store)
