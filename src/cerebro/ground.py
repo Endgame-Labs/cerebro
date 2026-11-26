@@ -25,9 +25,10 @@ A part meets four steps.
    code listed: each link of cause, condition or sequence, and each word of a plan over a fact that says only a want.
    An answer under `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, any other lean fails it,
    and a claim whose lead failed stands only on a firm grounded. A label over a list stands on names or states_held,
-   firm or a lean, once code finds each of its names, numbers and dates in the facts under it. A listed claim with
-   no fact behind it fails its sentence. With no decider, or once it raises `BudgetSpent`, the words alone decide:
-   `LEXICAL_MIN_OVERLAP` of a claim's content words must be in what it cites, and `Grounded.spent` says why.
+   firm or a lean, once its figures are in the facts under it and code finds each of its names, numbers and dates
+   there. A listed claim with no fact behind it fails its sentence. With no decider, or once it raises
+   `BudgetSpent`, the words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words must be in what it
+   cites, and `Grounded.spent` says why.
 4. What failed. With a `Rewriter`, a failed sentence is rewritten once from its cited facts on the bundled `repair`
    prompt, refused by code when it adds a word neither its draft nor its facts hold, loses a name, a date or a
    figure, or copies a fact, and judged again. Then whatever leaned on what went goes too: a sentence that opens with
@@ -1709,9 +1710,9 @@ class _Judge:
     def verdict(self, i: int, a: _Ask, answers: Mapping[str, Answer], listed: dict[str, list[dict[str, str]]]
                 ) -> _Verdict:
         """How the answers on one ask read. A firm names or states_held keeps a lead, names only when the lead's
-        figures are in its cited facts. A label over a list stands on either answer, firm or lean, only when code
-        finds each of its names, numbers and dates in the facts under it. A claim code listed under an item that the
-        judge finds no fact behind fails that item."""
+        figures are in its cited facts. A label over a list stands on either answer, firm or lean, only when its
+        figures are in the facts under it and code finds each of its names, numbers and dates there. A claim code
+        listed under an item that the judge finds no fact behind fails that item."""
         def unbacked(id: str) -> bool:
             return any((answer := answers.get(c["id"])) is not None and answer.choice.endswith(":none") and
                        _firm(answer) for c in listed.get(id, []))
@@ -1719,12 +1720,12 @@ class _Judge:
         v = _Verdict(lead_holds=not a.lead or self.own_label(a.lead))
         cited = self.evidence.cited(a.claim)
         if not v.lead_holds and (answer := answers.get(f"l{i}")) is not None:
+            figures = not _holds_figure(a.lead) or _figures_held(a.lead, cited)
             if a.label:
-                holds = answer.choice in (NAMES, STATES_HELD) and \
+                holds = answer.choice in (NAMES, STATES_HELD) and figures and \
                     "not_in_facts" not in _checks(a.lead, cited, a.items_after)
             else:
-                named = answer.choice == NAMES and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
-                holds = _firm(answer) and (named or answer.choice == STATES_HELD)
+                holds = _firm(answer) and (answer.choice == NAMES and figures or answer.choice == STATES_HELD)
             v.lead_holds = holds and not unbacked(f"l{i}")
         if (answer := answers.get(f"s{i}")) is not None:
             v.choice = answer.choice

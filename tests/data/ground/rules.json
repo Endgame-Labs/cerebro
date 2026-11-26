@@ -14,6 +14,13 @@
    "subject": "Acme Corp",
    "at": "2026-10-08T15:00:00Z",
    "source": "local:file:local/calls/2026-10-08-acme-qbr.md"
+  },
+  {
+   "id": "f_3",
+   "text": "Jane Doe will send the rollout plan by Friday.",
+   "subject": "Acme Corp",
+   "at": "2026-10-08T15:00:00Z",
+   "source": "local:file:local/calls/2026-10-08-acme-qbr.md"
   }
  ],
  "cases": [
@@ -336,6 +343,17 @@
    "want": "- Acme Corp must finish its security review before its board meets [^f_1].\n",
    "dropped": [
     "Overview: dropped \"Their side (Jane Doe):\": its cited evidence does not hold this lead"
+   ]
+  },
+  {
+   "name": "a label over a list with a figure the facts under it lack goes, however sure the judge is, when those facts hold a weekday",
+   "body": "Ours, at $4,000:\n\n- Jane Doe will send the rollout plan by Friday [^f_3].\n",
+   "answers": {
+    "l1": "names"
+   },
+   "want": "- Jane Doe will send the rollout plan by Friday [^f_3].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, at $4,000:\": its cited evidence does not hold this lead"
    ]
   },
   {
