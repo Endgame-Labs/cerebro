@@ -65,8 +65,8 @@ _MOBILE_FOOTER = re.compile(r"^(sent from my |sent from mail for |sent from outl
                             r"|sent from yahoo mail)", re.IGNORECASE)
 _POSTSCRIPT = re.compile(rf"^p\.?{_S}?p?\.?{_S}?s\b[.:]?", re.IGNORECASE | re.ASCII)
 # An address, a site or a phone number at the start of a line, after a short label such as "M:" or "Tel."
-_CONTACT = re.compile(r"([a-z]{1,7}[.:] *)?([^\s@<>]+@|www\.|https?://|[+(]?[0-9][0-9 ().-]{5,}[0-9])",
-                      re.IGNORECASE | re.ASCII)
+_CONTACT = re.compile(r"(([a-z]{1,7}:|[a-z]{1,4}\.) *)?([^\s@<>]+@[^\s<>]*|www\.[^\s<>]*|https?://[^\s<>]*"
+                      r"|[+(]?[0-9][0-9 ().-]{5,}[0-9])", re.IGNORECASE | re.ASCII)
 _CLIENT_ATTRIBUTION = re.compile(r"@|[0-9]{1,2}:[0-9]{2}|\b[0-9]{4}\b", re.ASCII)
 _LIST_MARKER = re.compile(rf"^([-*•]|[0-9]+[.)]){_S}")
 _SIGN_OFF = re.compile(
@@ -113,10 +113,18 @@ def _signed_only(kept: list[str], own: list[str]) -> bool:
 
 
 def _drop_contact_block(lines: list[str]) -> list[str]:
-    """The lines without a closing block with a line that an address, a site or a phone number starts: a short reply
-    can read as a name and a title, but none of its lines starts so."""
+    """The lines without a closing block that holds a line of contact details: a short reply can read as a name and a
+    title, but none of its lines is contact details."""
     start = _closing_block(lines)
-    return lines[:start] if any(_CONTACT.match(line.strip()) for line in lines[start:]) else lines
+    return lines[:start] if any(_contact(line) for line in lines[start:]) else lines
+
+
+def _contact(line: str) -> bool:
+    """Whether a line is contact details: an address, a site or a phone number starts it, with fewer than two
+    lowercase words after it, as a sentence of a reply that starts with a date or a number has."""
+    t = line.strip()
+    found = _CONTACT.match(t)
+    return found is not None and sum(word[0].islower() for word in t[found.end():].split()) < 2
 
 
 def _written(line: str) -> bool:
@@ -281,6 +289,8 @@ def _full_name(line: str) -> bool:
 
 def _signature_line(line: str) -> bool:
     t = line.strip()
+    if _contact(t):
+        return True
     if not t or len(t) > 60 or len(t.split()) > 8 or _LIST_MARKER.match(t):
         return False
     if t[-1] in ".?!:;," and not _ends_in_abbreviation(t):
