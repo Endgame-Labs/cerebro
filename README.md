@@ -20,24 +20,24 @@ title: Why the octopus tank has two latches
 compiled_at: '2026-11-24T09:12:40Z'
 ---
 
-Marisol, the giant Pacific octopus in Tank 4, learned to open the single magnetic lid in October. [^fact_mth9me9dm2g5fy81zt0d] Night staff now lock the secondary brass clasp after every 9 p.m. feeding. [^fact_htm9spcdh2zzj2k7y2qf] Dr. Priya Nair approved replacing the lid with a weighted acrylic cover next month. [^fact_eevhyavxy62sn6ps96t9] Don't leave rubber tongs on the catwalk railing, because Marisol can reach them from the top corner. [^fact_k6ps32exkyhzrjsbr617]
+Marisol, the octopus in Tank 4, keeps popping its magnetic lid. [^fact_01m8aj92n0vxr6v34f] Night staff fasten the secondary brass clasp on Tank 4 after the 9 p.m. feeding. [^fact_01m8aj92n4k7d2pq8w] Priya approved a weighted acrylic cover for the tank, due in December. [^fact_01m8aj92n9t5hx0c3m] Don't leave rubber tongs on the Tank 4 railing, because Marisol grabs them. [^fact_01m8aj92nbzr6yb1je]
 
-[^fact_mth9me9dm2g5fy81zt0d]: AQUA-418, 2 Oct "Found Marisol halfway across the pump room floor at 04:15; she popped the magnetic lid on Tank 4 again."
+[^fact_01m8aj92n0vxr6v34f]: AQUA-418 "Marisol popped the magnetic lid on Tank 4 again. Found her halfway across the pump room floor at 04:15."
 
-[^fact_htm9spcdh2zzj2k7y2qf]: docs/night-shift-checklist.md "After the 9 p.m. feeding, fasten the secondary brass clasp on Tank 4 before leaving the gallery."
+[^fact_01m8aj92n4k7d2pq8w]: local/ops/night-shift-checklist.md "After the 9 p.m. feeding, fasten the secondary brass clasp on Tank 4 before leaving the gallery."
 
-[^fact_eevhyavxy62sn6ps96t9]: "Tank 4 lid replacement", 12 Nov "I signed off on the weighted acrylic cover for Tank 4; fabrication finishes in December. Thanks, Priya"
+[^fact_01m8aj92n9t5hx0c3m]: 1849215574983726141 "I signed off on the weighted acrylic cover for Tank 4; fabrication finishes in December. Thanks, Priya"
 
-[^fact_k6ps32exkyhzrjsbr617]: #kelp-gallery, 19 Nov "Reminder: stop setting rubber tongs on the Tank 4 railing, Marisol grabbed another pair today."
+[^fact_01m8aj92nbzr6yb1je]: `C07KELP4GAL:1795640012.004100` "Reminder: stop setting rubber tongs on the Tank 4 railing, Marisol grabbed another pair today."
 ```
 
-Each `[^fact_…]` is a footnote. It names one fact, and the note at the bottom quotes where that fact came from.
+Each `[^fact_…]` is a footnote. It names one fact, and the note at the bottom names the record it came from and quotes it.
 
 ## What you control
 
-- A curator's `authority:` line says what it may do on its own, such as add, merge or archive articles. Anything else waits for you in `cerebro review`. See [agents](docs/agents.md).
+- A curator's `authority:` line says what it may do on its own, such as add, merge or archive articles. Anything it may not do waits for you in `cerebro review`. See [agents](docs/agents.md).
 - Claude Code, Cursor or any MCP client can read the wiki and tell it what changed. See [MCP](docs/mcp.md).
-- It's plain Python, so you can add your own [sources](docs/sources.md), [MCP tools](docs/apps/README.md) and more.
+- Connect your own [sources](docs/sources.md), and add your own [MCP tools](docs/apps/README.md) in Python.
 
 ## Try it
 
