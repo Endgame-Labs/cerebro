@@ -899,9 +899,9 @@ def test_what_a_find_or_a_query_that_matched_nothing_says_has_no_section_brain_o
     store.create(Identity("things/a", "things", "A", status="archived"))
     store.append("proposals", {"id": "p_1", "kind": "admit"})
     for source, filters in (("facts", {"kind": "decision"}), ("proposals", {"kind": "merge"}), ("merges", {}),
-                            ("things", {}), ("things", {"status": "waiting"})):
+                            ("things", {}), ("things", {"status": "waiting"}), ("things", {"id": "things/a"})):
         said += lookup.query(you, source, filters).warnings
-    assert len(said) == 7 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+    assert len(said) == 8 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_no_line_a_presumed_mark_shows_names_a_section_or_a_hand_in() -> None:

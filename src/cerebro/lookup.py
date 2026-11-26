@@ -394,17 +394,15 @@ def _no_order(what: str, order_by: str, held: list[str]) -> str:
             + (f", or order by one they hold, such as {', '.join(held[:5])}" if held else ""))
 
 
-def _none_match(what: str, filters: dict[str, Any], bare: str) -> str:
+def _filters_left_none(what: str, filters: dict[str, Any]) -> str:
     """Why a query matched nothing when no check of one filter says: every filter given, so the line stays the same
-    while the data moves, a list as its items and a boolean or an empty value as JSON writes it, or `bare` when it
-    was given none."""
+    while the data moves, a list as its items and a boolean or an empty value as JSON writes it."""
     def spelled(value: Any) -> str:
         if isinstance(value, list) and value:
             return ", ".join(spelled(v) for v in value)
         return json.dumps(value) if isinstance(value, bool) or value in ("", [], None) else str(value)
 
-    named = ", ".join(f"{k}: {spelled(v)}" for k, v in filters.items())
-    return f"no {what} matches {named}" if named else bare
+    return f"no {what} matches {', '.join(f'{k}: {spelled(v)}' for k, v in filters.items())}"
 
 
 def _fact_fields(fact: Fact) -> dict[str, Any]:
@@ -948,9 +946,7 @@ class StoreLookup(Lookup):
             kept = timed + [a for a in kept if not moment(a)]
         result = QueryResult(source, [*kept, *standing], len(kept) + len(standing), said, ordered)
         if not kept and not standing:  # only a query that matched nothing reads the whole collection, to say why
-            result.warnings += self._why_empty(source, self.store.query(source), filters, windows) or [_none_match(
-                f"article of {source}", filters,
-                f"every article of {source} is archived or merged: name status, as in status: archived, to list them")]
+            result.warnings += self._why_empty(source, self.store.query(source), filters, windows, where)
         return result
 
     def _order_field(self, articles: list[Article]) -> str:
@@ -973,11 +969,14 @@ class StoreLookup(Lookup):
         return names
 
     @staticmethod
-    def _why_empty(source: str, every: list[Article], filters: dict[str, Any], windows: dict[str, Span]) -> list[str]:
-        """Why a query of a collection may have matched nothing: at most one line for each filter."""
+    def _why_empty(source: str, every: list[Article], filters: dict[str, Any], windows: dict[str, Span],
+                   where: list[Where] | None) -> list[str]:
+        """Why a query of a collection matched nothing: at most one line for each filter, else one that names every
+        filter and says when the query left out an archived or merged article. Not that one beside a where predicate,
+        which no line names, so none may blame a filter for what it kept out."""
         lines = []
         for key, want in filters.items():
-            if key in windows or key in ("id", "status"):
+            if key in windows or key in OWN:
                 continue
             held = [v for a in every if (prop := fields(a).get(key)) is not None for v in
                     (prop.value if isinstance(prop.value, list) else [prop.value])]
@@ -993,7 +992,14 @@ class StoreLookup(Lookup):
                 lines.append(f"{key} on {source} links to articles, such as {links[0]}: filter by a path like it")
             elif len(distinct) <= FEW_VALUES and not any(compares(v, "=", want) for v in held):
                 lines.append(f"no article of {source} holds {key}: {want}, which holds {', '.join(distinct)}")
-        return lines
+        if lines or where:
+            return lines
+        hint = "name status, as in status: archived, to"
+        if not filters:  # a collection that holds articles, none in the working set
+            return [f"every article of {source} is archived or merged: {hint} list them"]
+        if "status" in filters or all(in_working_set(a.identity) for a in every):
+            return [_filters_left_none(f"article of {source}", filters)]
+        return [f"{_filters_left_none(f'active article of {source}', filters)}: {hint} include the rest"]
 
     def _lines(self, source: str, filters: dict[str, Any], windows: dict[str, Span], where: list[Where] | None,
                order_by: str | None, descending: bool, bare: bool = False) -> QueryResult:
@@ -1026,11 +1032,13 @@ class StoreLookup(Lookup):
         if bare:
             result.warnings.append(f"{source} records come to an agent without their text: each one's facts are "
                                    f"reached with query from: facts, record: <its id>")
-        if not items:
+        if not items and not every:
+            result.warnings.append(f"{source} has no lines yet")
+        elif not items:  # a where predicate is named by no line, so none may blame a filter for what it kept out
             have = {k for row in every for k in row}
             result.warnings += [f"no line of {source} has a field {k}: check its name"
-                                for k in filters if k != "window" and k not in have] or [
-                _none_match(f"line of {source}", filters, f"{source} has no lines yet")]
+                                for k in filters if k != "window" and k not in have] or (
+                [] if where else [_filters_left_none(f"line of {source}", filters)])
         return result
 
     def _facts(self, filters: dict[str, Any],
@@ -1093,7 +1101,7 @@ class StoreLookup(Lookup):
             warnings += [f"no fact has a field {k}: check its name" for k in rest
                          if k != "window" and k not in FACT_FIELDS and k not in passed]
         if not found and not warnings:
-            warnings.append(_none_match("fact", filters, "this workspace has no current fact"))
+            warnings.append(_filters_left_none("fact", filters) if filters else "this workspace has no current fact")
         kept = {f.id for f in found}
         return found, warnings, {id: how for id, how in ties.items() if id in kept}
 

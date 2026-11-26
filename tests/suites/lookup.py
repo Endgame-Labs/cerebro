@@ -287,10 +287,15 @@ def test_a_query_that_matches_nothing_says_why(parts: tuple[Lookup, Store]) -> N
     store.set_field("projects/apollo", "due", Property("2026-12-01", YOU, "2026-11-01T09:00:00Z"))
     assert lookup.query(YOU, "projects", {"due": "last_7_days"}).warnings == [
         "no article of projects matches due: last_7_days"]
+    assert lookup.query(YOU, "projects", {"compiled_at": "2020"}).warnings == [
+        "no article of projects matches compiled_at: 2020"]  # a field of the article itself, not a property
     assert lookup.query(YOU, "proposals", {"owner": "west"}).warnings == [
         "no line of proposals has a field owner: check its name"]
     assert lookup.query(YOU, "proposals", {"kind": "merge"}).warnings == ["no line of proposals matches kind: merge"]
-    assert lookup.query(YOU, "merges").warnings == ["merges has no lines yet"]
+    assert lookup.query(YOU, "merges", {"status": "won"}).warnings == ["merges has no lines yet"]
+    # a where predicate is named by no line, so none blames a filter or the data for what it kept out
+    assert lookup.query(YOU, "projects", {"stage": "open"}, where=[Where("size", ">", 5)]).warnings == []
+    assert lookup.query(YOU, "proposals", where=[Where("kind", "=", "merge")]).warnings == []
 
 
 def test_an_archived_article_is_left_out_unless_a_filter_names_status(parts: tuple[Lookup, Store]) -> None:
@@ -298,6 +303,9 @@ def test_an_archived_article_is_left_out_unless_a_filter_names_status(parts: tup
     store.set_identity(Identity("projects/vega", "projects", "Vega", status="archived"))
     assert [a.identity.id for a in lookup.query(YOU, "projects").items] == ["projects/apollo"]
     assert [a.identity.id for a in lookup.query(YOU, "projects", {"status": "archived"}).items] == ["projects/vega"]
+    assert lookup.query(YOU, "projects", {"id": "projects/vega"}).warnings == [(
+        "no active article of projects matches id: projects/vega: name status, as in status: archived, to include "
+        "the rest")]
     store.set_identity(Identity("projects/apollo", "projects", "Apollo", status="archived"))
     assert lookup.query(YOU, "projects").warnings == [
         "every article of projects is archived or merged: name status, as in status: archived, to list them"]
