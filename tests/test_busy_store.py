@@ -118,6 +118,7 @@ def test_a_store_that_must_be_written_on_open_says_it_is_busy_after_a_short_wait
     db = sqlite3.connect(w.file, isolation_level=None)
     db.execute("pragma journal_mode=wal")  # a store another process is making: its next open writes the schema
     db.close()
+    monkeypatch.setitem(SQLiteStore.__init__.__kwdefaults__, "timeout", OPEN_WAIT + 3)  # past the bound below
     with held(w.file):
         code, out, took = w.command("status")
     assert code == 1 and took < OPEN_WAIT + 1.5, (took, out)
