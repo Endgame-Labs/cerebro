@@ -1709,7 +1709,8 @@ class _Judge:
     def verdict(self, i: int, a: _Ask, answers: Mapping[str, Answer], listed: dict[str, list[dict[str, str]]]
                 ) -> _Verdict:
         """How the answers on one ask read: a lean keeps a lead when it is to names or states_held, both of which
-        keep it, and a claim code listed under an item that the judge finds no fact behind fails that item."""
+        keep it, and the lead's figures are in its cited facts, and a claim code listed under an item that the judge
+        finds no fact behind fails that item."""
         def unbacked(id: str) -> bool:
             return any((answer := answers.get(c["id"])) is not None and answer.choice.endswith(":none") and
                        _firm(answer) for c in listed.get(id, []))
@@ -1717,8 +1718,9 @@ class _Judge:
         v = _Verdict(lead_holds=not a.lead or self.own_label(a.lead))
         cited = self.evidence.cited(a.claim)
         if not v.lead_holds and (answer := answers.get(f"l{i}")) is not None:
-            named = answer.choice == NAMES and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
-            v.lead_holds = (named or answer.choice == STATES_HELD) and not unbacked(f"l{i}")
+            figures = not _holds_figure(a.lead) or _figures_held(a.lead, cited)
+            held = answer.choice == STATES_HELD and (_firm(answer) or figures)
+            v.lead_holds = (answer.choice == NAMES and figures or held) and not unbacked(f"l{i}")
         if (answer := answers.get(f"s{i}")) is not None:
             v.choice = answer.choice
             if answer.choice == NONFACTUAL:
