@@ -71,8 +71,8 @@ as [Halcyon Platform Expansion](../opportunities/halcyon-mills-platform-expansio
 Copy each value as the deal's front matter holds it, and leave the cell empty
 for a null. Put the deal's currency after its amount when the deal names one.
 The owner is You when the front matter says me, a link to their article for a
-people/ path, and the name otherwise. A deal can sit in two parts, with a row
-in each.
+people/ path, such as [Jane Doe](../people/jane-doe.md), and the name
+otherwise. A deal can sit in two parts, with a row in each.
 
 The row cites the deal by its link and carries no footnote. A deal's own values
 decide its part: nothing open goes under Closed, and no close date still ahead
