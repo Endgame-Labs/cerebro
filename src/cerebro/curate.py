@@ -74,7 +74,7 @@ from .models import Decider, ModelSpec
 from .project import read_ours
 from .records import APPLIES, TOLD, Decision, Gone, Proposal, _proposal, _slug, named_alike, proposals, propose
 from .run import WROTE_NOTHING, AgentRun, Run
-from .store import UNKNOWN, Store, record_from, update_state
+from .store import Store, record_from, update_state
 from .workspace import Workspace
 
 if TYPE_CHECKING:
@@ -967,8 +967,8 @@ def _split(store: Store, target: str, proposal: Proposal, at: str) -> tuple[dict
             store.unlink(fact, [into], how)
     for row in store.rows("merges"):  # what was told or linked to the article while it was merged goes back to it
         if row.data.get("followed") == gone.id and row.data.get("to") == into:
-            store.unlink(row.data["fact"], [into], row.data.get("how"))
-            store.link(row.data["fact"], [gone.id], at, row.data.get("how") or UNKNOWN)
+            store.unlink(row.data["fact"], [into], row.data["how"])
+            store.link(row.data["fact"], [gone.id], at, row.data["how"])
     store.append("merges", {"at": at, "split": gone.id, "from": into, "path": gone.id, "by": proposal.by.name,
                             "proposal": proposal.id, "reason": proposal.reason, "redirect": gone.id, "to": ""})
     store.append("merges", {"at": at, "distinct_from": [gone.id, into], "by": proposal.by.name})

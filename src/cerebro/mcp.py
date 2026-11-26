@@ -94,7 +94,7 @@ from .errors import CerebroError
 from .facts import Fact, superseded
 from .ground import quote_for
 from .held import FIRST_RUN_KEY, stand_ins
-from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult, sizes
+from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult
 from .records import Decision
 from .reply import SINCE_WRITTEN, article_text, outside
 from .run import ids_kept, masked_error
@@ -757,6 +757,16 @@ def _capped(value: Any, depth: int = 0) -> Any:
     return _capped(str(value))
 
 
+def _sizes(args: Any) -> Any:
+    """Each argument of a call by its name with its size in characters, and none of its value: how the request log
+    keeps a call to a tool an app gives, whose arguments may be the text of the app's records."""
+    def size(value: Any) -> str:
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+        return f"{len(text)} characters"
+
+    return {str(k): size(v) for k, v in args.items()} if isinstance(args, dict) else size(args)
+
+
 def request_log_on(environ: Mapping[str, str]) -> bool:
     """Whether calls are logged: `CEREBRO_NO_REQUEST_LOG=1` turns the log off, unset, empty or 0 leaves it on, and
     any other value is refused with the variable's name."""
@@ -925,7 +935,7 @@ class _Surface:
         given = {k: v for k, v in args.items() if v is not None}
         if (scrub := self.workspace.store.scrubbing()) is not None:  # before `_capped` cuts a value: after, none is found
             given = masked_with(given, scrub)
-        row = {"at": at, "tool": name, "args": _capped(masked(given) if name in SIX else sizes(given)),
+        row = {"at": at, "tool": name, "args": _capped(masked(given) if name in SIX else _sizes(given)),
                "caller": _capped(caller.name), "result": "hit" if hit else "miss", "surface": via}
         row |= {"resolved": _capped(ids)} if ids else {}
         row |= {"client": _capped(client)} if client else {}

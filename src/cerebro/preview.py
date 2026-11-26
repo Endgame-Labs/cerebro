@@ -141,7 +141,7 @@ NOT_KNOWN = {UNSEARCHED: "its evidence searches facts by meaning, which asks a m
 WRITES = ("create", "set_identity", "write_compilation", "delete_compilation", "set_field", "drop_field", "keep", "append",
           "set_state", "link", "unlink", "supersede", "retract_superseded")
 READS = ("article", "query", "bound", "named", "keyed", "collections", "record", "records", "rows", "latest",
-         "total", "articles_of", "ties_of", "unknown_ties", "facts_of", "superseded", "cursor", "changed_since",
+         "total", "articles_of", "ties_of", "facts_of", "superseded", "cursor", "changed_since",
          "linking_to")
 _GONE = object()
 

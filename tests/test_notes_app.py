@@ -417,6 +417,7 @@ def test_a_note_written_over_mcp_reaches_no_context_agent_through_the_request_lo
         query, _ = agent_surface(workspace.lookup, Caller("projects/asked", "agent"))
         logged = query("mcp-requests")
         assert logged["count"] == 1 and logged["items"][0]["tool"] == "note"
+        assert logged["items"][0]["args"]["title"] == "8 characters"
         now[0] = DAY
         workspace.run_once()
         assert any("mcp-requests" in p for p in prompts)
@@ -439,28 +440,6 @@ def test_a_request_log_row_of_an_apps_tool_keeps_names_and_sizes_and_the_six_kee
                            "resolved": [kept.structured_content["record"]], "surface": "mcp", "client": "claude-code"}
         assert rows[1]["args"] == {"name": "Ship day"}
         assert rows[2]["tool"] == "tell" and rows[2]["args"]["text"] == "The launch moved to Monday."
-
-
-def test_a_request_log_row_holding_an_apps_arguments_comes_to_an_agent_without_them_and_to_others_as_kept(
-        tmp_path: Path) -> None:
-    from cerebro.compile import agent_surface
-
-    with Cerebro(workspace_folder(tmp_path / "workspace"), trusted=True, store=MemoryStore(),
-                 agent_run=ScriptedRun(standing), clock=lambda: DAY) as workspace:
-        old = {"at": "2026-11-10T09:00:00Z", "tool": "note", "caller": "mcp", "result": "hit", "surface": "mcp",
-               "args": {"text": PASSPHRASE, "title": "Ship day"}, "resolved": ["r_0001"], "client": "claude-code"}
-        gone = old | {"tool": "scribble", "args": {"words": PASSPHRASE}}  # a tool of an app no longer loaded
-        asked = old | {"tool": "find", "args": {"name": "Ship day"}, "resolved": []}
-        for row in (old, gone, asked):
-            workspace.store.append("mcp-requests", row)
-        query, _ = agent_surface(workspace.lookup, Caller("projects/standing", "agent"))
-        items = query("mcp-requests")["items"]
-        assert [(i["tool"], i["args"]) for i in items] == [
-            ("find", {"name": "Ship day"}), ("scribble", {"words": f"{len(PASSPHRASE)} characters"}),
-            ("note", {"text": f"{len(PASSPHRASE)} characters", "title": "8 characters"})]
-        assert items[2]["resolved"] == ["r_0001"] and items[2]["client"] == "claude-code"
-        kept = workspace.lookup.query(YOU, "mcp-requests", {}).items
-        assert [i["args"] for i in kept] == [asked["args"], gone["args"], old["args"]]
 
 
 # -- what a session sees ----------------------------------------------------------------------------------------------

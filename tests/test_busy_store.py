@@ -22,7 +22,7 @@ from cerebro.caller import Caller
 from cerebro.cli import main
 from cerebro.fakes import FakeConnector, FakeExtraction, ScriptedRun
 from cerebro.lookup import SEARCH_BEHIND
-from cerebro.store import DEFAULT_PATH, OPEN_WAIT, PROTECTED_STAMP, SchemaError, SQLiteStore, StoreBusy
+from cerebro.store import DEFAULT_PATH, OPEN_WAIT, SchemaError, SQLiteStore, StoreBusy
 
 WEEKLY = "---\nevidence:\n  - query: { from: facts }\nheartbeat: [change]\n---\n\n# Output\n\n## Summary\n"
 NEVER = re.compile(r"not a cerebro store|\bmove (it|this)|\baside\b|\brename|\bdelete", re.IGNORECASE)  # never of a busy store
@@ -113,15 +113,17 @@ def test_find_read_and_query_answer_at_once_while_another_process_writes(tmp_pat
 def test_a_store_that_must_be_written_on_open_says_it_is_busy_after_a_short_wait_and_never_to_move_it(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     w = Workspace(tmp_path / "w", monkeypatch)
+    for file in w.file.parent.glob(w.file.name + "*"):
+        file.unlink()
     db = sqlite3.connect(w.file, isolation_level=None)
-    db.execute("delete from state where key = ?", (PROTECTED_STAMP,))  # its next open indexes again, a write
+    db.execute("pragma journal_mode=wal")  # a store another process is making: its next open writes the schema
     db.close()
     with held(w.file):
         code, out, took = w.command("status")
     assert code == 1 and took < OPEN_WAIT + 1.5, (took, out)
     assert "is busy" in out and "try again in a moment" in out, out
     assert not NEVER.search(out), out
-    assert SQLiteStore(w.file).state(PROTECTED_STAMP) is not None  # once free, the open writes it
+    assert SQLiteStore(w.file).state("x") is None  # once free, the open writes the schema
 
 
 def test_a_write_that_waits_past_its_time_says_the_store_is_busy(tmp_path: Path) -> None:

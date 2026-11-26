@@ -686,9 +686,8 @@ def test_reviews_lines_for_a_line_that_cannot_land_and_a_value_that_names_nothin
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
 
-def test_what_a_tell_whose_facts_wait_and_a_load_that_lists_them_say_has_no_section_brain_or_page(
-        tmp_path: Path) -> None:
-    from test_tell_retry import MENDED, SAID, TOLD, YOU, Record, RetractFails, in_memory, make_workspace, telling, told
+def test_what_a_tell_whose_facts_wait_says_has_no_section_brain_or_page(tmp_path: Path) -> None:
+    from test_tell_retry import SAID, YOU, RetractFails, in_memory, telling, told
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     said = []
@@ -704,15 +703,8 @@ def test_what_a_tell_whose_facts_wait_and_a_load_that_lists_them_say_has_no_sect
     layer.go.set()
     thread.join(10)
     said += out[0].notes
-    waiting.store.keep(Record(id="r_0lost0000000", source=TOLD, revision="1", at="2026-11-17T09:00:00Z", body=SAID,
-                              by=YOU, fields={"as": "fact"}, extract="facts"))
-    waiting.store.set_state(MENDED, None)
-    from cerebro.fakes import FakeExtraction
-
-    said += [n for n in make_workspace(tmp_path / "waiting", FakeExtraction(), waiting.store).notices if n.startswith("tell:")]
     assert any("its facts did not come out yet" in n for n in said)
     assert any("taken back while its facts came out" in n for n in said)
-    assert any("kept before its facts came out" in n for n in said)
     assert not [n for n in said if words.search(n)]
 
 
