@@ -1577,11 +1577,15 @@ class _Curation:
             name = str(name).strip()
             return [name] if name in who.keys else [k for k in who.keys if word(k) == word(name)] or [name]
 
+        def holding(name: Any, value: Any) -> list[str]:  # a value comes off the spellings that hold it, else the first
+            names = off(name)
+            return [k for k in names if str(value).lower() in _lower(who.keys.get(k, []))] or names[:1]
+
         # a key goes on as the sources write it
         adds = address_form(read_keys(((k, v) for k, v in keys.items() if v is not None),
                                       [*(self.spellings() if keys else []), *who.keys]))
         cleared = [n for k, v in keys.items() if v is None for n in off(k)]
-        wrong = read_keys(((n, vs) for k, vs in wrong.items() for n in off(k)), list(who.keys))
+        wrong = read_keys(((n, [v]) for k, vs in wrong.items() for v in vs for n in holding(k, v)), list(who.keys))
         payload: dict[str, Any] = {
             "keys": {k: None for k in cleared} | adds,
             "wrong": address_form(wrong),

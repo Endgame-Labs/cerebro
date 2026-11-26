@@ -679,7 +679,8 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     assert "'removed'" in run(store, (off[0], {**off[1], "proposals": [wrong]}), at=hour(3))[0]  # its own word
     assert store.article("things/alder").identity.keys == {"code": ["a-1", "a-9"]}
 
-    # a value a caller took off or turned down stays so once a source writes its key in another spelling
+    # a value a caller took off or turned down stays so once a source writes its key in another spelling, and one it
+    # added stays on against a take-off or a null in the article's own spelling
     store = MemoryStore()
     run(store, ("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"}), at=hour(0))
     propose(store, Proposal("p_t2", "article.link", "things/alder", Caller("people/curator", "agent"), stamp(hour(0)),
@@ -695,6 +696,13 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     assert f"a caller took off thing_code t-1 from things/alder in {no}" in again[0]
     assert "a caller rejected link of things/alder in p_t2: not its code" in again[1]
     assert store.article("things/alder").identity.keys == {}
+    added = told(store, "article.link", "things/alder", "its code is C-5", hour(3))
+    run(store, ("link", {"article": "Alder", "keys": {"Code": ["C-5"]}, "reason": "asked", "proposals": [added]}),
+        at=hour(3))
+    kept = run(store, *(("link", {"article": "Alder", "reason": "not its code", **call})
+                        for call in ({"wrong": {"Code": ["C-5"]}}, {"keys": {"Code": None}})), at=hour(4))
+    assert all(f"a caller added code c-5 to things/alder in {added}" in reply for reply in kept), kept
+    assert store.article("things/alder").identity.keys == {"Code": ["C-5"]}
 
     # an admit carrying out an ask is checked on the article it lands on, but for the ask's own path
     store = MemoryStore()
