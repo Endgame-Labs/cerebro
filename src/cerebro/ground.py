@@ -22,8 +22,8 @@ A part meets four steps.
    path, stands on the citation. The rest go to the decider, one request per part, with each cited fact once
    by id, the `checks` code found of its names, numbers and dates, and the `claims` code listed: each link of cause,
    condition or sequence, and each word of a plan over a fact that says only a want. An answer under
-   `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, any other lean fails it, and a claim whose
-   lead failed stands only on a firm grounded. A listed claim with no fact behind it fails its sentence. With no
+   `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, a lean to names or states_held keeps a
+   lead, any other lean fails it, and a claim whose lead failed stands only on a firm grounded. A listed claim with no fact behind it fails its sentence. With no
    decider, or once it raises `BudgetSpent`, the words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words
    must be in what it cites, and `Grounded.spent` says why.
 4. What failed. With a `Rewriter`, a failed sentence is rewritten once from its cited facts on the bundled `repair`
@@ -1693,8 +1693,8 @@ class _Judge:
 
     def verdict(self, i: int, a: _Ask, answers: Mapping[str, Answer], listed: dict[str, list[dict[str, str]]]
                 ) -> _Verdict:
-        """How the answers on one ask read: a lean is no verdict, and a claim code listed under an item that the
-        judge finds no fact behind fails that item."""
+        """How the answers on one ask read: a lean keeps a lead when it is to names or states_held, both of which
+        keep it, and a claim code listed under an item that the judge finds no fact behind fails that item."""
         def unbacked(id: str) -> bool:
             return any((answer := answers.get(c["id"])) is not None and answer.choice.endswith(":none") and
                        _firm(answer) for c in listed.get(id, []))
@@ -1703,7 +1703,7 @@ class _Judge:
         cited = self.evidence.cited(a.claim)
         if not v.lead_holds and (answer := answers.get(f"l{i}")) is not None:
             named = answer.choice == NAMES and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
-            v.lead_holds = _firm(answer) and (named or answer.choice == STATES_HELD) and not unbacked(f"l{i}")
+            v.lead_holds = (named or answer.choice == STATES_HELD) and not unbacked(f"l{i}")
         if (answer := answers.get(f"s{i}")) is not None:
             v.choice = answer.choice
             if answer.choice == NONFACTUAL:
