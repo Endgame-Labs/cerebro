@@ -6,10 +6,11 @@ email messages. It drops quoted lines, the "On ... wrote:" line that introduces
 them, an Outlook header block or "-----Original Message-----" and everything after it, and the signature: a "-- "
 line, however many spaces follow it, and what follows it, a "--" line or a sign-off such as "Best," with the few
 short lines under it, a mobile footer, or a closing block of a name with a title, company, phone or address line
-under it, which may end in a common abbreviation such as Inc. A P.S. under a sign-off stays. An "On ... wrote:" line
-with unquoted text under it ends the message only when a mail client wrote it, with an address, a time or a year in
-it, or when the text under it is indented as some clients quote. A sentence of the message that ends in "wrote:"
-stays. Its rules are conservative: a line it cannot place as quote or signature stays.
+under it, which may end in a common abbreviation such as Inc. A P.S. under a sign-off stays, and so does a sign-off
+whose next line is a sentence of three words or more. An "On ... wrote:" line with unquoted text under it ends the
+message only when a mail client wrote it, with an address, a time or a year in it, or when the text under it is
+indented as some clients quote. A sentence of the message that ends in "wrote:" stays. Its rules are conservative: a
+line it cannot place as quote or signature stays.
 """
 
 from __future__ import annotations
@@ -197,7 +198,7 @@ def _drop_signature(lines: list[str]) -> list[str]:
     while i >= 0 and len(lines) - i <= 21:
         # With a space after it, however much follows, it is the signature marker. Without one, as HTML gives it,
         # it is one only when what follows is short enough to be a signature: in the body it is a divider.
-        if lines[i].rstrip(" \t") == "--" and (lines[i].startswith("-- ") or _short_block(lines[i + 1:])):
+        if lines[i].rstrip(" \t") == "--" and (lines[i].startswith("-- ") or _short_block(_filled(lines[i + 1:]))):
             return lines[:i]
         i -= 1
     non_blank = 0
@@ -209,14 +210,20 @@ def _drop_signature(lines: list[str]) -> list[str]:
             if _SIGN_OFF.match(t):
                 under = lines[j + 1:]
                 ps = next((k for k, line in enumerate(under) if _POSTSCRIPT.match(line.strip())), len(under))
-                if _short_block(under[:ps]):
+                found = _filled(under[:ps])
+                sentence = (bool(found) and len(found[0].split()) >= 3 and found[0][-1] in ".?!"
+                            and not _ends_in_abbreviation(found[0]))
+                if _short_block(found) and not sentence:
                     return lines[:j] + [""] + under[ps:]
         j -= 1
     return _drop_closing_block(lines)
 
 
-def _short_block(lines: list[str]) -> bool:
-    found = [line.strip() for line in lines if line.strip()]
+def _filled(lines: list[str]) -> list[str]:
+    return [line.strip() for line in lines if line.strip()]
+
+
+def _short_block(found: list[str]) -> bool:
     return len(found) <= _SIGNATURE_LINES and all(len(line) <= _SIGNATURE_WIDTH for line in found)
 
 
