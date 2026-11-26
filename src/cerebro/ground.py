@@ -19,14 +19,15 @@ A part meets four steps.
 3. The verdicts. Code guards and the judge decides. A sentence that cites nothing goes unasked, unless it says only
    that the evidence holds none of something or counts the items right after it, and so does one that gives an
    earlier save's value as what holds now. A lead on a line of its own is asked over the facts cited under it, and
-   a line over a list that only its colon makes a lead stands on the judge alone. A claim whose every citation holds no words, as an article cited by its
-   path, stands on the citation. The rest go to the decider, one request per part, with each cited fact once
-   by id, the `checks` code found of its names, numbers and dates, and the `claims` code listed: each link of cause,
-   condition or sequence, and each word of a plan over a fact that says only a want. An answer under
-   `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, a lean to names or states_held keeps a
-   lead, any other lean fails it, and a claim whose lead failed stands only on a firm grounded. A listed claim with no fact behind it fails its sentence. With no
-   decider, or once it raises `BudgetSpent`, the words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words
-   must be in what it cites, and `Grounded.spent` says why.
+   a line over a list that only its colon makes a lead stands on the judge alone. A claim whose every citation holds
+   no words, as an article cited by its path, stands on the citation. The rest go to the decider, one request per
+   part, with each cited fact once by id, the `checks` code found of its names, numbers and dates, and the `claims`
+   code listed: each link of cause, condition or sequence, and each word of a plan over a fact that says only a want.
+   An answer under `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, a lean to names or
+   states_held keeps a lead, any other lean fails it, and a claim whose lead failed stands only on a firm grounded. A
+   listed claim with no fact behind it fails its sentence. With no decider, or once it raises `BudgetSpent`, the
+   words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words must be in what it cites, and
+   `Grounded.spent` says why.
 4. What failed. With a `Rewriter`, a failed sentence is rewritten once from its cited facts on the bundled `repair`
    prompt, refused by code when it adds a word neither its draft nor its facts hold, loses a name, a date or a
    figure, or copies a fact, and judged again. Then whatever leaned on what went goes too: a sentence that opens with
