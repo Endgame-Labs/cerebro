@@ -1334,8 +1334,8 @@ def _not_run(agent: Agent, article: str, error: BudgetSpent | Stopped, clock: Cl
 
 
 def _ran_to_an_end(run: Run) -> bool:
-    """Whether a run ran to an end: done, wrote nothing, or its budget spent once it had handed in text. Only such a
-    run's fields land."""
+    """Whether a run ran to an end: done, wrote nothing, or its budget spent once it had handed in text. In a composed
+    article, only such a run's fields land."""
     return run.status in ("done", WROTE_NOTHING) or run.status == "budget spent" and run.result is not None
 
 
