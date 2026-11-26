@@ -478,12 +478,13 @@ def test_an_unsure_verdict_on_a_lead_does_not_keep_the_lead() -> None:
 
 def test_a_lean_to_names_or_states_held_keeps_a_label_over_a_list_whose_figures_its_cited_facts_hold() -> None:
     item = "\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n"
-    for lead, choice, stands in (("Ours, all done:", "names", True), ("Ours, all done:", "states_held", True),
-                                 ("Ours, all done:", "states_unheld", False), ("**Jane Doe:**", "names", False),
-                                 ("Ours, at $4,000:", "states_held", False)):
-        out = ground(agent(), {"Overview": lead + item}, citable(RULE_FACTS), facts=RULE_FACTS,
+    for body, choice, stands in (("Ours:" + item, "names", True), ("Ours, all done:" + item, "states_held", True),
+                                 ("Ours, all done:" + item, "states_unheld", False),
+                                 ("Ours, at $4,000:" + item, "states_held", False),
+                                 ("**Jane Doe:**" + item.replace("- ", ""), "names", False)):
+        out = ground(agent(), {"Overview": body}, citable(RULE_FACTS), facts=RULE_FACTS,
                      decider=Leaning({"l1": choice}, {"l1": JUDGE_MIN_CONFIDENCE - 0.01}))
-        assert out.parts["Overview"].startswith(lead) is stands, (lead, choice)
+        assert (out.parts["Overview"] == body) is stands, (body, choice)
     firm = ground(agent(), {"Overview": "Ours, at $4,000:" + item}, citable(RULE_FACTS), facts=RULE_FACTS,
                   decider=FakeDecider({"l1": "states_held"}))
     assert firm.parts == {"Overview": "Ours, at $4,000:" + item}

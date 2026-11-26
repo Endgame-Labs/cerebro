@@ -786,7 +786,7 @@ LABEL_LEAD = re.compile(r"^[A-Z][a-z]*(?: [a-z]+){0,2}:(?:\s+|$)")
 class _Parts:
     """A sentence read apart: `lead` + `claim` is its text. `carry` is a bold name not closed by a colon, which heads
     the sentences after it too. `bare` is a lead with no claim, as a stream's name on a line of its own. `label` is a
-    lead only because it is a line that ends in a colon over a list, which only the judge may keep."""
+    lead on a line of its own that ends in a colon over a list, which a lean of the judge may keep."""
 
     lead: str = ""
     claim: str = ""
@@ -1553,7 +1553,7 @@ class _Ask:
     data: bool = False  # an item of a data block, asked with `DATA_ITEM`'s line
     named: list[Any] = field(default_factory=list)  # the one key of a marked item's guess, set aside
     aside: dict[str, str] = field(default_factory=dict)  # the guess, shown beside the rest with a question of its own
-    label: bool = False  # a line over a list that its colon alone makes a lead, as `_Parts.label`
+    label: bool = False  # a lead on its own line that ends in a colon over a list, as `_Parts.label`
 
 
 @dataclass
@@ -1733,11 +1733,12 @@ class _Judge:
         return v
 
     def lexical(self, a: _Ask) -> _Verdict:
-        """With no decider the words alone decide, and a lead and its claim read as one. A label over a list goes, as
-        the sentence that cites nothing it would be without a judge."""
+        """With no decider the words alone decide, and a lead and its claim read as one. A label over a list that
+        its words do not make a lead goes, as the sentence that cites nothing it would be without a judge."""
         cited = self.evidence.cited(a.claim)
         if a.bare:
-            held = not a.label and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
+            worded = not a.label or bool(split_lead(a.lead).lead)
+            held = worded and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
             return _Verdict(held, held, held)
         words = _content_words(CITE.sub("", a.lead + a.claim))
         have = set().union(*(_content_words(c.words) for c in cited))
@@ -1875,7 +1876,8 @@ class _Grounding:
         body = self.strip_unread(heading, text)
         sentences = _prose_sentences(body)
         texts = [s.text for s in sentences]
-        parts = [p if p.lead or not _labels_a_list(body, s) else _Parts(lead=s.text, bare=True, label=True)
+        parts = [replace(p, lead=p.lead or s.text, claim="", bare=True, label=True)
+                 if (p.bare or not p.lead) and _labels_a_list(body, s) else p
                  for p, s in zip(map(split_lead, texts), sentences)]
         after = [_held_after(body, s.end) for s in sentences]
         absent = [not CITE.search(t) and self.says_none(t, n) for t, n in zip(texts, after)]
@@ -1896,8 +1898,9 @@ class _Grounding:
         ok = [held and not u and not g for held, u, g in
               zip(self.read_verdicts(heading, verdicts, sentences, texts, parts, own), uncited, aged)]
         unjudged = self.judge.decider is None  # no judge ran, or the cap stopped it: the words alone decided
-        why = [("it cites nothing" if p.label and unjudged else "its cited evidence does not hold this lead") if p.bare
-               else g or self.why(v, p.claim) for p, g, v in zip(parts, aged, verdicts)]
+        why = [("it cites nothing" if p.label and unjudged and not split_lead(p.lead).lead else
+                "its cited evidence does not hold this lead") if p.bare else g or self.why(v, p.claim)
+               for p, g, v in zip(parts, aged, verdicts)]
         skip = [u or a for u, a in zip(uncited, absent)]
         return _Prose(body, sentences, texts, parts, drafted, headed, ok, why, skip)
 
