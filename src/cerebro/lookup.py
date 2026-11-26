@@ -394,6 +394,13 @@ def _no_order(what: str, order_by: str, held: list[str]) -> str:
             + (f", or order by one they hold, such as {', '.join(held[:5])}" if held else ""))
 
 
+def _none_match(what: str, filters: dict[str, Any], bare: str) -> str:
+    """Why a query matched nothing when no check of one filter says: every filter given, so the line stays the same
+    while the data moves, or `bare` when it was given none."""
+    named = ", ".join(f"{k}: {', '.join(_listed(v) or [])}" for k, v in filters.items())
+    return f"no {what} matches {named}" if named else bare
+
+
 def _fact_fields(fact: Fact) -> dict[str, Any]:
     return {name: getattr(fact, name) for name in FACT_FIELDS}
 
@@ -935,7 +942,9 @@ class StoreLookup(Lookup):
             kept = timed + [a for a in kept if not moment(a)]
         result = QueryResult(source, [*kept, *standing], len(kept) + len(standing), said, ordered)
         if not kept and not standing:  # only a query that matched nothing reads the whole collection, to say why
-            result.warnings += self._why_empty(source, self.store.query(source), filters, windows)
+            result.warnings += self._why_empty(source, self.store.query(source), filters, windows) or [_none_match(
+                f"article of {source}", filters,
+                f"every article of {source} is archived or merged: name status, as in status: archived, to list them")]
         return result
 
     def _order_field(self, articles: list[Article]) -> str:
@@ -1014,7 +1023,8 @@ class StoreLookup(Lookup):
         if not items:
             have = {k for row in every for k in row}
             result.warnings += [f"no line of {source} has a field {k}: check its name"
-                                for k in filters if k != "window" and k not in have]
+                                for k in filters if k != "window" and k not in have] or [
+                _none_match(f"line of {source}", filters, f"{source} has no lines yet")]
         return result
 
     def _facts(self, filters: dict[str, Any],
@@ -1075,9 +1085,8 @@ class StoreLookup(Lookup):
         if not found:
             warnings += [f"no fact has a field {k}: check its name" for k in rest
                          if k != "window" and k not in FACT_FIELDS]
-        if not found and not warnings:  # every filter given, so the line stays the same while the data moves
-            named = ", ".join(f"{k}: {', '.join(_listed(v) or [])}" for k, v in filters.items())
-            warnings.append(f"no fact matches {named}" if named else "this workspace has no facts yet")
+        if not found and not warnings:
+            warnings.append(_none_match("fact", filters, "this workspace has no facts yet"))
         kept = {f.id for f in found}
         return found, warnings, {id: how for id, how in ties.items() if id in kept}
 
