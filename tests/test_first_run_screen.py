@@ -10,6 +10,7 @@ import re
 import sys
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,7 +19,7 @@ from test_output import Terminal, env
 
 from cerebro.output import Printer, strip_escapes
 from cerebro.progress import FirstRunScreen, LiveProgress
-from cerebro.runner import Progress
+from cerebro.runner import PassResult, Progress
 
 CHECKS = Path(__file__).resolve().parents[1] / "checks"
 
@@ -425,7 +426,7 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
     assert "cerebro: warning: things/other: a warning of no row" in shown
     last = " ".join(shown[shown.rindex("!"):].split())  # the last line, broken at a space past the width
     assert last == "! Done with warnings. Check: parts/writer on parts/gamma: Summary: dropped one: it cites nothing (and " \
-                   "1 more above)"
+                   "1 more warning above)"
     assert all(len(row) < 100 for row in shown.split("\n"))
     assert "wrote     " not in shown and "listed    " not in shown
 
@@ -454,6 +455,14 @@ def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follo
     assert any(line.startswith("notice    p_") and line.endswith(" is already rejected") for line in shown[:-2]), shown
     assert "cerebro: warning: sources/crm: noted" in shown and sum("more is waiting" in line for line in shown) == 1
     assert "Check: 1 more is waiting. Run cerebro review" in " ".join(shown[-2:]) and capsys.readouterr().out == ""
+    screen, out, _ = still()  # a run that fails names what to run last, so what waits is said above it
+    screen(Progress("build", "start"))
+    screen(Progress("build", "end"))
+    failed = SimpleNamespace(applied=[], quit=False, result=PassResult(failed={"things/a": "a model error"}), lines=[],
+                             after=["1 more is waiting."])
+    with pytest.raises(SystemExit):
+        cli._print_first_run(failed, screen=screen)
+    assert "cerebro: warning: 1 more is waiting." in screen_of(out.getvalue()).split("\n")
 
 
 def test_ctrl_c_during_a_first_run_says_one_line_and_exits_130_with_no_traceback(

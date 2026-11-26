@@ -320,7 +320,7 @@ def test_the_last_line_names_the_state_and_what_comes_next_in_each_of_the_three_
     assert strip_escapes(p.last_line(failed=True, run="cerebro trust .")) == "✗ Failed. Run: cerebro trust ."
     p.warn("one source is slow")
     p.check("another")
-    assert strip_escapes(p.last_line()) == "! Done with warnings. Check: one source is slow (and 1 more above)"
+    assert strip_escapes(p.last_line()) == "! Done with warnings. Check: one source is slow (and 1 more warning above)"
     plain = Printer(io.StringIO(), io.StringIO(), getenv=env().get)
     plain.next("cerebro status")
     assert plain.last_line() == "[ok] Done. Next: cerebro status"
