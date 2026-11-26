@@ -19,8 +19,8 @@ it on its held list and proposes its account to the accounts curator. With `--ke
 and left, to read it after. With `--see-first <words>` the first run is given the person's words on what to see
 first. At its end it asks the wiki the questions in `gtm_questions.yaml` and prints their
 score, and fails under `--min-score`, 0.85 by default. It fails too unless Brightwater's or Kestrel's article,
-whose notes name their people, ends with a Stakeholders yaml block, and unless every item of every block cites a fact
-the workspace holds that names its person and holds any since or until date it gives. With `--decision <provider>:<model>`, such as
+whose notes name their people, has a Stakeholders part, and when any account's Stakeholders part holds a fence: a
+reader is owed sentences there, not data. With `--decision <provider>:<model>`, such as
 `typesafe:jev-1.13.0`, the workspace decides and grounds on that model in place of the default. The questions are judged
 by Rune whatever the workspace decides on, so two runs compare. With `--summary <file>` it writes what a
 run is compared by as JSON: each article, its sentences per part and the facts they cite, by text, what grounding
@@ -37,10 +37,8 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 
-import yaml
 from _first_run import FIRST, placed, taken_whole
 from _no_sf import refuse_sf
 from _paths import paths, ran_lines
@@ -53,7 +51,7 @@ from cerebro.budget import LOG
 from cerebro.evidence import CITE
 from cerebro.first_run import run as first_run
 from cerebro.first_run import see_first
-from cerebro.ground import ABSENCE, link_id, presumed, split_sentences
+from cerebro.ground import ABSENCE, link_id, split_sentences
 from cerebro.models import HttpDecider, ModelSpec
 from cerebro.records import proposals
 from cerebro.runner import PassResult
@@ -180,7 +178,7 @@ def sentences(text: str) -> list[str]:
         if line.startswith(("```", "~~~")):
             fence = not fence
             continue
-        if fence:  # a yaml fence is data, checked item by item in stakeholders()
+        if fence:
             continue
         if not line or line.startswith(("#", ">", "_")) or re.fullmatch(r"\|[-:| ]+\|", line):
             continue
@@ -228,73 +226,18 @@ def read_articles(workspace: Cerebro, reasons: list[str]) -> dict[str, list[str]
     return written
 
 
-def blocks(text: str) -> list[str]:
-    """The text of each yaml fence in a part."""
-    return re.findall(r"(?ms)^```ya?ml[^\n]*\n(.*?)^```", text)
-
-
-ROLES = {  # what a fact must say for an item to hold each role the stakeholders agent may give
-    "decides": r"decid|decision|final call|signs?\b|approv|budget",
-    "champions": r"introduc|argu|advocat|champion|push",
-    "connects": r"introduc|connect|in touch|brought",
-    "blocks": r"object|block|against|resist|reject|refus",
-}
-
-
-def held_date(day: str, words: str) -> bool:
-    """Whether `words` give the date `day`, an ISO date, in any of the forms a fact writes it."""
-    try:
-        when = datetime.fromisoformat(day)
-    except ValueError:
-        return day in words
-    forms = (f"{when:%Y-%m-%d}", f"{when.day} {when:%B}", f"{when:%B} {when.day}", f"{when.day} {when:%b}",
-             f"{when:%b} {when.day}")
-    return any(form.lower() in words.lower() for form in forms)
-
-
 def stakeholders(workspace: Cerebro, reasons: list[str]) -> None:
-    """An account whose notes name people with a role ends its Stakeholders part with a block, and every item of
-    every block cites a fact the workspace holds that names its person, says what its role says unless its writer marked
-    it presumed, and gives any since or until date in its own words, not only as the day it was stated."""
-    facts = {f.id: f for f in workspace.extraction.facts()}
+    """Brightwater's or Kestrel's article has a Stakeholders part, and no account's Stakeholders part holds a fence."""
     landed = []
     for found in workspace.store.query("accounts"):
         article = workspace.store.article(found.identity.id)
         for part in passages(article):
-            found_blocks = blocks(part.text)
-            if part.heading == "Stakeholders" and found_blocks and not part.text.rstrip().endswith("```"):
-                reasons.append(f"{article.identity.id}: the Stakeholders part does not end with its block")
-            for block in found_blocks:
-                items = yaml.safe_load(block)
-                items = items if isinstance(items, list) else [items]
-                print(f"block {article.identity.id} / {part.heading}: {len(items)} items")
-                for item in items:
-                    cites = CITE.findall(yaml.safe_dump(item))
-                    held = [facts[id] for id in dict.fromkeys(cites) if id in facts]
-                    words = " ".join(f"{f.text} {f.subject} " + " ".join(f"{q.speaker} {q.text}" for q in f.quotes)
-                                     for f in held)
-                    person = str(item.get("person", "")) if isinstance(item, dict) else str(item)
-                    name = person.rsplit("/", 1)[-1].replace("-", " ").split()[-1:] if person else []
-                    role = str(item.get("role", "")) if isinstance(item, dict) else ""
-                    dates = [str(item[k]) for k in ("since", "until") if isinstance(item, dict) and item.get(k)]
-                    marked = presumed(item)  # a presumed value is its writer's reading: no fact need say it
-                    print(f"  item {person} {role} {dates or ''}" + (f" presumed: {marked}" if marked else ""))
-                    marked = marked is True or "role" in [str(k).lower() for k in (marked or [])]
-                    if not held:
-                        reasons.append(f"{article.identity.id}: a stakeholders item cites no fact the wiki holds: {item}")
-                    elif not name or name[0].lower() not in words.lower():
-                        reasons.append(f"{article.identity.id}: no fact a stakeholders item cites names {person!r}")
-                    elif role not in ROLES:
-                        reasons.append(f"{article.identity.id}: a stakeholders item gives {role!r}, which is no role")
-                    elif not marked and not re.search(ROLES[role], words, re.IGNORECASE):
-                        reasons.append(f"{article.identity.id}: no fact a stakeholders item cites shows {person!r} "
-                                       f"doing what {role} says")
-                    elif any(not held_date(d, words) for d in dates):
-                        reasons.append(f"{article.identity.id}: no fact a stakeholders item cites gives {dates}")
-                    if part.heading == "Stakeholders" and held:
-                        landed.append(article.identity.title)
+            if part.heading == "Stakeholders" and "```" in part.text:
+                reasons.append(f"{article.identity.id}: the Stakeholders part holds a fence, which a reader sees as data")
+            elif part.heading == "Stakeholders":
+                landed.append(article.identity.title)
     if not any(name in title for title in landed for name in ("Brightwater", "Kestrel")):
-        reasons.append("no account whose notes name its people ended with a Stakeholders block of cited items")
+        reasons.append("no account whose notes name its people has a Stakeholders part")
 
 
 OWN_DOMAIN = "ourco.example"  # the workspace's own domain, as the check makes the workspace
