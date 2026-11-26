@@ -261,8 +261,8 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         from .ground import counted
 
         for key, tally in result.grounding.items():
-            if said := counted(tally):
-                _echo(f"grounding {key}: {said}")
+            if did := counted(tally):
+                _echo(f"grounding {key}: {did}")
     for key, n in result.cleaned.items():  # each thing it made safe is kept on its run's line
         _echo(f"cleaned   {key}: {made_safe(n)}")
     for agent, why in result.skipped.items():
