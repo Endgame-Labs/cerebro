@@ -147,7 +147,8 @@ class Progress:
     `kind` is open, with the `total` the stage counts, or start or end of the work `key` names. An end's `mark` is
     done, failed, warning, skipped, or for a compile ran, a run that ran and wrote nothing, `text` what its row says
     after its key, `cost` what an agent's run spent, and `why` what went wrong. A check's end carries in `total` how many records it listed, and a
-    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts."""
+    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts. A
+    first run's discover `round` starts its round `done` of up to `total`."""
 
     stage: str
     kind: str
