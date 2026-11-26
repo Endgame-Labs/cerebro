@@ -33,12 +33,6 @@ Marisol, the octopus in Tank 4, keeps popping its magnetic lid. [^fact_01m8aj92n
 
 Each `[^fact_…]` is a footnote. It names one fact, and the note at the bottom names the record it came from and quotes it.
 
-## What you control
-
-- A curator's `authority:` line says what it may do on its own, such as add, merge or archive articles. Anything it may not do waits for you in `cerebro review`. See [agents](docs/agents.md).
-- Claude Code, Cursor or any MCP client can read the wiki and tell it what changed. See [MCP](docs/mcp.md).
-- Connect your own [sources](docs/sources.md), and add your own [MCP tools](docs/apps/README.md) in Python.
-
 ## Try it
 
 You need Python 3.13, [uv](https://docs.astral.sh/uv/), a Fireworks key and a Typesafe key.
