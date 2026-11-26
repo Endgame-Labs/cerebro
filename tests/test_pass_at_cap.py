@@ -104,7 +104,7 @@ def test_a_pass_at_the_cap_fails_nothing_says_what_waits_and_exits_1_with_nothin
     assert not [line for line in lines if line.startswith("failed")], ran.output
     assert "BudgetSpent" not in ran.output
     assert "Daily budget: $60.00 of $50.00 spent at 00:05 UTC. 2 records and 1 agent run wait." in lines
-    assert lines[-1] == "Done: 0 written, 0 failed."
+    assert lines[-1] == "Done."
     assert space.called == []
     assert space.store.state("failed:things") == ["t3", "t4"]  # each waits for the next pass
     assert space.store.state("failing:reports/weekly:reports/weekly") is None  # no back off for having waited
@@ -135,7 +135,7 @@ def test_what_waited_at_the_cap_runs_on_the_next_pass_once_it_lifts(
     assert ran.exit_code == 0, ran.output
     lines = ran.output.splitlines()
     assert "facts     2 records read, 2 facts extracted" in lines and "wrote     reports/weekly  articles/reports/weekly.md" in lines
-    assert lines[-1] == "Done: 1 written, 0 failed."
+    assert lines[-1] == "Done: 1 written."
     assert space.store.state("failed:things") == []
     assert space.store.state("failing:reports/weekly:reports/weekly") is None
 

@@ -247,9 +247,11 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
             if said is not None:
                 said.add(line)
     for source, count in result.listed.items():
-        _echo(f"listed    {source}: {_count(count, 'record')}")
-    if result.read or result.extracted:
-        _echo(f"facts     {_count(result.read, 'record')} read, {_count(result.extracted, 'fact')} extracted")
+        if count or source in result.from_start:  # listed from the start, none says the source holds none
+            _echo(f"listed    {source}: {_count(count, 'record')}")
+    if counts := ", ".join(f"{_count(n, noun)} {verb}" for noun, verb, n in (
+            ("record", "read", result.read), ("fact", "extracted", result.extracted)) if n):
+        _echo(f"facts     {counts}")
     for agent, why in result.due.items():
         _echo(f"due       {agent}: {why}")
     if agents and not any(row for row in (result.due, result.skipped, result.failed, result.ran)) and not result.runs \
@@ -279,9 +281,10 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
     for line in result.stops:  # a daily cap reached kept work from starting: it waits, and none of it failed
         if said is None or line not in said:  # serve says a stop once, until it changes
             _echo(line)
-    _echo(f"Done: {len(result.compiled)} written, "
-          + (f"{len(result.ran)} ran and wrote nothing, " if result.ran else "") + f"{len(result.failed)} failed"
-          + (f", {len(result.held)} held for the next pass." if result.held else "."))
+    done = ", ".join(f"{n} {label}" for label, n in (
+        ("written", len(result.compiled)), ("ran and wrote nothing", len(result.ran)), ("failed", len(result.failed)),
+        ("held for the next pass", len(result.held))) if n)
+    _echo(f"Done: {done}." if done else "Done.")
     if result.next:  # a first run that failed under serve: what to run, as serve --once ends on it
         _echo(f"next      {result.next}")
 

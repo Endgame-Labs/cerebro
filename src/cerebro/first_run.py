@@ -1396,6 +1396,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     `on` are the first pass's own."""
     for name, count in more.listed.items():
         into.listed[name] = into.listed.get(name, 0) + count
+    into.from_start |= more.from_start
     into.read += more.read
     into.extracted += more.extracted
     into.retracted += more.retracted

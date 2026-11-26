@@ -297,7 +297,7 @@ def test_under_serve_a_failed_first_run_says_so_names_the_command_and_is_not_ask
         printed = _loop(workspace, 3, lambda line: None)
         text = "\n".join(printed)
         assert "agents    none" not in text
-        assert printed.count("Done: 0 written, 2 failed.") == 1  # the pass that asked them; the next two asked nobody
+        assert printed.count("Done: 2 failed.") == 1  # the pass that asked them; the next two asked nobody
         assert printed.count("next      cerebro secrets set fireworks") == 3  # what mends it, on every pass
         assert sum(line.startswith("failed    things/curator") for line in printed) == 1
         assert sum(line.startswith("skipped   things/curator: the first run failed") for line in printed) == 2

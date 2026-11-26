@@ -42,12 +42,12 @@ It runs a pass every 30 seconds and checks each source every 15 minutes. A chang
 The pass prints a line for each thing it did:
 
 ```text
-listed    local: 0 records
+listed    local: 1 record
 facts     1 record read, 2 facts extracted
 due       projects/article: change
 wrote     projects/atlas  articles/projects/atlas.md
 wrote     projects/borealis  articles/projects/borealis.md
-Done: 2 written, 0 failed.
+Done: 2 written.
 ```
 
 When an agent doesn't run, the pass says why, and how to run it anyway:
@@ -95,7 +95,7 @@ Tick a line, and everything under it is ticked too. Untick it, and everything un
 Change what is ticked, then approve, or quit to keep nothing. What you leave unticked waits for you. `--yes` takes what the tree ticks, and the run ends by saying what waits:
 
 ```text
-Done: 15 written, 0 failed.
+Done: 15 written.
 9 more are waiting. Run cerebro review, or ask your agent what is waiting.
 ```
 
