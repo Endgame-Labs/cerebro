@@ -357,9 +357,10 @@ def turned_down(store: Store, extraction: Extraction | None, sources: Collection
     the act carries out, `named`, are their caller's latest word on their own things, so they never refuse it."""
     named = list(named)
     act = KEEP if kind == "article.merge" and payload.get("distinct") else kind
-    rows = [p for p in proposals(store) if p.decided_by is not None and p.decided_by.kind == "person"
+    rows = [replace(p, target=str(p.applied.get("article") or p.target)) if p.kind == "article.admit" else p
+            for p in proposals(store) if p.decided_by is not None and p.decided_by.kind == "person"
             and p.status in ("accepted", "rejected") and p.kind in (kind, OPPOSITE.get(kind, kind))
-            and all(p.id != q.id for q in named)]
+            and all(p.id != q.id for q in named)]  # an admit carried out is of the article it landed on
     if kind == "article.link":
         return _link_turned_down(store, extraction, sources, target, payload, rows, named)
     moved = redirects(store)
@@ -1060,8 +1061,8 @@ class _Curation:
 
     def file(self, kind: str, target: str, payload: dict[str, Any], reason: str, lands: bool) -> tuple[str, str]:
         """A row of the `proposals` log, and a line that says what it did. One that lands is accepted and applied at
-        once: by the curator, or as the decision of the caller who accepted a proposal it names. Any other waits for a
-        caller. An act that would undo what a caller decided, with nothing new since, is refused."""
+        once, as the curator's own act, and a caller's yes it carries out stays that caller's one decision. Any other
+        waits for a caller. An act that would undo what a caller decided, with nothing new since, is refused."""
         named = [p for p in proposals(self.store) if p.id in self.answers]
         moved = redirects(self.store)
         if kind != "article.admit" and (off := [p.id for p in named if _thing(moved, kind, p.target, p.payload)
@@ -1082,10 +1083,9 @@ class _Curation:
         proposal = Proposal(id=_proposal_id(), kind=kind, target=target, by=self.caller, at=at, payload=payload,
                             reason=reason, cites=list(self.answers))
         note = "it waits for a caller"
-        decider = yes[0].decided_by if yes else self.caller
         if lands:
             proposal.applied, note = apply(self.store, proposal, at)
-            proposal.status, proposal.decided_by, proposal.decided_at = "accepted", decider, at
+            proposal.status, proposal.decided_by, proposal.decided_at = "accepted", self.caller, at
             if yes and kind == "article.admit" and (proposal.applied.get("created") or proposal.applied.get("back")):
                 # an article reads as admitted by whoever filed what it was made from: a caller's own ask first
                 made = self.store.article(proposal.applied["article"]).identity  # type: ignore[union-attr]
@@ -1098,7 +1098,7 @@ class _Curation:
             self.done.carried += [p.id for p in yes]
             for p in named:
                 kept = p.status == "accepted"
-                propose(self.store, replace(p, status="accepted", decided_by=p.decided_by if kept else decider,
+                propose(self.store, replace(p, status="accepted", decided_by=p.decided_by if kept else self.caller,
                                             decided_at=p.decided_at if kept else at,
                                             decision_reason=p.decision_reason if kept else reason,
                                             applied=proposal.applied))

@@ -560,6 +560,13 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     dated(store, layer, "things/alder", hour(4))
     assert run(store, ARCHIVE, at=hour(5), layer=layer)[0].startswith("{'archived': 'things/alder'")
 
+    # a caller's admit carried out under another path than the one asked holds on the article it made
+    store = MemoryStore()
+    bolt = told(store, "article.admit", "things/bolt", "keep Bolt", hour(0))
+    run(store, ("admit", {"name": "Bolt Co", "reason": "asked", "proposals": [bolt]}), at=hour(1))
+    assert run(store, ("archive", {"article": "things/bolt-co", "reason": "quiet"}), at=hour(2)) == [
+        refusal(f"a caller admitted things/bolt-co in {bolt}: keep Bolt: an archive of it is not done {lift}")]
+
     # a caller's archive of an article a caller made refuses an admit back
     store = MemoryStore()
     made = told(store, "article.admit", "things/alder", "keep Alder", hour(0))
@@ -670,7 +677,7 @@ def test_a_yes_on_any_proposal_is_carried_out_by_its_curator_not_the_engine(tmp_
     assert all(row(store, id).applied for id in asked)
 
 
-def test_a_curators_act_that_names_accepted_proposals_lands_as_their_deciders_whatever_its_authority(
+def test_a_curators_act_that_carries_out_a_yes_lands_as_its_own_whatever_its_authority_and_the_yes_stays_one(
         tmp_path: Path) -> None:
     store, agent = MemoryStore(), things(tmp_path)
     store.create(Identity("things/dune", "things", "Dune", {}, "active"))
@@ -678,11 +685,13 @@ def test_a_curators_act_that_names_accepted_proposals_lands_as_their_deciders_wh
     propose(store, Proposal("p_waits", "article.admit", "things/alder", Caller("people/curator", "agent"), stamp(NOW),
                             payload={"name": "Alder"}))
     done = curate(store, agent, [("admit", {"name": "Alder", "reason": "asked", "proposals": [asked, "p_waits"]})],
-                  tmp_path)
+                  tmp_path, at=hour(1))
     act = next(p for p in proposals(store) if p.by == BY_THINGS)
-    assert done.admitted == ["things/alder"] and (act.status, act.decided_by) == ("accepted", YOU)
+    assert done.admitted == ["things/alder"] and (act.status, act.decided_by, act.cites) == (
+        "accepted", BY_THINGS, [asked, "p_waits"])
+    assert [(p.id, p.decided_at) for p in proposals(store) if p.decided_by == YOU] == [(asked, stamp(NOW))]
     assert [(row(store, id).status, row(store, id).decided_by, row(store, id).applied) for id in (asked, "p_waits")] == [
-        ("accepted", YOU, act.applied)] * 2
+        ("accepted", YOU, act.applied), ("accepted", BY_THINGS, act.applied)]
     assert store.article("things/alder").identity.admitted_by == YOU
 
     # an act that waited, accepted with the proposal it named, is carried out with it

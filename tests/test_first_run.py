@@ -300,7 +300,8 @@ def test_yes_approves_every_proposed_row_and_no_left_out_row_then_reads_and_comp
     assert "wrote     things/birch-yard  articles/things/birch-yard.md" in out
     with open_it(root, script) as workspace:
         assert articles(workspace) == ["things/alder-works", "things/birch-yard"]  # Initech, left out, is not
-        assert all(p.status == "accepted" and p.decided_by == YOU for p in proposals(workspace.store))
+        assert all(p.status == "accepted" and p.decided_by == (p.by if p.cites else YOU)  # the act is its curator's
+                   for p in proposals(workspace.store))
         assert not in_first_run(workspace) and workspace.store.state(KEY)["status"] == "done"
         assert "Alder Works asked for a renewal quote." in (root / "articles" / "things" / "alder-works.md").read_text()
 
