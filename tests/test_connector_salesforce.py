@@ -562,6 +562,20 @@ def test_an_emails_header_lines_hold_their_values() -> None:
         "From: lee.moss@quillmoor.example To: x\n"
 
 
+def test_an_emails_text_is_what_its_sender_newly_wrote() -> None:
+    body = ("Hi Jordan,\r\n\r\nWe can start the pilot on 2 March with 40 seats.\r\n\r\nBest,\r\nSam Rivera\r\n"
+            "Head of Operations | Quillmoor\r\nM: +1 555 0100<tel:+15550100>\r\n"
+            "sam.rivera@quillmoor.example<mailto:sam.rivera@quillmoor.example>\r\n"
+            "[cid:image001.png@01DA2B3C.4D5E6F70]\r\n\r\n"
+            "From: Jordan Lee <jordan@acme.example<mailto:jordan@acme.example>>\r\n"
+            "Sent: Monday, 2 February 2026 09:14\r\nTo: Sam Rivera <sam.rivera@quillmoor.example>\r\n"
+            "Subject: Pilot\r\n\r\nCan you confirm the pilot date and the seat count?\r\n")
+    text = record_text("EmailMessage", {"FromAddress": "sam.rivera@quillmoor.example", "Subject": "RE: Pilot",
+                                        "TextBody": body})
+    assert text == ("From: sam.rivera@quillmoor.example\nSubject: RE: Pilot\n\n"
+                    "Hi Jordan,\n\nWe can start the pilot on 2 March with 40 seats.\n")
+
+
 def test_an_id_of_fifteen_characters_finds_its_record(connector: SalesforceConnector) -> None:
     assert connector.get("001000000000001").id == ACME
 

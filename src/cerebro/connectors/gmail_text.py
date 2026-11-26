@@ -1,7 +1,8 @@
 """A message's text as the Gmail connector reads it, with the standard library alone: its header block, a text part
 in its transfer encoding and charset, HTML turned into text, and the message reduced to what its sender newly wrote.
 
-`reduce` is the one place that decides what is new. It drops quoted lines, the "On ... wrote:" line that introduces
+`reduce` is the one place that decides what is new, for every source that reads email: Gmail, and Salesforce for its
+email messages. It drops quoted lines, the "On ... wrote:" line that introduces
 them, an Outlook header block or "-----Original Message-----" and everything after it, and the signature: a "-- "
 line, however many spaces follow it, and what follows it, a "--" line or a sign-off such as "Best," with the few
 short lines under it, a mobile footer, or a closing block of a name with a title, company, phone or address line
@@ -82,9 +83,21 @@ _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", 
 # -- reduce
 
 def reduce(text: str) -> str:
-    """What a message's sender newly wrote: the message without its quoted replies and its signature. Line endings
+    """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
+    quote with nothing written above it is kept whole but for its signature, so its words are not lost. Line endings
     become \\n, the end of each line is trimmed, and runs of blank lines shrink to one."""
-    return _collapse_blank("\n".join(_drop_signature(_drop_quoted(_split_lines(text)))))
+    lines = _split_lines(text)
+    own = _drop_quoted(lines)
+    if not any(_written(line) for line in own):
+        own = lines
+    return _collapse_blank("\n".join(_drop_signature(own)))
+
+
+def _written(line: str) -> bool:
+    """Whether a line holds words, other than a line a mail client puts above a forward, such as
+    "---------- Forwarded message ---------"."""
+    t = line.strip()
+    return t != "" and not (t.startswith("---") and t.endswith("---"))
 
 
 def _split_lines(text: str) -> list[str]:
