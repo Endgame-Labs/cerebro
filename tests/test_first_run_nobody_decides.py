@@ -37,9 +37,11 @@ def _own_authority(root: Path) -> Path:
 
 
 def _landed_alone(workspace: Cerebro) -> list[str]:
-    """The admits that landed with no person deciding them."""
-    return [p.target for p in proposals(workspace.store) if p.kind == "article.admit" and p.status == "accepted"
-            and (p.decided_by is None or p.decided_by.kind != "person")]
+    """The admits that landed with no person deciding them: neither a person's yes nor an act that carries one out."""
+    rows = proposals(workspace.store)
+    yes = {p.id for p in rows if p.decided_by is not None and p.decided_by.kind == "person"}
+    return [p.target for p in rows if p.kind == "article.admit" and p.status == "accepted"
+            and p.id not in yes and not yes & set(p.cites)]
 
 
 def _articles(workspace: Cerebro) -> list[str]:

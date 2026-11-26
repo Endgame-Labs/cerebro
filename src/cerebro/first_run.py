@@ -858,12 +858,9 @@ def _decided_since(workspace: Cerebro, since: str) -> tuple[bool, list[str]]:
     so one a person admitted by hand while the list waits approves nothing of it."""
     accepted, declined = False, []
     curators = {agent.id for agent in _curators(workspace)}
-    every = proposals(workspace.store)
-    asks = {p.id for p in every if p.by.kind == "person"}  # a curator's act that carries out a caller's own ask
-    for p in every:
+    for p in proposals(workspace.store):
         if p.kind != "article.admit" or p.decided_by is None or p.decided_by.kind != "person" \
-                or (p.decided_at or "") < since or p.by.kind != "agent" or p.by.name not in curators \
-                or asks & set(p.cites):
+                or (p.decided_at or "") < since or p.by.kind != "agent" or p.by.name not in curators:
             continue
         if p.status == "accepted":
             accepted = True
