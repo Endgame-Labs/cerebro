@@ -337,7 +337,6 @@ def _list(workspace: Cerebro, name: str, whole: bool, result: Checked) -> tuple[
     sources = runner._list(unseen, seen, only=name)  # type: ignore[arg-type]
     listed = sources[0] if sources else _Listed(workspace.connectors[name])
     lead = f"sources/{name}: its cursor did not read ("
-    result.notices += [line for line in seen.notices if not line.startswith(lead)]  # what the source noted
     for line in seen.notices:  # the pass's own line says which way it went; a test ties each way to the pass
         if line.startswith(lead):
             why = line.removeprefix(lead).rpartition("), so ")[0]

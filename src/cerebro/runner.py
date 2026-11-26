@@ -1004,7 +1004,7 @@ def _articles(connector: Connector, listed: _Listed, name: str, result: PassResu
         listed.back = listed.back or ([since] if listing.again else [])
         result.listed[name] += len(listing.records)
         said = (f"sources/{name}: {line}" for line in listing.notices)  # a source may give each again on every page
-        result.notices += [line for line in dict.fromkeys(said) if line not in result.notices]
+        result.warnings += [line for line in dict.fromkeys(said) if line not in result.warnings]
         listed.records += listing.records
         listed.removed += listing.removed
         listed.cursor, listed.moved = listing.cursor, True

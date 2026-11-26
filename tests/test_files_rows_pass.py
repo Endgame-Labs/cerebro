@@ -43,7 +43,7 @@ def test_a_row_that_stops_reading_or_is_gone_leaves_its_article_as_it_was(tmp_pa
     broken = one_pass(workspace)
     assert workspace.store.article("things/alpha").identity.status == "active"
     assert any(f"exports/t.csv line 2: {QUOTE_IN_VALUE}, so the row is not read" in line
-               for line in broken.notices)
+               for line in broken.warnings)
     (tmp_path / "exports/t.csv").write_text("thing,name,seats\nt2,Beta,5\n")
     one_pass(workspace)
     assert workspace.store.article("things/alpha").identity.status == "active"

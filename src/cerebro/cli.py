@@ -3735,16 +3735,20 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
         if out.next:  # what to run next
             _echo(f"next      {out.next}")
         return
-    # how many rows of the list wait: on a terminal it is to check, which the last line names
-    after = list(getattr(out, "after", ()))
-    out.result.warnings += [*out.lines, *(after if screen is not None else [])]
+    waiting = list(getattr(out, "after", ()))  # how many rows of the list wait
+    after = [*already, *waiting]  # said after the summary
+    out.result.warnings += out.lines
+    if screen is not None:  # on a terminal the last line is last: what waits is to check, which it names
+        out.result.notices += already
+        out.result.warnings += waiting
+        after = []
     agents = workspace.agents if workspace is not None else ()
     fails = _pass_fails(out.result, agents, admitted=sum(len(applied.accepted) for applied in out.applied))
     if screen is not None:
         _print_end(screen, _masked(out.result, root), fails, said=screen.lines_said)
     else:
         _print(_masked(out.result, root))
-    for line in [*already, *(after if screen is None else [])]:  # how many rows of the list wait, after the summary
+    for line in after:  # after the summary
         _echo(line)
     if fails:
         raise SystemExit(1)

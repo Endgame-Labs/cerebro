@@ -400,18 +400,23 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
 
 def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follows_it(
         tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from test_first_run import ADMITS, Script, lay_out_workspace, open_it, settled
+    from test_first_run import ADMITS, YOU, Script, lay_out_workspace, open_it, settled
 
     from cerebro import cli
     from cerebro.first_run import run
 
+    def choose(pile: Any) -> Any:  # Alder and Initech ticked, and a no to Initech given while the list is open
+        initech = next(r.id for r in pile.rows() if r.name == "Initech")
+        workspace.call(YOU, "decide", {"reject": [{"id": initech, "reason": "not ours"}]})
+        return settled(pile, {r.id for r in pile.rows() if r.name in ("Alder Works", "Initech")})
+
     screen, out, _ = still()
-    with open_it(lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})) as workspace:
-        done = run(workspace, on=screen,
-                   choose=lambda pile: settled(pile, {r.id for r in pile.rows() if r.name == "Alder Works"}))
-        cli._print_first_run(done, workspace, screen=screen)
-    last = " ".join(screen_of(out.getvalue()).split("\n")[-2:])
-    assert "Check: 1 more is waiting. Run cerebro review" in last and capsys.readouterr().out == ""
+    admits = [*ADMITS[:2], ("admit", {"record": {"source": "crm", "id": "001C"}, "reason": "One call.", "group": "you own (crm)"})]
+    with open_it(lay_out_workspace(tmp_path), Script({"things/curator": admits})) as workspace:
+        cli._print_first_run(run(workspace, on=screen, choose=choose), workspace, screen=screen)
+    shown = screen_of(out.getvalue()).split("\n")
+    assert any(line.startswith("notice    p_") and line.endswith(" is already rejected") for line in shown[:-2]), shown
+    assert "Check: 1 more is waiting. Run cerebro review" in " ".join(shown[-2:]) and capsys.readouterr().out == ""
 
 
 def test_ctrl_c_during_a_first_run_says_one_line_and_exits_130_with_no_traceback(

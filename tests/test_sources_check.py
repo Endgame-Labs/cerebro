@@ -173,7 +173,7 @@ class Noting(FakeConnector):
         return listed
 
 
-def test_what_a_listing_notes_is_said_once_as_a_notice_as_a_pass_says_it(
+def test_what_a_listing_notes_is_said_once_a_pass_and_as_the_pass_says_it(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _workspace(tmp_path / "w")
     source = Noting("things", [Record(id=f"r{n}", source="things", revision="1", body=f"text {n}") for n in range(3)],
@@ -181,11 +181,11 @@ def test_what_a_listing_notes_is_said_once_as_a_notice_as_a_pass_says_it(
     monkeypatch.setattr(cli, "open_workspace", lambda folder: Cerebro(root, connectors=[source]))
     with Cerebro(root, extraction=FakeExtraction(), connectors=[source]) as workspace:
         result = workspace.run_once(agents=False)
-    said = [line for line in result.notices if line.startswith("sources/")]
-    assert said == ["sources/things: every record here is of one kind, as its settings say"] and not result.warnings
+    assert result.warnings == ["sources/things: every record here is of one kind, as its settings say"]
     done = _check(root, "things")
     assert done.exit_code == 0, done.output
-    assert [line for line in done.output.splitlines() if "sources/things: " in line] == [f"notice    {said[0]}"]
+    assert [line for line in done.output.splitlines() if "sources/things: " in line] == [
+        f"warning   {result.warnings[0]}"]
 
 
 def test_a_record_the_source_says_is_gone_is_counted_for_the_pass_to_take_back(

@@ -73,8 +73,9 @@ def test_sigterm_stops_serve_as_ctrl_c_does_and_exits_0_once_the_pass_loop_ends(
     assert restored is own
 
 
-@pytest.mark.parametrize(("leased", "gave"), [(True, "gave back its 1 lease and "), (False, "")])
-def test_a_pass_still_under_way_when_serve_stops_is_cut_short_with_its_leases_given_back(
+@pytest.mark.parametrize(("leased", "gave"), [(True, "gave back its 1 lease and "), (False, "")],
+                         ids=["its-leases-given-back", "holding-no-lease-it-names-none"])
+def test_a_pass_still_under_way_when_serve_stops_is_cut_short(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, leased: bool, gave: str) -> None:
     held, release, exits, store = threading.Event(), threading.Event(), [], MemoryStore()
     root = workspace_folder(tmp_path)
