@@ -187,6 +187,14 @@
    "Hi Jane\nConfirmed for Monday\nSam"
   ],
   [
+   "Hi Jane\nCall me on 020 7946 0958\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
+   "Hi Jane\nCall me on 020 7946 0958"
+  ],
+  [
+   "Thanks!\n\nSent from my iPhone\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
+   ""
+  ],
+  [
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line.",
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line."
   ],
