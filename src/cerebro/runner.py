@@ -2603,7 +2603,8 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     did not finish. Of those, one the budget cut before it handed in text waits while a daily cap holds, and with none
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
-    `held` line says it once, with when it runs."""
+    `held` line says it once, with when it runs. Each line of what grounding and landing did is kept on its run's line."""
+    keep_grounding(workspace.store, compiled.run, compiled.grounding, [*compiled.grounded, *compiled.cleaned])
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]

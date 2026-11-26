@@ -143,12 +143,12 @@ class Compiled:
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
     grounded: list[str] = field(default_factory=list)  # the lines of `dropped` that are grounding's own
-    cleaned: list[str] = field(default_factory=list)  # a line for each thing landing made safe, which a pass counts
+    cleaned: list[str] = field(default_factory=list)  # a line for each thing landing made safe or noted, counted
 
 
 def made_safe(n: int) -> str:
-    """What landing made safe on an article, as a count alone: made 3 safety edits."""
-    return f"made {n} safety edit{'' if n == 1 else 's'}"
+    """What landing made safe or noted and left on an article, as a count alone: made 3 safety notes."""
+    return f"made {n} safety note{'' if n == 1 else 's'}"
 
 
 def agent_surface(lookup: Lookup, caller: Caller, seen: list[Fact] | None = None) -> list[Callable[..., Any]]:
@@ -1212,7 +1212,7 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
     for n, line in enumerate(lines):
         line = scrub(line) if scrub is not None else line  # masked as the store masks a row, never cut
         if len(line) > room:
-            kept.append(f"and {len(lines) - n} more, not kept: the counts hold every one")
+            kept.append(f"and {len(lines) - n} more, not kept")
             break
         kept.append(line)
         room -= len(line)

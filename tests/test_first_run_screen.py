@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -399,11 +400,15 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
 
 
 def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follows_it(
-        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     from test_first_run import ADMITS, YOU, Script, lay_out_workspace, open_it, settled
 
     from cerebro import cli
+    from cerebro.fakes import FakeConnector
     from cerebro.first_run import run
+
+    listed = FakeConnector.list  # the source notes a line on its listing, which warns too
+    monkeypatch.setattr(FakeConnector, "list", lambda self, since=None: replace(listed(self, since), notices=["noted"]))
 
     def choose(pile: Any) -> Any:  # Alder and Initech ticked, and a no to Initech given while the list is open
         initech = next(r.id for r in pile.rows() if r.name == "Initech")
@@ -416,6 +421,7 @@ def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follo
         cli._print_first_run(run(workspace, on=screen, choose=choose), workspace, screen=screen)
     shown = screen_of(out.getvalue()).split("\n")
     assert any(line.startswith("notice    p_") and line.endswith(" is already rejected") for line in shown[:-2]), shown
+    assert "cerebro: warning: sources/crm: noted" in shown and sum("more is waiting" in line for line in shown) == 1
     assert "Check: 1 more is waiting. Run cerebro review" in " ".join(shown[-2:]) and capsys.readouterr().out == ""
 
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -144,19 +145,25 @@ def test_a_note_is_kept_whole_and_one_runs_notes_are_bounded(tmp_path: Path, mon
 
 def test_what_landing_made_safe_is_counted_per_article_and_each_line_kept_on_its_runs_line(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runs = count(1)  # each run hands in new text, so each lands and is cleaned
     root = saying(tmp_path, monkeypatch, lambda ids: {  # every sentence grounds: only landing changes the text
-        "Summary": f"The review moved <script>alert(1)</script> to March 3 [^{ids[0]}].",
+        "Summary": f"The review moved <script>alert({next(runs)})</script> to March 3 [^{ids[0]}].",
         "Detail": f"The review moved to March 3 [^{ids[0]}]."})
     events: list[Progress] = []
     with cli.open_workspace(root) as workspace:
         result = workspace.run_once(on=events.append)
-        kept = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data["notes"]
-    assert not result.grounding and [line for line in kept if "escaped raw HTML" in line], kept
-    assert [e.text for e in events if e.kind == "note"] == ["made 2 safety edits"]  # under the article's row
+        passed = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data
+    assert not result.grounding and [line for line in passed["notes"] if "escaped raw HTML" in line], passed
+    assert [e.text for e in events if e.kind == "note"] == ["made 2 safety notes"]  # under the article's row
     cli._print(result)
     printed = capsys.readouterr().out
-    assert "cleaned   digests/weekly: made 2 safety edits" in printed.splitlines(), printed
+    assert "cleaned   digests/weekly: made 2 safety notes" in printed.splitlines(), printed
     assert "escaped raw HTML" not in printed  # no line of it, only its count
+    by_hand = CliRunner().invoke(cli.main, ["agents", "run", "digests/weekly", "--workspace", str(root)])
+    with cli.open_workspace(root) as workspace:
+        kept = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data  # the run by hand's line
+    assert "cleaned  digests/weekly: made 2 safety notes" in by_hand.output.splitlines(), by_hand.output
+    assert "escaped raw HTML" not in by_hand.output and kept.get("notes") == passed["notes"], kept
 
 
 def test_off_a_terminal_and_in_status_the_counts_are_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
