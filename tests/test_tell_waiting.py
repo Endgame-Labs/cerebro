@@ -25,6 +25,8 @@ from cerebro.facts import ExtractionFailed
 from cerebro.fakes import FakeExtraction
 from cerebro.records import CLAIMED, RETRY, TOLD
 
+pytestmark = pytest.mark.synced
+
 HOLDER = """
 import json, socket, sys
 from pathlib import Path

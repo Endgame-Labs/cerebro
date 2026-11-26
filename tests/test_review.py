@@ -835,17 +835,14 @@ def check_lines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lines: int, see
     not all land there; and a second run of it decides nothing new."""
     import random
     import shutil
-    import sqlite3
     from copy import deepcopy
-
-    from cerebro.store import DEFAULT_PATH
 
     seed_workspace = Workspace(tmp_path / "seed", monkeypatch)
     waiting, decided = line_seed(seed_workspace)
     rng, tally, before = random.Random(seed), {"all": 0, "none": 0}, snapshot(seed_workspace)
     for n in range(lines):
         args = one_line(rng, waiting, decided)
-        copies, held = [], []
+        copies = []
         for name in ("line", "one-by-one"):
             folder = tmp_path / f"{name}-{n}"
             shutil.copytree(seed_workspace.root, folder)
@@ -853,11 +850,6 @@ def check_lines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lines: int, see
             copy.root, copy.calls, copy.monkeypatch = folder, [], monkeypatch
             copy.extraction = deepcopy(seed_workspace.extraction)
             copies.append(copy)
-            # Held open, once it has read, for the whole line: no other close is then the store's last, which
-            # checkpoints and waits for the disk to sync, and this one syncs nothing as it closes.
-            held.append(sqlite3.connect(folder / DEFAULT_PATH))
-            held[-1].execute("pragma synchronous = off")
-            held[-1].execute("select count(*) from sqlite_master").fetchone()
         line, reference = copies
         monkeypatch.setattr(cli, "open_workspace", lambda folder, b=line: Cerebro(folder, extraction=b.extraction))
         done = line.run("review", *args)
@@ -873,8 +865,7 @@ def check_lines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lines: int, see
             tally["none"] += 1
         again = line.run("review", *args)
         assert snapshot(line) == after, (args, again.output)
-        for db, copy in zip(held, copies, strict=True):
-            db.close()
+        for copy in copies:
             shutil.rmtree(copy.root)
     return tally
 

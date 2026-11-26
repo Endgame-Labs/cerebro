@@ -21,6 +21,8 @@ from cerebro.facts import Extracted, ExtractionFailed
 from cerebro.fakes import FakeExtraction, MemoryStore, ScriptedRun
 from cerebro.records import CLAIMED, RETRY, TOLD
 
+pytestmark = pytest.mark.synced
+
 YOU = Caller("you", "person")
 HERE = Path(__file__).resolve().parent
 SAID = "The beta moved to 11 December."

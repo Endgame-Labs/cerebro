@@ -440,6 +440,7 @@ def test_a_total_sums_one_field_over_the_rows_that_match(store: Store) -> None:
     assert store.total("spend", "usd") == 2.75 and store.total("merges", "usd") == 0
 
 
+@pytest.mark.synced
 def test_a_store_opened_again_from_settings_keeps_what_was_written(store: Store, reopen) -> None:
     make(store, "projects/apollo", stage="open")
     store.append("proposals", {"id": "p_1"})

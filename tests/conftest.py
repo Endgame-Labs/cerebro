@@ -8,11 +8,13 @@ import itertools
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -256,3 +258,36 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(socket.socket, name, refuse)
     for name in ("create_connection", "getaddrinfo", "gethostbyname", "gethostbyname_ex"):
         monkeypatch.setattr(socket, name, refuse)
+
+
+class _Unsynced(sqlite3.Connection):
+    """A connection that waits for no disk sync: `synchronous` is off before its first statement, so a new file's
+    first write is unsynced too, and again after any statement that sets it, as the store sets its own."""
+
+    _off = False
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        if not self._off:
+            super().execute("pragma synchronous = off")
+            self._off = True
+        cursor = super().execute(sql, *args)
+        if sql.startswith("pragma synchronous"):
+            super().execute("pragma synchronous = off")
+        return cursor
+
+
+# The modules that open a store: the workspace's, and Factoid's facts, index and call log. A source's database is not
+# one: it is only read, and a pragma before its first statement would change how a broken file fails.
+STORES = ("cerebro.store", "factoid.store", "factoid.search", "factoid.models")
+_UNSYNCED = SimpleNamespace(**{**vars(sqlite3), "connect": lambda *args, **kwargs: sqlite3.connect(
+    *args, factory=_Unsynced, **kwargs)})
+
+
+@pytest.fixture(autouse=True)
+def stores_skip_disk_sync(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A store this process opens hands its writes to the system and waits for no disk sync, which on a slow disk
+    costs more than many tests do: only a crash of the machine loses such a write, never a process's end or kill. A
+    test marked `synced` keeps real syncs, as does every child process."""
+    if not request.node.get_closest_marker("synced"):
+        for module in STORES:
+            monkeypatch.setattr(f"{module}.sqlite3", _UNSYNCED)

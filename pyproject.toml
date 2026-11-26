@@ -49,7 +49,8 @@ pythonpath = ["tests"]
 addopts = "-n 4"  # four workers on any machine, since a worker per core swamps a laptop: -n 0 runs on one
 timeout = 30  # no test may hang: one that runs past this fails with its stack
 tmp_path_retention_policy = "failed"  # a passed test's temp folder goes as it ends: a run keeps what failed
-markers = ["untrusted: the test's temp folders are not trusted, as a cloned workspace's are not"]
+markers = ["untrusted: the test's temp folders are not trusted, as a cloned workspace's are not",
+           "synced: the test's stores sync to disk as a person's do, for what a crash or a restart leaves"]
 
 [tool.mutmut]
 source_paths = ["src/cerebro"]

@@ -25,6 +25,8 @@ from cerebro.errors import CerebroError
 from cerebro.fakes import FakeExtraction, FakeSecrets, MemoryStore
 from cerebro.run import STOPPED, PydanticRun
 
+pytestmark = pytest.mark.synced
+
 YOU = Caller("you", "person")
 AGENT = """\
 ---

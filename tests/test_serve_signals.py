@@ -26,6 +26,8 @@ from test_tokens import no_network  # noqa: F401  autouse: sockets reach 127.0.0
 from cerebro import Cerebro, cli, mcp
 from cerebro.models import PROVIDERS
 
+pytestmark = pytest.mark.synced
+
 CHILD = Path(__file__).with_name("serve_child.py")
 LOOPBACK = "127.0.0.1"
 NOTE = "Date: 2026-11-10\n\nThe launch review moved to March 3.\n\nVega leads the review.\n"

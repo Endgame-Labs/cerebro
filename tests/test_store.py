@@ -51,6 +51,7 @@ def reopen(request: pytest.FixtureRequest, tmp_path: Path, store: Store) -> Call
     return lambda: store
 
 
+@pytest.mark.synced
 def test_a_sqlite_file_keeps_everything_written_when_opened_again(tmp_path: Path) -> None:
     path = tmp_path / "cerebro.sqlite"
     with SQLiteStore(path) as store:
@@ -147,6 +148,7 @@ with SQLiteStore(path) as store:
 """
 
 
+@pytest.mark.synced
 def test_two_processes_writing_fields_compilations_and_log_rows_to_one_file_lose_nothing(tmp_path: Path) -> None:
     path, go = tmp_path / "cerebro.sqlite", tmp_path / "go"
     with SQLiteStore(path) as store:
