@@ -42,6 +42,7 @@ It runs a pass every 30 seconds and checks each source every 15 minutes. A chang
 The pass prints a line for each thing it did:
 
 ```text
+...
 listed    local: 1 record
 facts     1 record read, 2 facts extracted
 due       projects/article: change
