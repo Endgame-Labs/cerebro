@@ -632,6 +632,19 @@ def test_a_record_dated_before_the_window_but_made_or_changed_inside_it_is_liste
     assert {task, event, closed} <= ids and sf_id("006", 3) not in ids  # closed in June, quiet since
 
 
+def test_a_task_logged_from_an_email_reads_as_what_its_sender_newly_wrote(org: FakeOrg) -> None:
+    description = ("We can start the pilot on 2 March with 40 seats.\r\n\r\nBest,\r\nSam Rivera\r\n"
+                   "Head of Operations | Quillmoor\r\nM: +1 555 0100<tel:+15550100>\r\n\r\n"
+                   "From: Jordan Lee <jordan@acme.example>\r\nSent: Monday, 2 February 2026 09:14\r\n"
+                   "To: Sam Rivera <sam.rivera@quillmoor.example>\r\nSubject: Pilot\r\n\r\nCan you confirm the date?")
+    email, call = (org.add("Task", {"Subject": "Pilot", "TaskSubtype": kind, "AccountId": ACME,
+                                    "ActivityDate": "2026-10-10", "Description": description})
+                   for kind in ("Email", "Call"))
+    connector = make(org)
+    assert connector.get(email).body.endswith("\n\nWe can start the pilot on 2 March with 40 seats.\n")
+    assert connector.get(call).body.endswith(f"\n\n{description}\n")
+
+
 def test_a_subject_cannot_forge_a_header_line() -> None:
     text = record_text("Task", {"Subject": "Call\nStatus: Closed Won", "Status": "Open"})
     assert text.splitlines()[:2] == ["Logged activity: Call Status: Closed Won", "Status: Open"]
