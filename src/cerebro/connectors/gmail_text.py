@@ -5,10 +5,11 @@ in its transfer encoding and charset, HTML turned into text, and the message red
 them, an Outlook header block or "-----Original Message-----" and everything after it, and the signature: a "-- "
 line, however many spaces follow it, and what follows it, a "--" line or a sign-off such as "Best," with the few
 short lines under it, a mobile footer, or a closing block of a name with a title, company, phone or address line
-under it, which may end in a common abbreviation such as Inc. A P.S. under a sign-off stays. An "On ... wrote:" line
-with unquoted text under it ends the message only when a mail client wrote it, with an address, a time or a year in
-it, or when the text under it is indented as some clients quote. A sentence of the message that ends in "wrote:"
-stays. Its rules are conservative: a line it cannot place as quote or signature stays.
+under it, which may end in a common abbreviation such as Inc. A P.S. under a sign-off stays, and so does a sign-off
+with a sentence under it. An "On ... wrote:" line with unquoted text under it ends the message only when a mail
+client wrote it, with an address, a time or a year in it, or when the text under it is indented as some clients
+quote. A sentence of the message that ends in "wrote:" stays. Its rules are conservative: a line it cannot place as
+quote or signature stays.
 """
 
 from __future__ import annotations
@@ -196,7 +197,9 @@ def _drop_signature(lines: list[str]) -> list[str]:
             if _SIGN_OFF.match(t):
                 under = lines[j + 1:]
                 ps = next((k for k, line in enumerate(under) if _POSTSCRIPT.match(line.strip())), len(under))
-                if _short_block(under[:ps]):
+                found = [line.strip() for line in under[:ps] if line.strip()]
+                sentence = any(line[-1] in ".?!" and not _ends_in_abbreviation(line) for line in found)
+                if _short_block(under[:ps]) and not sentence:
                     return lines[:j] + [""] + under[ps:]
         j -= 1
     return _drop_closing_block(lines)
