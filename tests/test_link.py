@@ -119,9 +119,10 @@ def test_a_null_or_a_take_off_in_another_spelling_acts_on_each_spelling_the_arti
     things(store, alder={"domain": ["alder.example"], "Thing Code": ["T-1"], "thing_code": ["T-2"], "Code": ["c-1"],
                          "code": ["c-1"]})
     store.set_state("held:src", [asdict(thing("h-1", "Alder", thing_code=["T-3"]))])
-    curate(store, tmp_path, [("link", {"article": "Alder", "reason": "not its own", "keys": {"Domain": None},
-                                       "wrong": {"THING CODE": ["T-1", "T-2"], "code": ["c-1"]}})])
+    [reply] = curate(store, tmp_path, [("link", {"article": "Alder", "reason": "not its own", "keys": {"Domain": None},
+                                                 "wrong": {"THING CODE": ["T-1", "T-2", "T-9"], "code": ["c-1"]}})])
     assert store.article("things/alder").identity.keys == {"Code": ["c-1"]}
+    assert reply.count("was not on it") == 1 and "Thing Code T-9 was not on it" in reply, reply
 
 
 def test_an_admit_of_an_article_in_the_working_set_is_refused_and_names_link(tmp_path: Path) -> None:
