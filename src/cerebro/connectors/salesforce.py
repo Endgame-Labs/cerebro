@@ -18,7 +18,7 @@ name its id. Its owner is a field of the deal, never a link: a fact of the deal 
 extraction: their body is their text as header lines and then their long text. A deal
 read only for being closed inside `closed_since` lands and is not extracted. A task is a logged activity and its
 text opens `Logged activity: <subject>`. One logged from an email has its description reduced to what its sender
-newly wrote, as `gmail_text.reduce` says.
+newly wrote.
 
 Every request is a GET, and every query a SELECT. A refusal for the org's request limit stops the pass, with no
 retry, and every request after it is refused without asking until a pause has passed on the clock handed in. The
