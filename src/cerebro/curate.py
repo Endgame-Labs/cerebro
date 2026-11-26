@@ -2304,8 +2304,8 @@ def _measure_of(agent: Agent, workspace: Cerebro) -> _Measure:
 
 def own_facts(workspace: Cerebro, landed: list[tuple[Any, Record]]) -> None:
     """Take the facts that landed from a record a curator's acts took off its held list, at the revision it was held
-    at, into the view that curator has seen, once, and let the record go at any revision: their landing is no news to
-    it. Anything else that moved, and any change of them after, is."""
+    at, into the view that curator has seen, once, with each entry they came into, and let the record go at any
+    revision: their landing is no news to it. Anything else that moved, and any change of them after, is."""
     records = {f"held:{record.source}:{record.id}" for _, record in landed}
     for agent in workspace.agents:
         own = workspace.store.state(f"own:{agent.id}") or [] if agent.role == "curator" else []
@@ -2316,8 +2316,9 @@ def own_facts(workspace: Cerebro, landed: list[tuple[Any, Record]]) -> None:
         with workspace.store.exclusive():
             if mine and (read := _measure_of(agent, workspace)._read()) and isinstance(
                     stored := workspace.store.state(f"curated:{agent.id}"), dict):
+                into = {k.partition("\0")[0] for k in read.view if k.partition("\0")[2] in mine}
                 workspace.store.set_state(f"curated:{agent.id}", stored | {
-                    k: v for k, v in read.view.items() if k.partition("\0")[2] in mine and k not in stored})
+                    k: v for k, v in read.view.items() if (k.partition("\0")[2] in mine and k not in stored) or k in into})
             workspace.store.set_state(f"own:{agent.id}", left or None)
 
 
