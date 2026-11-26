@@ -167,10 +167,14 @@ def test_a_later_rounds_curator_whose_evidence_did_not_move_ends_its_step_as_not
     with open_it(lay_out_workspace(tmp_path), Later({"things/curator": [by_record("T1")], "parts/curator": []})) as w:
         run(w, choose=lambda pile: None, on=screen)
     shown = screen_of(out.getvalue()).split("\n")
-    # each round in its order, every step it started resolved: none left running, none gone with no line
-    assert shown[shown.index("Running discovery for parts and things collections.") + 1:] == [
+    # each round in its order under its number, every step it started resolved: none left running, none gone with
+    # no line, and a round that adds nothing ends discovery before the most there may be
+    assert shown[shown.index("Round 1 of up to 4"):] == [
+        "Round 1 of up to 4", "Running discovery for parts and things collections.",
         "✓ Nothing new for parts collection  0.0s", "✓ Proposed 1 article to things collection  0.0s",
+        "", "Round 2 of up to 4",
         "✓ Proposed 1 article to parts collection  0.0s", "✓ Nothing new for things collection  0.0s",
+        "", "Round 3 of up to 4",
         "✓ Nothing new for parts collection  0.0s", "✓ Nothing new for things collection  0.0s",
         "✓ Reviewed 2 proposals  0.0s"]
 
