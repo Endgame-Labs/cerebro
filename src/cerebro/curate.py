@@ -21,10 +21,10 @@ as a proposal, for that collection's curator or a person.
 
 Who decides: each call files a row of the `proposals` log. A kind the curator's `authority` holds true is accepted and
 applied at once, and any other waits for a caller. `link` lands on the curator's own word. A proposal a caller accepted
-is carried out by the collection's curator on its next run: its act names the proposal by id and lands as the
-caller's decision, whatever its authority. `apply` makes the change, the one place articles change. Merges,
-redirects, splits and `distinct_from` pairs are rows of the `merges` log, and every write goes through the store's own
-methods.
+is carried out by the collection's curator on its next run: its act names the proposal by id and lands, whatever its
+authority, as the curator's own act, and the yes stays that caller's one decision. `apply` makes the change, the one
+place articles change. Merges, redirects, splits and `distinct_from` pairs are rows of the `merges` log, and every
+write goes through the store's own methods.
 
 A curator may not undo what a caller decided, yes or no, until something new about it arrives: `turned_down` refuses
 the act, and its deferred list shows the admits a caller turned down. On the workspace's first run a curator runs in
