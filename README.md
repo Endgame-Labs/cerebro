@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/art/cerebro.dark.gif">
+    <img width="627" alt="An encyclopedia lying open at a drawing of a brain that spans both pages, its pages turning." src="docs/art/cerebro.light.gif">
+  </picture>
+</p>
+
 # Cerebro
 
 Cerebro builds a wiki from your sources so your agents give more accurate, consistent answers. It uses [Factoid](https://github.com/Endgame-Labs/factoid) to pull out the facts, writes cited articles from them and keeps the wiki up to date by itself. Agents you write in Markdown do the writing, and the wiki lives in a workspace, a folder of plain files.
