@@ -166,8 +166,8 @@ def test_a_passs_live_progress_says_no_section_brain_or_page_in_its_frames_or_it
 
 
 def test_a_first_runs_live_steps_and_its_region_say_no_section_brain_or_page() -> None:
-    """Every line a first run's screen draws: the sources read, the round's line, each curator's step queued,
-    reviewing and resolved every way, the approval, a line said and the build's region."""
+    """Every line a first run's screen draws: the sources read, the round's heading and its line, each curator's step
+    queued, reviewing and resolved every way, the approval, a line said and the build's region."""
     import io
 
     from cerebro.output import Printer, strip_escapes
@@ -183,7 +183,7 @@ def test_a_first_runs_live_steps_and_its_region_say_no_section_brain_or_page() -
     screen = FirstRunScreen(p, sources=["notes", "mail"], ticking=False, height=lambda: 60)
     events = [Progress("read", "start"), Progress("check", "end", "notes", mark="done", total=3),
               Progress("check", "end", "mail", mark="failed", why="refused"), Progress("read", "end", total=3),
-              Progress("discover", "open", total=4)]
+              Progress("discover", "round", done=1, total=4), Progress("discover", "open", total=4)]
     events += [Progress("discover", "queue", f"{c}/curator", text=c) for c in ("parts", "things", "places", "kinds")]
     events += [Progress("discover", "start", "parts/curator", text="parts"),
                Progress("discover", "end", "parts/curator", mark="done", text="2 articles to parts collection"),
@@ -203,8 +203,8 @@ def test_a_first_runs_live_steps_and_its_region_say_no_section_brain_or_page() -
     screen(Progress("build", "end"))
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     drawn = strip_escapes(out.getvalue())
-    for line in ("Reading sources", "Read 3 records from 1 source", ("Running discovery for kinds, parts, places and "
-                 "things collections."), "Queued for parts collection", "Reviewing sources for parts collection",
+    for line in ("Reading sources", "Read 3 records from 1 source", "Round 1 of up to 4",
+                 "Running discovery for kinds, parts, places and things collections.", "Queued for parts collection", "Reviewing sources for parts collection",
                  "Proposed 2 articles", "Nothing new for things collection",
                  "Budget reached for places collection", "Reviewed 2 proposals", "Recording 2 approvals",
                  "Admitted 2 articles", "Distilling", "1 of 3 records • 2 facts"):

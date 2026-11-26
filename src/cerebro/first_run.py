@@ -969,6 +969,8 @@ def _discover(workspace: Cerebro, session: dict[str, Any], tell: Callable[[str],
         for id in unasked:
             session.setdefault("lists", {}).setdefault(id, {"state": "empty", "note": ""})
         todo[:] = [id for id in todo if id in curators and id not in unasked]
+        if todo:  # the round's number over its steps, of the most there may be
+            _emit(workspace, "discover", "round", done=session["rounds"] + 1, total=MAX_ROUNDS)
         if not changed_only:  # the round's line and a queued step for each curator it asks
             _emit(workspace, "discover", "open", total=len(todo))
             for id in todo:
