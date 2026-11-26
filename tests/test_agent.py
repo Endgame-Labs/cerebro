@@ -64,8 +64,8 @@ def test_every_gtm_template_agent_file_loads_into_a_typed_record_with_nothing_dr
     assert next(iter(index.headings)) == "Contents" and index.cooldown is None  # the workspace's schedule.articles
     assert index.notice == ""
     assert by["reports/pipeline"].notice == ""  # its left line is built
-    assert by["calls/article"].evidence[1].options == {"summary": "Overview"}
-    assert by["accounts/subagents/opportunities"].hash == "1337fa8c"  # as the docs' run line shows it
+    assert by["calls/article"].evidence[1].options == {"text_only": True}
+    assert by["accounts/subagents/opportunities"].hash == "05d0b6dc"
 
 
 def test_a_file_with_a_byte_order_mark_loads_and_unacted_keys_are_named(tmp_path: Path) -> None:

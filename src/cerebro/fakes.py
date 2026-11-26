@@ -34,7 +34,6 @@ from .secrets import Secrets, _check_value, _not_found, changed, check_name
 from .store import (
     SUBJECT,
     TIES,
-    UNKNOWN,
     LogRow,
     Store,
     StoreError,
@@ -252,7 +251,7 @@ class MemoryStore(Store):
         self.history.append(("article", identity.id))
 
     def write_compilation(self, compilation: Compilation) -> list[str]:
-        compilation, said = self.landed(compilation)
+        compilation, changed, noted = self.landed(compilation)
         self._known(compilation.article)
         compilations = self.compilations.setdefault(compilation.article, [])
         found = [n for n, s in enumerate(compilations) if s.heading == compilation.heading]
@@ -261,7 +260,7 @@ class MemoryStore(Store):
         else:
             compilations.append(deepcopy(compilation))
         self.history.append(("article", compilation.article))
-        return said
+        return [*changed, *noted]
 
     def delete_compilation(self, article: str, heading: str) -> None:
         compilations = self.compilations.get(article, [])
@@ -386,8 +385,6 @@ class MemoryStore(Store):
             first = (fact_id, article_id) not in self.learned
             if (fact_id, article_id, how) not in self.links:
                 self.links.append((fact_id, article_id, how))
-            if how != UNKNOWN and (fact_id, article_id, UNKNOWN) in self.links:
-                self.links.remove((fact_id, article_id, UNKNOWN))
             if first:
                 self.learned[(fact_id, article_id)] = learned
                 self.history.append(("article", article_id))
@@ -411,9 +408,6 @@ class MemoryStore(Store):
             if fact == fact_id:
                 found.setdefault(article, []).append(how)
         return {id: sorted(hows, key=TIES.index) for id, hows in found.items()}
-
-    def unknown_ties(self) -> int:
-        return sum(how == UNKNOWN for _, _, how in self.links)
 
     def facts_of(self, article_id: str, since: str | None = None) -> list[str]:
         floor = utc(since, article_id, "since") if since is not None else None

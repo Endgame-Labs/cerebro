@@ -3,7 +3,7 @@ evidence:
   - query: { from: opportunities, id: this.linked }   # the deal this brief is about, for its row
   - query: { from: facts, articles: this.linked }   # the facts of the deal and its account
   - articles: [this.linked]       # the deal and its account, as the brief links them
-    summary: Overview            # their front matter and Overview, not the whole articles
+    text_only: true              # their front matter and text, since the line above loads their facts
 heartbeat: [change, manual]
 ---
 

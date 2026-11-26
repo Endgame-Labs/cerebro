@@ -232,6 +232,40 @@ def test_the_working_set_a_connector_is_bounded_by_is_the_one_a_pass_extracts_by
         assert in_scope(store, record("mail:1", domain=[value]), curated={"things"}) == (value in bounds)
 
 
+def test_a_key_named_in_another_case_or_spacing_is_read_as_the_name_its_source_writes(tmp_path: Path) -> None:
+    from cerebro.identity import bound_to
+
+    store, agent = MemoryStore(), things(tmp_path, admit=True)
+    listed = Record(id="h-1", source="src", revision="1", keys={"thing_code": ["T-1"]}, into="things")
+    store.set_state("held:src", [asdict(listed)])
+    curate(store, agent, [("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"})], tmp_path)
+    assert store.article("things/alder").identity.keys == {"thing_code": ["T-1"]}
+    assert bound_to(store, listed) == ["things/alder"]
+    curate(store, agent, [("link", {"article": "Alder", "wrong": {"THING_CODE": ["T-1"]}, "reason": "not it"})],
+           tmp_path)
+    assert store.article("things/alder").identity.keys == {}
+
+
+def test_a_key_named_exactly_is_itself_and_one_a_link_adds_in_another_spelling_is_the_sources_name(
+        tmp_path: Path) -> None:
+    store, agent = MemoryStore(), things(tmp_path, admit=True)
+    curate(store, agent, [("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"})], tmp_path)
+    store.set_state("held:src", [asdict(Record(id=f"h-{n}", source="src", revision="1", keys=keys, into="things"))
+                                 for n, keys in enumerate([{"Code": ["X"]}, {"code": ["Y"]}, {"thing_code": ["T-2"]}])])
+    curate(store, agent, [("admit", {"name": "Birch", "keys": {"code": ["Y"]}, "reason": "a maker"}),
+                          ("link", {"article": "Alder", "keys": {"THING CODE": ["T-2"]}, "reason": "its code"})],
+           tmp_path)
+    assert store.article("things/birch").identity.keys == {"code": ["Y"]}
+    assert store.article("things/alder").identity.keys == {"Thing Code": ["T-1"], "thing_code": ["T-2"]}
+
+
+def test_one_key_given_in_two_spellings_lands_as_one_key_with_the_values_of_both(tmp_path: Path) -> None:
+    store, agent = MemoryStore(), things(tmp_path, admit=True)
+    curate(store, agent, [("admit", {"name": "Cedar", "keys": {"tag": ["c-1"], "Tag ": ["c-2"]}, "reason": "a maker"})],
+           tmp_path)
+    assert store.article("things/cedar").identity.keys == {"tag": ["c-1", "c-2"]}
+
+
 def test_what_a_template_file_asks_for_and_the_workspace_skips_gets_a_line_that_names_the_file() -> None:
     from cerebro.agent import load_agents
     from cerebro.curate import unbuilt
@@ -299,6 +333,22 @@ def test_an_ask_rejected_beside_an_accept_is_told_as_no_deferral_and_one_not_tak
     curate(store, curator(), [], tmp_path, prompts)
     assert "accounts/globex), deferred" not in prompts[0]
     assert proposing(store, "people/curator")  # p_c closed as not taken: no person decided an admit of its
+
+
+def test_carrying_out_a_persons_own_ask_ends_proposal_mode_for_neither_the_curator_nor_a_row_it_folds_in(
+        tmp_path: Path) -> None:
+    from cerebro.curate import proposing
+    from cerebro.held import FIRST_RUN_KEY
+
+    store = MemoryStore()
+    store.set_state(FIRST_RUN_KEY, {"status": "done", "at": stamp(NOW)})
+    asked = told(store, "article.admit", "things/alder", "keep Alder", hour(1))
+    propose(store, Proposal("p_waits", "article.admit", "things/alder", Caller("people/curator", "agent"),
+                            stamp(hour(1)), payload={"name": "Alder"}))
+    curate(store, things(tmp_path, admit=True), [("admit", {"name": "Alder", "reason": "asked",
+                                                            "proposals": [asked, "p_waits"]})], tmp_path, at=hour(2))
+    assert store.article("things/alder") is not None
+    assert proposing(store, "things/curator") and proposing(store, "people/curator")  # no person decided their admit
 
 
 def test_two_things_that_share_a_name_are_never_made_one_article(tmp_path: Path) -> None:
@@ -560,6 +610,13 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     dated(store, layer, "things/alder", hour(4))
     assert run(store, ARCHIVE, at=hour(5), layer=layer)[0].startswith("{'archived': 'things/alder'")
 
+    # a caller's admit carried out under another path than the one asked holds on the article it made
+    store = MemoryStore()
+    bolt = told(store, "article.admit", "things/bolt", "keep Bolt", hour(0))
+    run(store, ("admit", {"name": "Bolt Co", "reason": "asked", "proposals": [bolt]}), at=hour(1))
+    assert run(store, ("archive", {"article": "things/bolt-co", "reason": "quiet"}), at=hour(2)) == [
+        refusal(f"a caller admitted things/bolt-co in {bolt}: keep Bolt: an archive of it is not done {lift}")]
+
     # a caller's archive of an article a caller made refuses an admit back
     store = MemoryStore()
     made = told(store, "article.admit", "things/alder", "keep Alder", hour(0))
@@ -568,6 +625,15 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     run(store, (ARCHIVE[0], {**ARCHIVE[1], "proposals": [gone]}), at=hour(1))
     assert f"a caller archived things/alder in {gone}: we stopped buying: an admit of it" in run(
         store, TWO[0], at=hour(2))[0]
+
+    # a caller's archive asked on a merged-away path holds on the article it landed on, once the path is split out
+    store = MemoryStore()
+    run(store, *TWO, at=hour(0))
+    run(store, ("merge", {"article": "things/alder", "other": "things/alder-works", "reason": "one"}), at=hour(1))
+    gone = told(store, "article.archive", "things/alder-works", "we stopped buying", hour(2))
+    run(store, ("archive", {"article": "things/alder-works", "reason": "asked", "proposals": [gone]}), at=hour(2))
+    run(store, ("split", {"article": "things/alder-works", "reason": "two makers"}), at=hour(3))
+    assert f"a caller archived things/alder in {gone}" in run(store, TWO[0], at=hour(4))[0]
 
     # a caller's merge, carried out, moves old facts: the split is refused until news of either article
     store = MemoryStore()
@@ -612,6 +678,31 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
         store, (off[0], {**off[1], "wrong": beyond, "proposals": [wrong]}), at=hour(3))[0]
     assert "'removed'" in run(store, (off[0], {**off[1], "proposals": [wrong]}), at=hour(3))[0]  # its own word
     assert store.article("things/alder").identity.keys == {"code": ["a-1", "a-9"]}
+
+    # a value a caller took off or turned down stays so once a source writes its key in another spelling, and one it
+    # added stays on against a take-off or a null in the article's own spelling
+    store = MemoryStore()
+    run(store, ("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"}), at=hour(0))
+    propose(store, Proposal("p_t2", "article.link", "things/alder", Caller("people/curator", "agent"), stamp(hour(0)),
+                            payload={"keys": {"Thing Code": ["T-2"]}}))
+    decide(store, YOU, reject=[Decision("p_t2", "not its code")], clock=lambda: hour(1))
+    store.set_state("held:src", [asdict(Record(id="h-1", source="src", revision="1", at=stamp(hour(-1)),
+                                               keys={"thing_code": ["T-1"]}, into="things"))])
+    no = told(store, "article.link", "things/alder", "T-1 is not its code", hour(1))
+    run(store, ("link", {"article": "Alder", "wrong": {"Thing Code": ["T-1"]}, "reason": "asked", "proposals": [no]}),
+        at=hour(1))
+    again = run(store, *(("link", {"article": "Alder", "keys": {"Thing Code": [code]}, "reason": "its code"})
+                         for code in ("T-1", "T-2")), at=hour(2))
+    assert f"a caller took off thing_code t-1 from things/alder in {no}" in again[0]
+    assert "a caller rejected link of things/alder in p_t2: not its code" in again[1]
+    assert store.article("things/alder").identity.keys == {}
+    added = told(store, "article.link", "things/alder", "its code is C-5", hour(3))
+    run(store, ("link", {"article": "Alder", "keys": {"Code": ["C-5"]}, "reason": "asked", "proposals": [added]}),
+        at=hour(3))
+    kept = run(store, *(("link", {"article": "Alder", "reason": "not its code", **call})
+                        for call in ({"wrong": {"Code": ["C-5"]}}, {"keys": {"Code": None}})), at=hour(4))
+    assert all(f"a caller added code c-5 to things/alder in {added}" in reply for reply in kept), kept
+    assert store.article("things/alder").identity.keys == {"Code": ["C-5"]}
 
     # an admit carrying out an ask is checked on the article it lands on, but for the ask's own path
     store = MemoryStore()
@@ -670,7 +761,7 @@ def test_a_yes_on_any_proposal_is_carried_out_by_its_curator_not_the_engine(tmp_
     assert all(row(store, id).applied for id in asked)
 
 
-def test_a_curators_act_that_names_accepted_proposals_lands_as_their_deciders_whatever_its_authority(
+def test_a_curators_act_that_carries_out_a_yes_lands_as_its_own_whatever_its_authority_and_the_yes_stays_one(
         tmp_path: Path) -> None:
     store, agent = MemoryStore(), things(tmp_path)
     store.create(Identity("things/dune", "things", "Dune", {}, "active"))
@@ -678,11 +769,13 @@ def test_a_curators_act_that_names_accepted_proposals_lands_as_their_deciders_wh
     propose(store, Proposal("p_waits", "article.admit", "things/alder", Caller("people/curator", "agent"), stamp(NOW),
                             payload={"name": "Alder"}))
     done = curate(store, agent, [("admit", {"name": "Alder", "reason": "asked", "proposals": [asked, "p_waits"]})],
-                  tmp_path)
+                  tmp_path, at=hour(1))
     act = next(p for p in proposals(store) if p.by == BY_THINGS)
-    assert done.admitted == ["things/alder"] and (act.status, act.decided_by) == ("accepted", YOU)
+    assert done.admitted == ["things/alder"] and (act.status, act.decided_by, act.cites) == (
+        "accepted", BY_THINGS, [asked, "p_waits"])
+    assert [(p.id, p.decided_at) for p in proposals(store) if p.decided_by == YOU] == [(asked, stamp(NOW))]
     assert [(row(store, id).status, row(store, id).decided_by, row(store, id).applied) for id in (asked, "p_waits")] == [
-        ("accepted", YOU, act.applied)] * 2
+        ("accepted", YOU, act.applied), ("accepted", BY_THINGS, act.applied)]
     assert store.article("things/alder").identity.admitted_by == YOU
 
     # an act that waited, accepted with the proposal it named, is carried out with it

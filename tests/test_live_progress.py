@@ -16,7 +16,8 @@ from test_output import DATA, on_a_pty
 
 from cerebro import cli
 from cerebro.app import Cerebro
-from cerebro.fakes import FakeExtraction
+from cerebro.connector import Record
+from cerebro.fakes import FakeConnector, FakeExtraction
 from cerebro.output import Printer, strip_escapes
 from cerebro.progress import LiveProgress
 from cerebro.runner import Progress
@@ -64,6 +65,22 @@ def test_off_a_terminal_with_plain_or_no_color_a_pass_prints_its_plain_lines_byt
     assert passed.exit_code == 0, passed.output
     assert plain(passed.output, root) == (DATA / "progress-plain.txt").read_text()
     assert "\x1b" not in passed.output
+
+
+def test_off_a_terminal_a_pass_leaves_out_each_count_of_none_but_a_source_listed_from_the_start(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "w"
+    root.mkdir()
+    (root / "settings.yaml").write_text("timezone: UTC\n")
+    dated = Record(id="r1", source="dated", revision="1", body="Date: 2026-11-15")  # a header alone gives no fact
+    sources = [FakeConnector("empty", []), FakeConnector("dated", [dated])]
+    monkeypatch.setattr(cli, "open_workspace", lambda folder: Cerebro(folder, extraction=FakeExtraction(),
+                                                                      connectors=sources))
+    first, again = (plain(CliRunner().invoke(cli.main, ["distill", "--workspace", str(root)]).output, root)
+                    for _ in range(2))
+    assert first.splitlines()[1:] == [  # listed from the start, a source that lists none holds none
+        "listed    empty: 0 records", "listed    dated: 1 record", "facts     1 record read", "Done."], first
+    assert again.splitlines()[1:] == ["Done."], again  # from the cursor each kept: nothing new
 
 
 def _demo(tmp_path: Path, plain: bool, variables: dict[str, str]) -> str:

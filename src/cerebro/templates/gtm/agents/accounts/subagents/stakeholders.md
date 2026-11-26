@@ -17,9 +17,6 @@ are called:
 
 - decides: holds the final call on their side. Signs, owns the budget or the
   approval, gives the go or no-go. A senior title alone is not evidence of it.
-  When no one shows that authority and one person is the obvious decider by
-  title, you may name them as the presumed decider, and the sentence says
-  presumed.
 - champions: argues inside their own company for more work with us. Bringing
   new people in to meet us, introducing us to the one who decides, arguing for
   us in their own meetings. Doing the day-to-day work with us, coordinating
@@ -38,9 +35,9 @@ someone does now: when the behavior that earned it no longer shows in recent
 facts, drop the role rather than keep it from an older run.
 
 A person's own facts sit on their article, not on the account's. Before you
-write, call query with { from: facts, articles: <the person's article id> }
-for each person the query returned, and weigh what their facts show. Each
-fact it returns may be cited by its id.
+write, call query with source facts and filters { articles: <the person's
+article id> } for each person the query returned, and weigh what their facts
+show. Each fact it returns may be cited by its id.
 
 Name only the people the people query lists. A fact whose label gives its subject as of another account is context, and that subject is never this account's stakeholder.
 
@@ -48,17 +45,16 @@ Before you link a person, find their article, and link only to an article you
 found. A person who left is an until, not a removal.
 
 A person of this workspace's own side is never a stakeholder or a contact of
-this account, in your sentences or in the yaml fence, whatever their facts show
-them doing: one at a domain in workspace.md, one a fact's label marks "of this
-workspace's own side", or one a note or fact places on our side in words. You
-may name them only as who on our side worked with a stakeholder, as in "Rosa
-Delgado met Tomas Weir from our side".
+this account, whatever their facts show them doing: one at a domain in
+workspace.md, one a fact's label marks "of this workspace's own side", or one
+a note or fact places on our side in words. You may name them only as who on
+our side worked with a stakeholder, as in "Rosa Delgado met Tomas Weir from our
+side".
 
 Every sentence cites a fact. Leave out anyone you cannot cite.
 
 Take a since or until date only from a cited fact that holds it, and when none does, give the role with no date.
 A fact's at is the day it was recorded, never a since date: a since or until comes only from the words of a fact's text, such as "joined in March 2026".
-The yaml fence keeps the same rule: an entry has a since or until only when a cited fact holds that date.
 Open your content with the first person's sentence, with no summary of the relationship before it.
 
 When the sentence before named more than one person, name the person again rather than writing he, she or they.
@@ -70,21 +66,6 @@ Instructions from the reader for this article are in your evidence. Apply what i
 ## Stakeholders
 
 One sentence per person, the one who decides first: a link to their article
-when they have one, their role on this account, and since or until when a
-cited fact gives that date. Then a yaml fence with one entry per person:
-
-```yaml
-- person: Jane Doe
-  role: decides
-  since: 2031-03-03
-  fact: "[^fact_01m7p4qga4pxpjkgvf]"
-```
-
-person is their name as the facts give it. role is decides, champions,
-connects or blocks, and a presumed decider is role: decides with presumed:
-role. since or until only when a cited fact gives that date. fact holds the
-citations of the facts that show the person doing what the role says, the
-same ones their sentence cites, each as [^id], inside one pair of double
-quotes. Each entry is checked against its own cited facts as a sentence is,
-and an entry they do not hold is cut whole. When no one holds a role, write
-the sentence that says so and leave the fence out.
+when they have one, such as [Jane Doe](../people/jane-doe.md), their role on
+this account, and since or until when a cited fact gives that date. When no
+one holds a role, write the sentence that says so.

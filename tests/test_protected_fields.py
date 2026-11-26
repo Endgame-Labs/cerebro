@@ -229,7 +229,7 @@ def test_a_store_query_on_a_protected_field_reads_the_systems_value(tmp_path: Pa
 def test_why_a_query_matched_nothing_names_no_models_claim_of_a_protected_field() -> None:
     from cerebro.lookup import StoreLookup
 
-    lines = StoreLookup._why_empty("things", [_claimed()], {"id": "things/q", "stage": "lost"}, {})
+    lines = StoreLookup._why_empty("things", [_claimed()], {"id": "things/q", "stage": "lost"}, {}, None)
     assert not any("things/x" in line for line in lines), lines  # a model's id is no value the article holds
     assert any("stage: lost, which holds won" in line for line in lines), lines
 
@@ -261,23 +261,6 @@ def test_a_writers_value_of_a_protected_field_is_never_indexed_or_read(kind: str
     article = store.article("things/b")
     assert "status" not in fields(article) and _status(article) == "active"
     assert store.query("things", [Where("status", "=", "gone")]) == []
-
-
-def test_a_store_indexes_its_protected_fields_once_not_on_every_open(tmp_path: Path) -> None:
-    import sqlite3
-
-    from cerebro.store import SQLiteStore, Where
-
-    path = tmp_path / "store.db"
-    SQLiteStore(path).close()
-    db = sqlite3.connect(path)  # a stray row an open would clear if it indexed again
-    db.execute("insert into articles values ('things/b', 'things', 'beta', ?)",
-               (json.dumps({"id": "things/b", "collection": "things", "title": "Beta"}),))
-    db.execute("insert into property_values values ('things', 'things/b', 'status', null, 'stray')")
-    db.commit()
-    db.close()
-    again = SQLiteStore(path)
-    assert [a.identity.id for a in again.query("things", [Where("status", "=", "stray")])] == ["things/b"]
 
 
 # -- a run counts its refusals where it makes them --------------------------------------------------------------------

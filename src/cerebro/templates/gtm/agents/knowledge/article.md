@@ -2,7 +2,7 @@
 evidence:
   - facts: { mentions: true }                   # every fact on the topic, and every fact that names it or an alias, such as a rep's line on a call, whatever its date, each document as its latest revision gives it
   - facts: { mentions: true, latest: false }    # then what the earlier saves of those documents gave that their latest save no longer does
-  # a run may also call query with { from: facts, record: <a document's citation source>, latest: false } for every revision of one document it cites, where read gives its latest revision alone
+  # a run may also call query with source facts and filters { record: <a document's citation source>, latest: false } for every revision of one document it cites, where read gives its latest revision alone
 heartbeat: [change, weekly]
 ---
 
@@ -63,9 +63,9 @@ Cite a fact of an earlier save only beside a fact of a later save of the
 same document, in a row of Versions or in a sentence that says what changed
 and when: a sentence or a row that cites an earlier save alone is dropped.
 When a version's window needs what an earlier save of a document said and
-your evidence does not hold it, call query with from: facts, record: that
-document's citation source and latest: false for every save of it, since a
-read of its citation source gives its latest revision alone.
+your evidence does not hold it, call query with source facts and filters
+{ record: that document's citation source, latest: false } for every save of
+it, since a read of its citation source gives its latest revision alone.
 
 ## Under review
 

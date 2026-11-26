@@ -21,10 +21,10 @@ as a proposal, for that collection's curator or a person.
 
 Who decides: each call files a row of the `proposals` log. A kind the curator's `authority` holds true is accepted and
 applied at once, and any other waits for a caller. `link` lands on the curator's own word. A proposal a caller accepted
-is carried out by the collection's curator on its next run: its act names the proposal by id and lands as the
-caller's decision, whatever its authority. `apply` makes the change, the one place articles change. Merges,
-redirects, splits and `distinct_from` pairs are rows of the `merges` log, and every write goes through the store's own
-methods.
+is carried out by the collection's curator on its next run: its act names the proposal by id and lands, whatever its
+authority, as the curator's own act, and the yes stays that caller's one decision. `apply` makes the change, the one
+place articles change. Merges, redirects, splits and `distinct_from` pairs are rows of the `merges` log, and every
+write goes through the store's own methods.
 
 A curator may not undo what a caller decided, yes or no, until something new about it arrives: `turned_down` refuses
 the act, and its deferred list shows the admits a caller turned down. On the workspace's first run a curator runs in
@@ -40,7 +40,7 @@ import json
 import re
 import unicodedata
 import uuid
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -74,7 +74,7 @@ from .models import Decider, ModelSpec
 from .project import read_ours
 from .records import APPLIES, TOLD, Decision, Gone, Proposal, _proposal, _slug, named_alike, proposals, propose
 from .run import WROTE_NOTHING, AgentRun, Run
-from .store import UNKNOWN, Store, record_from, update_state
+from .store import Store, record_from, update_state
 from .workspace import Workspace
 
 if TYPE_CHECKING:
@@ -332,18 +332,18 @@ def _undoes(act: str, p: Proposal) -> bool:
 
 
 def _link_values(store: Store, p: Proposal | None, payload: Mapping[str, Any], target: str) -> tuple[set[Any], set[Any]]:
-    """The values a link adds and takes off, as (key, value in lower case): from what a row carried out, or from
-    what it asks when it was not carried out, as one rejected."""
+    """The values a link adds and takes off, as (key name as `word` folds it, value in lower case): from what a row
+    carried out, or from what it asks when it was not carried out, as one rejected."""
     if p is not None and p.applied:
         keys, links = p.applied.get("keys") or {}, p.applied.get("linked") or {}
-        added, removed = ({*((k, str(v).lower()) for k, vs in (keys.get(part) or {}).items() for v in vs),
+        added, removed = ({*((word(k), str(v).lower()) for k, vs in (keys.get(part) or {}).items() for v in vs),
                            *(("linked", str(v).lower()) for v in links.get(part) or [])} for part in ("added", "removed"))
         return added, removed
     found = store.article(target)
     held = found.identity.keys if found is not None else {}
-    adds = {(k, str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() for v in vs or []}
-    offs = {(k, str(v).lower()) for k, vs in dict(payload.get("wrong") or {}).items() for v in vs}
-    offs |= {(k, str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() if vs is None
+    adds = {(word(k), str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() for v in vs or []}
+    offs = {(word(k), str(v).lower()) for k, vs in dict(payload.get("wrong") or {}).items() for v in vs}
+    offs |= {(word(k), str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() if vs is None
              for v in held.get(k, [])}
     adds |= {("linked", str(v).lower()) for v in payload.get("linked") or []}
     offs |= {("linked", str(v).lower()) for v in payload.get("unlinked") or []}
@@ -357,7 +357,8 @@ def turned_down(store: Store, extraction: Extraction | None, sources: Collection
     the act carries out, `named`, are their caller's latest word on their own things, so they never refuse it."""
     named = list(named)
     act = KEEP if kind == "article.merge" and payload.get("distinct") else kind
-    rows = [p for p in proposals(store) if p.decided_by is not None and p.decided_by.kind == "person"
+    rows = [replace(p, target=str(p.applied.get("article") or p.target))  # a yes carried out is of the article it landed on
+            for p in proposals(store) if p.decided_by is not None and p.decided_by.kind == "person"
             and p.status in ("accepted", "rejected") and p.kind in (kind, OPPOSITE.get(kind, kind))
             and all(p.id != q.id for q in named)]
     if kind == "article.link":
@@ -651,6 +652,26 @@ def address_form(keys: dict[str, list[Any]]) -> dict[str, list[str]]:
             written = [registrable(v) for v in written]
         if written:
             out[str(key)] = list(dict.fromkeys(written))
+    return out
+
+
+def word(name: str) -> str:
+    """A key name folded for case and spacing, so `Thing Code` and `thing_code` read alike."""
+    return "_".join(name.casefold().replace("_", " ").split())
+
+
+def read_keys(given: Iterable[tuple[Any, list[Any]]], spellings: Sequence[str]) -> dict[str, list[Any]]:
+    """Keys as a curator gives them, read as it means them. A name that is one of `spellings` is itself. Any other is
+    read as the first of them that spells it in another case or spacing, so `Thing Code` is a source's `thing_code`,
+    else as it was first given, so two spellings of one name are one key."""
+    spelled: dict[str, str] = {}
+    for name in spellings:
+        spelled.setdefault(word(name), name)
+    out: dict[str, list[Any]] = {}
+    for name, values in given:
+        name = str(name).strip()
+        key = name if name in spellings else spelled.setdefault(word(name), name)
+        out[key] = [*out.get(key, []), *values]
     return out
 
 
@@ -967,8 +988,8 @@ def _split(store: Store, target: str, proposal: Proposal, at: str) -> tuple[dict
             store.unlink(fact, [into], how)
     for row in store.rows("merges"):  # what was told or linked to the article while it was merged goes back to it
         if row.data.get("followed") == gone.id and row.data.get("to") == into:
-            store.unlink(row.data["fact"], [into], row.data.get("how"))
-            store.link(row.data["fact"], [gone.id], at, row.data.get("how") or UNKNOWN)
+            store.unlink(row.data["fact"], [into], row.data["how"])
+            store.link(row.data["fact"], [gone.id], at, row.data["how"])
     store.append("merges", {"at": at, "split": gone.id, "from": into, "path": gone.id, "by": proposal.by.name,
                             "proposal": proposal.id, "reason": proposal.reason, "redirect": gone.id, "to": ""})
     store.append("merges", {"at": at, "distinct_from": [gone.id, into], "by": proposal.by.name})
@@ -1060,8 +1081,8 @@ class _Curation:
 
     def file(self, kind: str, target: str, payload: dict[str, Any], reason: str, lands: bool) -> tuple[str, str]:
         """A row of the `proposals` log, and a line that says what it did. One that lands is accepted and applied at
-        once: by the curator, or as the decision of the caller who accepted a proposal it names. Any other waits for a
-        caller. An act that would undo what a caller decided, with nothing new since, is refused."""
+        once, as the curator's own act, and a caller's yes it carries out stays that caller's one decision. Any other
+        waits for a caller. An act that would undo what a caller decided, with nothing new since, is refused."""
         named = [p for p in proposals(self.store) if p.id in self.answers]
         moved = redirects(self.store)
         if kind != "article.admit" and (off := [p.id for p in named if _thing(moved, kind, p.target, p.payload)
@@ -1082,10 +1103,9 @@ class _Curation:
         proposal = Proposal(id=_proposal_id(), kind=kind, target=target, by=self.caller, at=at, payload=payload,
                             reason=reason, cites=list(self.answers))
         note = "it waits for a caller"
-        decider = yes[0].decided_by if yes else self.caller
         if lands:
             proposal.applied, note = apply(self.store, proposal, at)
-            proposal.status, proposal.decided_by, proposal.decided_at = "accepted", decider, at
+            proposal.status, proposal.decided_by, proposal.decided_at = "accepted", self.caller, at
             if yes and kind == "article.admit" and (proposal.applied.get("created") or proposal.applied.get("back")):
                 # an article reads as admitted by whoever filed what it was made from: a caller's own ask first
                 made = self.store.article(proposal.applied["article"]).identity  # type: ignore[union-attr]
@@ -1098,7 +1118,7 @@ class _Curation:
             self.done.carried += [p.id for p in yes]
             for p in named:
                 kept = p.status == "accepted"
-                propose(self.store, replace(p, status="accepted", decided_by=p.decided_by if kept else decider,
+                propose(self.store, replace(p, status="accepted", decided_by=p.decided_by if kept else self.caller,
                                             decided_at=p.decided_at if kept else at,
                                             decision_reason=p.decision_reason if kept else reason,
                                             applied=proposal.applied))
@@ -1111,6 +1131,14 @@ class _Curation:
     def yes(self) -> list[Proposal]:
         """The proposals a caller accepted that the act under way names, and so carries out."""
         return [p for p in proposals(self.store, "accepted") if p.id in self.answers]
+
+    def spellings(self) -> list[str]:
+        """The key names a key given in another case or spacing is read as, each once, in the order that decides
+        between two that fold alike: those the engine and the sources issue, the engine's `alias` and `group`, then
+        those of the records its sources hold."""
+        held = (key for source in self.sources for row in self.store.state(f"held:{source}") or []
+                for key in row.get("keys") or {})
+        return list(dict.fromkeys([*key_weights(), *(self.store.weights or {}), "alias", "group", *held]))
 
     def answering(self, ids: list[str] | None, kind: str, act: Callable[[], dict[str, Any]],
                   distinct: bool = False) -> dict[str, Any]:
@@ -1544,9 +1572,22 @@ class _Curation:
         another collection waits there."""
         other = self.other(collection)
         who = self.find(article, collection=other)
-        adds = address_form({k: v for k, v in keys.items() if v is not None})
+
+        def off(name: Any) -> list[str]:  # a key comes off as named, else off each spelling the article holds it in
+            name = str(name).strip()
+            return [name] if name in who.keys else [k for k in who.keys if word(k) == word(name)] or [name]
+
+        def holding(name: Any, value: Any) -> list[str]:  # a value comes off the spellings that hold it, else the first
+            names = off(name)
+            return [k for k in names if str(value).lower() in _lower(who.keys.get(k, []))] or names[:1]
+
+        # a key goes on as the sources write it
+        adds = address_form(read_keys(((k, v) for k, v in keys.items() if v is not None),
+                                      [*(self.spellings() if keys else []), *who.keys]))
+        cleared = [n for k, v in keys.items() if v is None for n in off(k)]
+        wrong = read_keys(((n, [v]) for k, vs in wrong.items() for v in vs for n in holding(k, v)), list(who.keys))
         payload: dict[str, Any] = {
-            "keys": adds | {key: None for key, values in keys.items() if values is None},
+            "keys": {k: None for k in cleared} | adds,
             "wrong": address_form(wrong),
             "linked": [p.strip() for p in linked if p.strip()], "unlinked": [p.strip() for p in unlinked if p.strip()]}
         payload = {k: v for k, v in payload.items() if v}
@@ -1619,13 +1660,11 @@ class _Curation:
             Give fields, {"<field>": value}, to set front matter fields of the article as you admit it, as its writers
             set them; the ones the wiki keeps itself are refused. Give fields {"linked": [<article id>, ...]} to link
             the article to the others it goes with, such as the one it belongs to, made or only proposed."""
-            keys = dict(keys or {})
+            given = [(k, v) for k, v in [*(keys or {}).items(), ("domain", domain), ("alias", aliases)] if v]
+            keys = read_keys(given, self.spellings() if given else [])
             # a group given as a key would bind every article of it
-            named = [str(v) for v in keys.pop("group", []) or []]
+            named = [str(v) for v in keys.pop("group", [])]
             group = group.strip() or ", ".join(named)
-            for key, given in (("domain", domain), ("alias", aliases)):
-                if given:
-                    keys[key] = list(dict.fromkeys([*keys.get(key, []), *(str(v) for v in given)]))
             words, said = " ".join(instructions.split()), reason
             reason = f"{said.strip()} ({group})" if group and said.strip() else said
 
@@ -2274,8 +2313,8 @@ def _measure_of(agent: Agent, workspace: Cerebro) -> _Measure:
 
 def own_facts(workspace: Cerebro, landed: list[tuple[Any, Record]]) -> None:
     """Take the facts that landed from a record a curator's acts took off its held list, at the revision it was held
-    at, into the view that curator has seen, once, and let the record go at any revision: their landing is no news to
-    it. Anything else that moved, and any change of them after, is."""
+    at, into the view that curator has seen, once, with each entry they came into, and let the record go at any
+    revision: their landing is no news to it. Anything else that moved, and any change of them after, is."""
     records = {f"held:{record.source}:{record.id}" for _, record in landed}
     for agent in workspace.agents:
         own = workspace.store.state(f"own:{agent.id}") or [] if agent.role == "curator" else []
@@ -2286,8 +2325,9 @@ def own_facts(workspace: Cerebro, landed: list[tuple[Any, Record]]) -> None:
         with workspace.store.exclusive():
             if mine and (read := _measure_of(agent, workspace)._read()) and isinstance(
                     stored := workspace.store.state(f"curated:{agent.id}"), dict):
+                into = {k.partition("\0")[0] for k in read.view if k.partition("\0")[2] in mine}
                 workspace.store.set_state(f"curated:{agent.id}", stored | {
-                    k: v for k, v in read.view.items() if k.partition("\0")[2] in mine and k not in stored})
+                    k: v for k, v in read.view.items() if (k.partition("\0")[2] in mine and k not in stored) or k in into})
             workspace.store.set_state(f"own:{agent.id}", left or None)
 
 

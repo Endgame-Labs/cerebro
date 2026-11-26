@@ -104,12 +104,13 @@ def test_a_holder_that_lives_and_renews_keeps_its_claim_past_the_lapse_and_a_pas
         time.sleep(2.5)
         layer = FileExtraction(tmp_path / "layer")
         with make_workspace(tmp_path, layer) as workspace:
-            id = told(workspace)
+            id, now = told(workspace), workspace.clock()
+            seen = workspace.store.state(CLAIMED)[id]["until"]
             result = workspace.run_once(agents=False)
             assert layer.called() == [id] and workspace.store.state(RETRY) == [id]
-            until = workspace.store.state(CLAIMED)[id]["until"]
-            assert datetime.fromisoformat(until) > workspace.clock() - timedelta(seconds=1)
-            assert result.skipped[f"tell/{id}"].endswith(f"or to its claim to lapse at {until}")
+            said, _, until = result.skipped[f"tell/{id}"].rpartition("or to its claim to lapse at ")
+            assert said and seen <= until <= workspace.store.state(CLAIMED)[id]["until"]  # it renews as the pass reads
+            assert datetime.fromisoformat(until) > now
             (tmp_path / "go").write_text("")
             assert teller.wait(60) == 0
             workspace.run_once(agents=False)

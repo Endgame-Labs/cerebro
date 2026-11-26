@@ -186,15 +186,15 @@ class HoldsNoBlocking(FakeDecider):
         return super().decide(state, questions)
 
 
-def test_a_stakeholders_block_keeps_each_item_its_fact_holds_and_reads_back_with_its_citations_everywhere(
+def test_a_data_block_a_writer_hands_in_keeps_each_item_its_fact_holds_and_reads_back_with_its_citations_everywhere(
         tmp_path: Path) -> None:
     root = gtm_workspace(tmp_path / "workspace")
     (root / "local" / "acme.md").write_text("Domain: acme.example\nDate: 2026-11-10\n\n"
                                             "Dana Reyes, the CFO of Acme Corp, signed the two year renewal.\n")
 
-    def stakeholders(prompt: str) -> dict[str, str]:
+    def writes_a_block(prompt: str) -> dict[str, str]:
         found = re.search(r"\[\^(fact_\w+)\] Dana Reyes", prompt)
-        assert found, "the stakeholders evidence holds the signature"
+        assert found, "the writer's evidence holds the signature"
         cite = f"[^{found[1]}]"
         return {"Stakeholders": f"Dana Reyes signed the two year renewal {cite}.\n\n```yaml\n"
                                 f"- person: Dana Reyes\n  role: decides\n  since: 2026-11-10\n  fact: \"{cite}\"\n"
@@ -206,7 +206,7 @@ def test_a_stakeholders_block_keeps_each_item_its_fact_holds_and_reads_back_with
     admit = ScriptedRun(lambda prompt: {}, clock=lambda: NOW, calls=[(
         "admit", {"name": "Acme Corp", "keys": {"domain": ["acme.example"]}, "reason": "a renewal in local notes"})])
     runs = ByAgent({"accounts/curator": admit,
-                    "accounts/subagents/stakeholders": ScriptedRun(stakeholders, clock=lambda: NOW)})
+                    "accounts/subagents/stakeholders": ScriptedRun(writes_a_block, clock=lambda: NOW)})
     kinds = ["identity", "relationship", "decision_commitment"]
     with Cerebro(root, extraction=FakeExtraction(kinds), agent_run=runs, decider=HoldsNoBlocking(),
                  clock=lambda: NOW) as workspace:

@@ -53,9 +53,10 @@ or replaces one, tell its writers what it is now, with instruct.
 Propose an archive of a brief you keep, with a reason as below, when:
 
 - its account's deal closed, won or lost: when the account has no open deal
-  among those in your evidence, query its deals by the account's path, such
-  as { from: opportunities, linked: accounts/halcyon-mills, order_by: close_date }, and give the
-  closed deal's stage and close date, such as "deal closed won Nov 20";
+  among those in your evidence, call query with source opportunities and
+  filters { linked: <the account's path> }, such as accounts/halcyon-mills,
+  and give the closed deal's stage and close date, such as "deal closed won
+  Nov 20";
 - its account's close moved past your 60 days, so the account left your
   evidence while an open deal of it closes later: "close moved past the
   window". A close date already gone by means the deal slipped, and the
