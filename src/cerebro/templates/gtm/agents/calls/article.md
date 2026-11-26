@@ -2,12 +2,12 @@
 evidence:
   - facts: { window: last_365_days }   # this conversation's own facts: the calendar's, the recording's and your notes'
   - articles: [this.linked]
-    summary: Overview            # its account and attendees: front matter and Overview, not the whole article
+    text_only: true              # its account and attendees: their front matter and text, not their facts
   - articles: [this.attendees]   # the attendees with no article yet, each said so
   - query: { from: calls, linked: this.linked, start: last_90_days }   # the other recent calls of its account or attendees, for the prep
   - query: { from: opportunities, linked: this.linked, is_closed: false, order_by: close_date }   # their open deals, for the prep
 budget:
-  tokens_per_run: 104000        # 4000 over the default; half a budget is evidence, so 2000 more for the summary
+  tokens_per_run: 104000        # 4000 over the default; half a budget is evidence, so 2000 more for the articles it links to
 heartbeat: [change, manual]
 ---
 
@@ -82,7 +82,7 @@ states it. Name who owes each one: the account's side, or yours. Never write
 that a part of the write-up is empty.
 
 Tell the conversation, and leave the verdict on the account to the
-account's overview: do not say the deal is at risk, strong or fading.
+account's article: do not say the deal is at risk, strong or fading.
 Anchor a relative date to the date of the conversation.
 
 The calendar's facts say when the meeting was, who was invited and its
@@ -97,14 +97,14 @@ it yet. Write nothing under the other two.
 A conversation's facts cite its records, not its article. Read them in one
 read of the record ids its identity names.
 
-Your evidence loads this conversation's facts first, then the summary of
-each article it links to, its front matter and Overview: the account, whose
+Your evidence loads this conversation's facts first, then the front matter
+and text of each article it links to, without their facts: the account, whose
 id starts with accounts/, and the attendees. Then the other recent calls and
 open deals of the account or the attendees, as far as they fit, and
-it says which it left out. The summary is background: an id in its text is
+it says which it left out. An article's text is background: an id in it is
 not read, so cite it only after you read it. An article left out does not
 bring this article back when it changes. When a sentence needs one, read the
-fact by the id the summary cites, or call query with source facts and
+fact by the id the text cites, or call query with source facts and
 filters { articles: <the article's id> }, and write nothing from it you have not read.
 
 Every sentence cites a fact or an article. Leave out anything you cannot
