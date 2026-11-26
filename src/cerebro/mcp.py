@@ -24,7 +24,7 @@ The file follows a call through five ideas, in this order:
   people ask about that the wiki does not keep. A call is a miss when it fails, when `find` matches nothing, when
   `query` counts zero, or when `read` finds none of its ids.
 - What a session reads when it connects: `DATA`, the workspace and its tools, the person, each app's instructions,
-  and the proposals waiting, told again after a call that succeeds when their count moves.
+  and the proposals waiting for a person, told again after a call that succeeds when their count moves.
 
 It runs two ways: `serve` over HTTP, on the loopback address unless told another, where on loopback the SDK refuses
 a request whose `Origin` or `Host` is another site, and where the JSON API of `api` sits beside MCP behind the same
@@ -1283,21 +1283,22 @@ def _collections(counts: Counts, mask: Callable[[str], str]) -> list[str]:
 
 
 def proposals_note(waiting: int) -> str:
-    """The line that says how many proposals wait, how to list them, and that the caller decides them with
-    `decide`."""
+    """The line that says how many proposals wait for a person, as `cerebro status` counts them, how to list them,
+    and that the caller decides them with `decide`."""
     if not waiting:
-        return "No proposals waiting."
+        return "No proposals waiting for a person."
     one = waiting == 1
     them = "it" if one else "them"
-    return f"{waiting} proposal{'' if one else 's'} waiting. List {them} with query from proposals and status waiting, " \
-        f"and decide {them} with decide."
+    return f"{waiting} proposal{'' if one else 's'} waiting for a person. List {them} with query from proposals and " \
+        f"status waiting, which also lists those waiting for a curator or another proposal, and decide {them} with " \
+        "decide."
 
 
 STORE_MARK = own_key("counted", "store")  # a value made once per store, so a store replaced in place reads as another
 
 
 class Counts:
-    """The articles `query` gives from each collection and the proposals it gives as waiting, as one server last
+    """The articles `query` gives from each collection and the proposals waiting for a person, as one server last
     counted them, counted again only for what the store's change feed says moved since: a collection when one of
     its articles changed or a first run's proposed article in it came or went, the proposals when their log did. So a
     connect or a call where nothing moved reads no article and no proposal, whatever the size of the wiki or the log.
@@ -1377,7 +1378,7 @@ class Counts:
                     self._waited = (at, self._waited[1], self._waited[2])
                     return self._waited[2]
             start = self._start()
-            waiting = self.workspace.lookup.query(LOCAL, "proposals", {"status": "waiting"}, limit=0).count
+            waiting = self.workspace.awaiting()
             self._waited = (*start, waiting) if start is not None else None
             return waiting
 
