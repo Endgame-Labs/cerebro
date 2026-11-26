@@ -1050,11 +1050,13 @@ class StoreLookup(Lookup):
                 raise OperationError(f"query: kind {kind!r} and classes {classes!r} share no kind, so no fact could "
                                      "match both: pass one of them")
         warnings: list[str] = []
-        why: list[str] = []  # the first filter that left no fact, for a query that matches none
+        applied: list[str] = []  # the filters applied so far, in order
+        why: list[str] = []  # those that together left no fact, for a query that matches none
 
         def left(facts: list[Fact], *keys: str) -> list[Fact]:
+            applied.extend(k for k in keys if k in filters)
             if not facts and not why:
-                named = ", ".join(f"{k}: {filters[k]}" for k in keys if k in filters)
+                named = ", ".join(f"{k}: {', '.join(_listed(filters[k]) or [])}" for k in applied)
                 why.append(f"no fact matches {named}" if named else "this workspace has no facts yet")
             return facts
 
@@ -1100,7 +1102,7 @@ class StoreLookup(Lookup):
             found = kept
         if not found:
             warnings += [f"no fact has a field {k}: check its name" for k in rest
-                         if k not in windows and k not in FACT_FIELDS]
+                         if k != "window" and k not in FACT_FIELDS]
             warnings += [] if warnings else why
         kept = {f.id for f in found}
         return found, warnings, {id: how for id, how in ties.items() if id in kept}

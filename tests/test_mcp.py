@@ -126,15 +126,19 @@ def test_the_request_log_keeps_each_argument_sent_and_cuts_a_long_one_at_one_kib
     assert zero == {"from": "projects", "limit": 0}
 
 
-def test_a_facts_query_that_matches_nothing_names_the_filter_that_left_none(tmp_path: Path) -> None:
+def test_a_facts_query_that_matches_nothing_names_the_filters_that_left_none(tmp_path: Path) -> None:
     async def calls(client: Client) -> list[Any]:
         return [await client.call_tool("query", {"from": "facts", **filters}) for filters in (
-            {"kind": "decision"}, {"articles": "projects/vega"}, {"articles": "projects/apollo", "window": "next_7_days"})]
+            {"kind": "decision"}, {"articles": "projects/vega"}, {"articles": "projects/apollo", "window": "next_7_days"},
+            {"dew": "next_30_days"})]
 
-    replies = over_mcp(workspace_at(tmp_path / "workspace"), calls)
+    workspace = workspace_at(tmp_path / "workspace")
+    replies = over_mcp(workspace, calls)
     assert [reply.structured_content["warnings"] for reply in replies] == [
         ["no fact matches kind: decision"], ["no fact matches articles: projects/vega"],
-        ["no fact matches window: next_7_days"]]
+        ["no fact matches articles: projects/apollo, window: next_7_days"], ["no fact has a field dew: check its name"]]
+    assert workspace.query(YOU, "facts", {"articles": ["projects/vega", "projects/orion"]}).warnings == [
+        "no fact matches articles: projects/vega, projects/orion"]
     (tmp_path / "bare").mkdir()
     (tmp_path / "bare" / "settings.yaml").write_text("{}\n")
     with Cerebro(tmp_path / "bare", store=MemoryStore(), extraction=FakeExtraction()) as bare:
