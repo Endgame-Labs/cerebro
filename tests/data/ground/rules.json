@@ -328,6 +328,35 @@
    ]
   },
   {
+   "name": "with no judge a line that ends in a colon over a list goes and its items are held to their words",
+   "body": "Ours, all done:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": null,
+   "want": "- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, all done:\": its cited evidence does not hold this lead"
+   ]
+  },
+  {
+   "name": "a line that ends in a colon over prose, not a list, is a sentence and goes when it cites nothing",
+   "body": "Ours, all done:\n\nJane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": {},
+   "want": "Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, all done:\": it cites nothing"
+   ]
+  },
+  {
+   "name": "under a lead on its own line that went, only the first item that stands reads on from it",
+   "body": "Ours, all done:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n- Then Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "answers": {
+    "l1": "states_unheld"
+   },
+   "want": "- Jane Doe signs off on the Acme Corp rollout [^f_2].\n- Then Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, all done:\": its cited evidence does not hold this lead"
+   ]
+  },
+  {
    "name": "a line that only looks like a heading is read as a sentence",
    "body": "Jane Doe signs off on the rollout [^f_2].\n\n    ### Acme Corp lost its board vote\n\n#1 risk: Acme Corp lost its board vote\n",
    "answers": null,
