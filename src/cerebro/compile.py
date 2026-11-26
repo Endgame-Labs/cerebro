@@ -956,6 +956,12 @@ def _single(c: _Compile, agent: Agent, article: str, descriptions: Mapping[str, 
     return _write(c, agent, article, evidence, owned, bool(drew), others)
 
 
+def _lands(run: Run, stands: bool) -> bool:
+    """Whether what a run handed in and the fields it set land: it ran to its end, or its budget ran out and some of
+    its text `stands` after grounding."""
+    return run.status in ("done", WROTE_NOTHING) or run.status == "budget spent" and stands
+
+
 def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], owned: bool, drew: bool,
            others: list[Agent] | None) -> Compiled:
     """Run the agent and land what stands of what it handed in, as one part written whole. When nothing does, the
@@ -980,7 +986,7 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
             store.set_state(_read(agent, article),
                             _land_own(c, article, [agent.id], agent, evidence, writes, run.ended_at) or stamp_)
 
-    lands = ended or run.status == "budget spent" and bool(text)  # land what it handed in
+    lands = _lands(run, bool(text))  # land what it handed in
     if not lands or not text:
         read()  # what it set lands, whatever its text
         notes: list[str] = []
@@ -1333,12 +1339,6 @@ def _not_run(agent: Agent, article: str, error: BudgetSpent | Stopped, clock: Cl
     return Run("", agent.id, article, status, note=str(error), started_at=stamp(clock()), ended_at=stamp(clock()))
 
 
-def _ran_to_an_end(run: Run) -> bool:
-    """Whether a run ran to an end: done, wrote nothing, or its budget spent once it had handed in text. In a composed
-    article, only such a run's fields land."""
-    return run.status in ("done", WROTE_NOTHING) or run.status == "budget spent" and run.result is not None
-
-
 def _stamp_of(*digests: str) -> str:
     return "sha256:" + hashlib.sha256("\0".join(digests).encode()).hexdigest()[:16]
 
@@ -1392,6 +1392,7 @@ class _Composing:
         # plan_own, join and settle
         self.plan: list[_Part] = []  # the parts that land
         self.drafts: set[int] = set()  # drafts returned since the agent last composed, never landed
+        self.stood: set[str] = set()  # the agents whose text stands as grounded on this pass
         # `new`: some text lands, this run's or what a subagent returned and never landed; `composed`: what the agent
         # composed last stands, less what was withdrawn; `leave`: the agent's text stands as it is
         self.leave = self.unstood = self.new = self.composed = self.drafted = self.grounded = False
@@ -1483,7 +1484,8 @@ class _Composing:
         if self.holds and len(self.holds) == len(self.ran) and not self.orphans:
             raise next(iter(self.holds.values()))  # nothing ran, so nothing was paid for: the pass holds it as a whole
         self.compiled = Compiled(None, None, runs=[run for n, run in self.ran.items() if n not in self.holds])
-        self.failed = [n for n, run in self.ran.items() if not _ran_to_an_end(run)]
+        self.failed = [n for n, run in self.ran.items() if run.status not in ("done", WROTE_NOTHING)
+                       and not (run.status == "budget spent" and run.result)]
         self.compiled.notes += [line for n, run in self.ran.items() if n not in self.failed
                                 for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)]
         for n in self.failed:
@@ -1580,6 +1582,7 @@ class _Composing:
                 self.plan = [_Part(composer.id, composer.id, text, self.everything, own.started_at, own.ended_at,
                                    whole=True)]
                 self.new = True
+                self.stood.add(composer.id)
             else:
                 if own.status == "done":  # it handed in, and grounding dropped all of it: it wrote nothing
                     _wrote_nothing(self.c.store, own, dropped)
@@ -1628,6 +1631,7 @@ class _Composing:
                 plan.append(_Part(heading, sub.id, kept.parts[heading], self.citable[n], held[n].get("started", ""),
                                   held[n].get("at", ""), digest=held[n].get("digest", "")))
                 self.new, self.grounded = True, self.grounded or self.drafted and n in self.drafts
+                self.stood.add(sub.id)
                 continue
             if n in ran and ran[n].status == "done":  # it handed in, and grounding dropped all of it
                 _wrote_nothing(c.store, ran[n], kept.dropped)
@@ -1663,21 +1667,21 @@ class _Composing:
             store.set_state(_read(composer, article), _stamp_of(self.own_read, *_returned(self.subs, self.held)))
 
     def land_sets(self) -> None:
-        """Land the fields each run set that did not fail, each agent taking in as read what its own writes alone
-        moved in what it reads. Another agent's write stays news to it."""
+        """Land the fields each run set that lands as `_lands` says, each agent taking in as read what its own writes
+        alone moved in what it reads. Another agent's write stays news to it."""
         c, article, own = self.c, self.article, self.own
         for n, run in self.ran.items():
-            if n not in self.failed and (read := _land_own(c, article, self.writers, self.subs[n], self.reads[n],
-                                                           self.sub_writes[n], run.ended_at)) \
+            if _lands(run, self.subs[n].id in self.stood) and (read := _land_own(
+                    c, article, self.writers, self.subs[n], self.reads[n], self.sub_writes[n], run.ended_at)) \
                     and self.held[n].get("digest") == self.stamps[n]:  # one not done reading runs again
                 self.held[n]["digest"] = _stamp_of(read, self.composer.context)
-        if own is not None and _ran_to_an_end(own):
+        if own is not None and _lands(own, self.composer.id in self.stood):
             self.own_read = _land_own(c, article, self.writers, self.composer, self.lead, self.writes,
                                       own.ended_at) or digest(self.composer, self.lead)
 
     def unlanded(self) -> Compiled:
         """Nothing of the run lands: the article stays as it was, less the lines whose facts were withdrawn, and
-        what each run set lands, whatever its text."""
+        what each run that ran to its end set lands, whatever its text."""
         c, store, article, compiled, own = self.c, self.c.store, self.article, self.compiled, self.own
         self.land_sets()
         self.read()
