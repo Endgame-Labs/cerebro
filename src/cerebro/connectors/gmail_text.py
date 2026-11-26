@@ -1,8 +1,7 @@
-"""A message's text as the Gmail connector reads it, with the standard library alone: its header block, a text part
+"""A mail message's text as a source reads it, with the standard library alone: its header block, a text part
 in its transfer encoding and charset, HTML turned into text, and the message reduced to what its sender newly wrote.
 
-`reduce` is the one place that decides what is new, for every source that reads email: Gmail, and Salesforce for its
-email messages. It drops quoted lines, the "On ... wrote:" line that introduces
+`reduce` is the one place that decides what is new. It drops quoted lines, the "On ... wrote:" line that introduces
 them, an Outlook header block or "-----Original Message-----" and everything after it, and the signature: a "-- "
 line, however many spaces follow it, and what follows it, a "--" line or a sign-off such as "Best," with the few
 short lines under it, a mobile footer, or a closing block of a name with a title, company, phone or address line
@@ -85,13 +84,18 @@ _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", 
 
 def reduce(text: str) -> str:
     """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
-    quote with nothing written above it is kept whole but for its signature, so its words are not lost. Line endings
-    become \\n, the end of each line is trimmed, and runs of blank lines shrink to one."""
+    quote with nothing but a signature, a sign-off or a footer above it is kept from where it begins, less its own
+    signature, so its words are not lost. Line endings become \\n, the end of each line is trimmed, and runs of blank
+    lines shrink to one."""
     lines = _split_lines(text)
-    own = _drop_quoted(lines)
-    if not any(_written(line) for line in own):
-        own = lines
-    return _collapse_blank("\n".join(_drop_signature(own)))
+    kept = _drop_quoted(lines)
+    own = _drop_signature(kept)
+    start = next((k for k, line in enumerate(kept) if line != lines[k]), len(kept))  # kept is lines up to the first one dropped
+    if start < len(lines) and not any(_written(line) for line in own[:_closing_block(own)]):
+        while start and not _written(lines[start - 1]):
+            start -= 1
+        own = _drop_signature(lines[start:])
+    return _collapse_blank("\n".join(own))
 
 
 def _written(line: str) -> bool:
@@ -228,19 +232,24 @@ def _short_block(found: list[str]) -> bool:
 
 
 def _drop_closing_block(lines: list[str]) -> list[str]:
-    """The lines without a closing block: a last paragraph that starts with a full name, has a title, company,
-    phone or address line under it and holds no sentence, after the message's own text. Names alone stay."""
+    """The lines without a closing block, after the message's own text."""
+    start = _closing_block(lines)
+    return lines[:start] if any(line.strip() for line in lines[:start]) else lines
+
+
+def _closing_block(lines: list[str]) -> int:
+    """Where a closing block at the end of the lines begins, or their length for none: a last paragraph that starts
+    with a full name, has a title, company, phone or address line under it and holds no sentence. Names alone are
+    none."""
     start = len(lines)
     while start > 0 and lines[start - 1].strip():
         start -= 1
     block = lines[start:]
-    if not 2 <= len(block) <= _SIGNATURE_LINES or not any(line.strip() for line in lines[:start]):
-        return lines
-    if not _full_name(block[0]) or not all(_signature_line(line) for line in block):
-        return lines
-    if all(_full_name(line) for line in block):
-        return lines
-    return lines[:start]
+    if not 2 <= len(block) <= _SIGNATURE_LINES or not _full_name(block[0]):
+        return len(lines)
+    if not all(_signature_line(line) for line in block) or all(_full_name(line) for line in block):
+        return len(lines)
+    return start
 
 
 def _full_name(line: str) -> bool:
