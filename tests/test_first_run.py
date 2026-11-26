@@ -322,15 +322,6 @@ def test_yes_with_nothing_ticked_says_it_approved_nothing_and_advises_no_yes_aga
     assert not any(line.startswith("waiting") and "--yes" in line for line in out), done.output
 
 
-def test_see_first_past_the_first_run_says_in_one_line_it_was_not_used(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root, script = lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})
-    monkeypatch.setattr(cli, "open_workspace", lambda root: open_it(root, script))
-    CliRunner().invoke(main, ["serve", "--once", "--yes", "--workspace", str(root)])
-    again = CliRunner().invoke(main, ["serve", "--once", "--see-first", "Birch first", "--workspace", str(root)])
-    assert "note      --see-first applies to a workspace's first run only: it was not used" in again.output.splitlines()
-
-
 def test_off_a_terminal_nothing_is_approved_and_the_pass_says_how_many_wait_and_exits_2(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root, script = lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})

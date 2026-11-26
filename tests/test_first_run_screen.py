@@ -550,8 +550,8 @@ def test_a_fault_of_the_drawing_stops_the_live_display_once_and_never_reaches_th
 
 @pytest.mark.parametrize("under_init", [True, False])
 def test_inside_init_the_run_stands_apart_from_the_walks_summaries_by_a_blank_line(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], under_init: bool) -> None:
-    # inside init: a blank line under the Ready block, then the question; once it gives way, a blank line, then the run
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, under_init: bool) -> None:
+    # inside init: a blank line under the Ready block, then the run
     import click
     from click.testing import CliRunner
 
@@ -570,13 +570,9 @@ def test_inside_init_the_run_stands_apart_from_the_walks_summaries_by_a_blank_li
 
     monkeypatch.setattr(first_run, "run", reading)
     monkeypatch.setattr(cli, "_asking", lambda: True)
-    monkeypatch.setattr(first_run, "begins", lambda workspace: True)
-    monkeypatch.setattr(click, "prompt", lambda text, **kwargs: print(f"{text}: ", end="", file=sys.stderr) or "")
-    capsys.readouterr()
     with pytest.raises(click.exceptions.Exit):
         click.Context(cli.serve).invoke(cli.serve, root=root, once=True, port=None, host=None, allowed=(),
                                         under_init=under_init)
-    assert capsys.readouterr().err.startswith("\nWhat do you want to see first?" if under_init else "What")
     drawn = out.getvalue()
     assert drawn.startswith("\n\r\x1b[K") == under_init  # a blank line, then the step, only under init
     assert "Reading sources" in drawn

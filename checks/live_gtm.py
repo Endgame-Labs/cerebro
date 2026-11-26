@@ -16,8 +16,7 @@ sentence of each cites a fact or links an article the workspace holds, but a lin
 settled pass runs nothing. Its notes source routes `local/calls/` and `local/meetings/` into calls, and
 one more call note lands after the second pass, once the accounts are settled, so it is held: the calls curator reads
 it on its held list and proposes its account to the accounts curator. With `--keep <folder>` the workspace is made there
-and left, to read it after. With `--see-first <words>` the first run is given the person's words on what to see
-first. At its end it asks the wiki the questions in `gtm_questions.yaml` and prints their
+and left, to read it after. At its end it asks the wiki the questions in `gtm_questions.yaml` and prints their
 score, and fails under `--min-score`, 0.85 by default. It fails too unless Brightwater's or Kestrel's article,
 whose notes name their people, has a Stakeholders part, and when any account's Stakeholders part holds a fence: a
 reader is owed sentences there, not data. With `--decision <provider>:<model>`, such as
@@ -51,7 +50,6 @@ from cerebro.article import cut, passages
 from cerebro.budget import LOG
 from cerebro.evidence import CITE
 from cerebro.first_run import run as first_run
-from cerebro.first_run import see_first
 from cerebro.ground import ABSENCE, split_sentences
 from cerebro.models import HttpDecider, ModelSpec
 from cerebro.records import proposals
@@ -416,8 +414,6 @@ def main() -> int:
             dropped: list[str] = []
             waited: list[str] = []
             began = time.monotonic()
-            if "--see-first" in sys.argv:  # the person's words on what to see first, as the run asks at a terminal
-                see_first(workspace, sys.argv[sys.argv.index("--see-first") + 1])
             out = first_run(workspace, choose=taken_whole, say=print)
             where = placed(FIRST["pile"], NOTES, OWN_DOMAIN) if "pile" in FIRST else "no list was shown"
             print(f"placed    {where}")

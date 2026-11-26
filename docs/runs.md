@@ -65,7 +65,6 @@ The first pass on a new workspace with curators writes nothing until you agree. 
 
 ```text
 $ cerebro serve --once
-What do you want to see first? Atlas
 ...
 Working set proposal
 by agents/projects/curator.md, agents/notes/curator.md
@@ -86,8 +85,6 @@ by agents/projects/curator.md, agents/notes/curator.md
 
 3 of 5 selected
 ```
-
-Before the curators start, the run asks what you want to see first. Answer in your own words, or press Enter to skip. Off a terminal, give it with `--see-first "Atlas"`. Your words put what they name first and tick it. They never hide anything.
 
 Each line is one article. What an article links to sits under it, by collection. Proposals of the same thing under two names are one line. One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
 

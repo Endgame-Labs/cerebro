@@ -103,7 +103,6 @@ __all__ = [
 
 KEY = FIRST_RUN_KEY
 NOT_WEIGHED = "not weighed"  # the reason of a held record its curator neither proposed nor left out
-SEE_FIRST = "see_first"  # the session's key for the person's words on what to see first
 DECLINED = "declined"  # a session whose list a person declined whole: the next run begins a new one
 MAX_ROUNDS = 4  # rounds of discovery at most, so a chain of proposals that keeps waking curators still ends
 CLOSED_OVER = 10  # a group of more rows than this starts closed, and the plain list shows its first rows
@@ -220,11 +219,11 @@ class Choices:
 
 
 def arranged(workspace: Cerebro, pile: Pile) -> Pile:
-    """The pile with its tree as the model arranges it, with the person's words for this first run when they gave
-    any, or the plain tree and why. A row left on an earlier list starts unticked."""
-    words, n = str((_state(workspace) or {}).get(SEE_FIRST) or ""), pile.waiting()
-    groups, pile.note = arrange(workspace, [row for row in pile.rows() if not row.left_out], words,
-                                lambda: _emit(workspace, "arrange", "start", total=n))
+    """The pile with its tree as the model arranges it, or the plain tree and why. A row left on an earlier list
+    starts unticked."""
+    n = pile.waiting()
+    groups, pile.note = arrange(workspace, [row for row in pile.rows() if not row.left_out],
+                                asking=lambda: _emit(workspace, "arrange", "start", total=n))
     _emit(workspace, "arrange", "end", total=n)
     for g in groups:
         g.tick = g.tick and not any(row.offered for row in g.rows)
@@ -235,22 +234,6 @@ def arranged(workspace: Cerebro, pile: Pile) -> Pile:
 def _articles(workspace: Cerebro) -> dict[str, str]:
     """The articles of the working set, id to title, that a group may sit under."""
     return {i.id: i.title or i.id for i in working_set(workspace.store)}
-
-
-def see_first(workspace: Cerebro, words: str) -> None:
-    """Keep the person's words on what to see first for the first run about to begin: every curator of it reads
-    them, and so does the call that arranges its list, as the person's instruction."""
-    session = _begin(workspace)
-    if session is not None and words.strip():
-        session[SEE_FIRST] = workspace.mask_every()(" ".join(words.split()))
-        _save(workspace, session)
-
-
-def begins(workspace: Cerebro) -> bool:
-    """Whether the next run begins a first run's discovery: none is under way, and the workspace is in its first
-    run or its last list was declined whole."""
-    session = _state(workspace)
-    return session.get("status") == DECLINED if session is not None else in_first_run(workspace)
 
 
 @dataclass(frozen=True)

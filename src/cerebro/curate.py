@@ -1882,21 +1882,6 @@ def _woke(wake: str, accepted: Collection[str] = (), news: bool = True) -> list[
     return [Evidence(WOKE, lines, spelled="woke")]
 
 
-SEE_FIRST = "What a caller wants to see first"
-
-
-def _see_first(store: Store) -> list[Evidence]:
-    """The person's words on what to see first in the first run under way, which every curator of it reads as
-    their instruction, or none."""
-    words = str((store.state(FIRST_RUN_KEY) or {}).get("see_first") or "")
-    if not words:
-        return []
-    return [Evidence(SEE_FIRST, [f"A caller wants to see this first: {words}",
-                                 ("Propose what it names and what belongs with it, and everything else you would "
-                                  "propose all the same: it ranks what you find, and leaves nothing out.")],
-                     spelled="see first", counted=[])]
-
-
 ON_YOURS = "Proposals waiting on your collection"
 ACCEPTED = "Accepted proposals for your collection"
 LEFT_BY_NAME = "Candidates you left out"
@@ -2388,7 +2373,7 @@ def run_curator(agent: Agent, *, lookup: Lookup, store: Store, agent_run: AgentR
     if not curation.proposing:  # a curator in its own first run is shown nothing waiting
         waiting = _waiting(*waiting_rows(store, agent))
     news = has_news(store, agent, evidence, but=ACCEPTED.lower())
-    evidence = (_woke(curation.wake, accepted, news) + (_see_first(store) if curation.proposing else []) + decided
+    evidence = (_woke(curation.wake, accepted, news) + decided
                 + _deferred(store, agent, curation.extraction, curation.sources) + evidence
                 + _left_by_name(store, agent) + waiting)
     done.run = run_agent(agent, evidence, tools, agent_run=agent_run, store=store, ledger=ledger, model=model,
