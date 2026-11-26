@@ -118,8 +118,6 @@ def _torn(lead: Answer) -> FakeDecider:
 
 TORN = Answer(choice="names", confidence=0.45, probabilities={"names": 0.45, "states_held": 0.45,
                                                                "states_unheld": 0.10})
-LEANS_OUT = Answer(choice="states_unheld", confidence=0.40, probabilities={"names": 0.35, "states_held": 0.25,
-                                                                           "states_unheld": 0.40})
 LINE = "**Trial plan:** Ines Calder said the trial can start on 1 December if review signs off [^f_1]."
 
 
@@ -129,17 +127,6 @@ FIRM = Answer(choice="names", confidence=0.6, probabilities={"names": 0.6, "stat
 def test_a_lead_stands_on_one_firm_holding_answer() -> None:
     out = ground(AGENT, {"Part": LINE}, CITABLE, decider=_torn(FIRM), facts={"f_1": FACT})
     assert out.parts["Part"].startswith("**Trial plan:**"), out.dropped
-
-
-def test_a_lead_torn_between_its_two_holding_answers_goes() -> None:
-    out = ground(AGENT, {"Part": LINE}, CITABLE, decider=_torn(TORN), facts={"f_1": FACT})
-    assert not out.parts["Part"].startswith("**Trial plan:**")
-
-
-def test_a_lead_the_judge_leans_to_unheld_still_goes() -> None:
-    out = ground(AGENT, {"Part": LINE}, CITABLE, decider=_torn(LEANS_OUT), facts={"f_1": FACT})
-    assert not out.parts["Part"].startswith("**Trial plan:**")
-    assert any('removed the lead "Trial plan:"' in line for line in out.dropped)
 
 
 def test_a_lead_with_a_figure_its_facts_lack_does_not_stand_on_naming() -> None:

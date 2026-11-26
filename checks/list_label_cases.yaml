@@ -1,0 +1,159 @@
+note: >-
+  Synthetic. The next steps of one made-up call article, each case one part as its writer drafted it, with labels over
+  parts of its lists, for a check of grounding on the real decision model: run by `cerebro eval
+  checks/list_label_cases.yaml` in a workspace, on the decision model its settings name. Every case was labelled by
+  hand before anything ran against it. supported-in-other-words: every label and item in it should land;
+  truly-unsupported: one of its labels claims what the facts under it do not hold, and should go. Every person and
+  firm is invented.
+today: "2026-11-20"
+context: A workspace for a team that plans freight depots with the firms it works with.
+facts:
+  - id: f_q01
+    text: Tobin Marsh will send Quillfield Freight the revised depot layout by Friday.
+    subject: Quillfield Freight
+    at: "2026-11-18T16:00:00Z"
+    source: local:file:local/calls/2026-11-18-quillfield-depot-review.md
+    quote: I'll get the revised layout over to you by Friday.
+    speaker: Tobin Marsh
+  - id: f_q02
+    text: Tobin Marsh will book a site visit at the Harwick depot for early December.
+    subject: Quillfield Freight
+    at: "2026-11-18T16:00:00Z"
+    source: local:file:local/calls/2026-11-18-quillfield-depot-review.md
+    quote: Let me book us a visit to Harwick in early December.
+    speaker: Tobin Marsh
+  - id: f_q03
+    text: Odile Brand will share Quillfield Freight's loading-dock schedule.
+    subject: Quillfield Freight
+    at: "2026-11-18T16:00:00Z"
+    source: local:file:local/calls/2026-11-18-quillfield-depot-review.md
+    quote: I can share the loading-dock schedule.
+    speaker: Odile Brand
+  - id: f_q04
+    text: Odile Brand will confirm who at Quillfield Freight signs the depot lease.
+    subject: Quillfield Freight
+    at: "2026-11-18T16:00:00Z"
+    source: local:file:local/calls/2026-11-18-quillfield-depot-review.md
+    quote: I'll find out who has to sign the lease.
+    speaker: Odile Brand
+cases:
+  - id: k01
+    label: supported-in-other-words
+    sentence: |
+      Ours:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+
+      Theirs:
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: k02
+    label: supported-in-other-words
+    sentence: |
+      Yours:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+
+      Quillfield Freight's:
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: k03
+    label: supported-in-other-words
+    sentence: |
+      **Our side:**
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+
+      **Their side**
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: k04
+    label: supported-in-other-words
+    sentence: |
+      Your side (Tobin Marsh):
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+
+      Their side (Odile Brand / Quillfield Freight):
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: k05
+    label: supported-in-other-words
+    sentence: |
+      - Ours: Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Theirs: Odile Brand will share the loading-dock schedule [^f_q03].
+  - id: k06
+    label: supported-in-other-words
+    sentence: |
+      - Our side:
+        - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Their side:
+        - Odile Brand will share the loading-dock schedule [^f_q03].
+  - id: k07
+    label: supported-in-other-words
+    sentence: |
+      Ours, due Friday:
+
+      - Tobin Marsh will send the revised depot layout [^f_q01].
+  - id: u01
+    label: truly-unsupported
+    sentence: |
+      Ours, due Monday:
+
+      - Tobin Marsh will send the revised depot layout [^f_q01].
+  - id: u02
+    label: truly-unsupported
+    sentence: |
+      Ours, all done:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+  - id: u03
+    label: truly-unsupported
+    sentence: |
+      Their side (Tobin Marsh):
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: u04
+    label: truly-unsupported
+    sentence: |
+      Theirs, agreed in writing:
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: k08
+    label: supported-in-other-words
+    sentence: |
+      Tobin Marsh took on two next steps:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].
+  - id: u05
+    label: truly-unsupported
+    sentence: |
+      Quillfield Freight signed the depot lease on the call and took on these steps:
+
+      - Odile Brand will share the loading-dock schedule [^f_q03].
+      - Odile Brand will confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: u06
+    label: truly-unsupported
+    sentence: |
+      Top 3 risks:
+
+      - Odile Brand still has to confirm who at Quillfield Freight signs the depot lease [^f_q04].
+  - id: u07
+    label: truly-unsupported
+    sentence: |
+      We agreed 4 next steps:
+
+      - Tobin Marsh will send the revised depot layout by Friday [^f_q01].
+      - Tobin Marsh will book a site visit at the Harwick depot for early December [^f_q02].

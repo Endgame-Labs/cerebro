@@ -14,17 +14,20 @@ A part meets four steps.
    by an alias is never read, and goes whole. A `presumed` mark buys an item one guess, which the judge is asked
    about apart and which is never evidence.
 2. Its prose. It splits into sentences, and a sentence into its lead, a bold name or a label before a colon, and its
-   claim, judged apart. A label the agent's own file writes, as `Watch:`, is never judged.
+   claim, judged apart. Outside a quote, a line that ends in a colon right over a list is a lead on a line of its
+   own, over that list. A label the agent's own file writes, as `Watch:`, is never judged.
 3. The verdicts. Code guards and the judge decides. A sentence that cites nothing goes unasked, unless it says only
    that the evidence holds none of something or counts the items right after it, and so does one that gives an
-   earlier save's value as what holds now. A claim whose every citation holds no words, as an article cited by its
-   path, stands on the citation. The rest go to the decider, one request per part, with each cited fact once
-   by id, the `checks` code found of its names, numbers and dates, and the `claims` code listed: each link of cause,
-   condition or sequence, and each word of a plan over a fact that says only a want. An answer under
-   `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, any other lean fails it, and a claim whose
-   lead failed stands only on a firm grounded. A listed claim with no fact behind it fails its sentence. With no
-   decider, or once it raises `BudgetSpent`, the words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words
-   must be in what it cites, and `Grounded.spent` says why.
+   earlier save's value as what holds now. A lead on a line of its own is asked over the facts cited under it, and
+   a line over a list that only its colon makes a lead stands on the judge alone. A claim whose every citation holds
+   no words, as an article cited by its path, stands on the citation. The rest go to the decider, one request per
+   part, with each cited fact once by id, the `checks` code found of its names, numbers and dates, and the `claims`
+   code listed: each link of cause, condition or sequence, and each word of a plan over a fact that says only a want.
+   An answer under `JUDGE_MIN_CONFIDENCE` is a lean: a lean to grounded keeps a sentence, a lean to names or
+   states_held keeps a lead whose figures its cited facts hold, any other lean fails it, and a claim whose lead failed
+   stands only on a firm grounded. A listed claim with no fact behind it fails its sentence. With no decider, or
+   once it raises `BudgetSpent`, the words alone decide: `LEXICAL_MIN_OVERLAP` of a claim's content words must be in
+   what it cites, and `Grounded.spent` says why.
 4. What failed. With a `Rewriter`, a failed sentence is rewritten once from its cited facts on the bundled `repair`
    prompt, refused by code when it adds a word neither its draft nor its facts hold, loses a name, a date or a
    figure, or copies a fact, and judged again. Then whatever leaned on what went goes too: a sentence that opens with
@@ -508,7 +511,7 @@ def _quotes(lines: list[str]) -> dict[int, int]:
 def _quoted(grounding: _Grounding, heading: str, lines: list[str]) -> list[str]:
     """What stands of a blockquote's `lines`, quoted again."""
     inner = "\n".join(QUOTE_MARK.sub("", line, count=1) for line in lines)
-    kept = _unheaded(grounding, heading, grounding.prose(heading, _structure(grounding, heading, inner)))
+    kept = _unheaded(grounding, heading, grounding.prose(heading, _structure(grounding, heading, inner), True))
     if kept.strip("\n") == inner.strip("\n"):
         return lines
     return [f"> {line}".rstrip() for line in kept.strip("\n").splitlines()]
@@ -782,13 +785,28 @@ LABEL_LEAD = re.compile(r"^[A-Z][a-z]*(?: [a-z]+){0,2}:(?:\s+|$)")
 @dataclass
 class _Parts:
     """A sentence read apart: `lead` + `claim` is its text. `carry` is a bold name not closed by a colon, which heads
-    the sentences after it too. `bare` is a lead with no claim, as a stream's name on a line of its own."""
+    the sentences after it too. `bare` is a lead with no claim, as a stream's name on a line of its own. `label` is a
+    lead only because it is a line that ends in a colon over a list, which only the judge may keep."""
 
     lead: str = ""
     claim: str = ""
     bold: bool = False
     carry: str = ""
     bare: bool = False
+    label: bool = False
+
+
+def _labels_a_list(body: str, s: _Sentence) -> bool:
+    """Whether sentence `s` labels the list under it: it ends in a colon and holds no link or citation, it is a whole
+    line at no indent, with a blank line or a heading above it, and the next line that is not blank opens a list."""
+    if not s.text.rstrip(" *").endswith(":") or any(ch in s.text for ch in "[]"):
+        return False
+    lines = body.split("\n")
+    n = body.count("\n", 0, s.start)
+    if lines[n].rstrip() != s.text or n and lines[n - 1].strip() and not _heading_level(lines[n - 1]):
+        return False
+    under = next((line for line in lines[n + 1:] if line.strip()), "")
+    return len(under) - len(under.lstrip(" ")) <= 3 and bool(_list_marker(under.lstrip(" ")))
 
 
 def _bold_words(words: str) -> int:
@@ -1537,6 +1555,7 @@ class _Ask:
     data: bool = False  # an item of a data block, asked with `DATA_ITEM`'s line
     named: list[Any] = field(default_factory=list)  # the one key of a marked item's guess, set aside
     aside: dict[str, str] = field(default_factory=dict)  # the guess, shown beside the rest with a question of its own
+    label: bool = False  # a line over a list that its colon alone makes a lead, as `_Parts.label`
 
 
 @dataclass
@@ -1689,8 +1708,9 @@ class _Judge:
 
     def verdict(self, i: int, a: _Ask, answers: Mapping[str, Answer], listed: dict[str, list[dict[str, str]]]
                 ) -> _Verdict:
-        """How the answers on one ask read: a lean is no verdict, and a claim code listed under an item that the
-        judge finds no fact behind fails that item."""
+        """How the answers on one ask read. Names and states_held both keep a lead. Names keeps it only when the
+        lead's figures are in its cited facts, and so does a lean to states_held. A firm states_held keeps it as it
+        is. A claim code listed under an item that the judge finds no fact behind fails that item."""
         def unbacked(id: str) -> bool:
             return any((answer := answers.get(c["id"])) is not None and answer.choice.endswith(":none") and
                        _firm(answer) for c in listed.get(id, []))
@@ -1698,8 +1718,9 @@ class _Judge:
         v = _Verdict(lead_holds=not a.lead or self.own_label(a.lead))
         cited = self.evidence.cited(a.claim)
         if not v.lead_holds and (answer := answers.get(f"l{i}")) is not None:
-            named = answer.choice == NAMES and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
-            v.lead_holds = _firm(answer) and (named or answer.choice == STATES_HELD) and not unbacked(f"l{i}")
+            figures = not _holds_figure(a.lead) or _figures_held(a.lead, cited)
+            held = answer.choice == STATES_HELD and (_firm(answer) or figures)
+            v.lead_holds = (answer.choice == NAMES and figures or held) and not unbacked(f"l{i}")
         if (answer := answers.get(f"s{i}")) is not None:
             v.choice = answer.choice
             if answer.choice == NONFACTUAL:
@@ -1714,10 +1735,11 @@ class _Judge:
         return v
 
     def lexical(self, a: _Ask) -> _Verdict:
-        """With no decider the words alone decide, and a lead and its claim read as one."""
+        """With no decider the words alone decide, and a lead and its claim read as one. A label over a list goes, as
+        the sentence that cites nothing it would be without a judge."""
         cited = self.evidence.cited(a.claim)
         if a.bare:
-            held = not _holds_figure(a.lead) or _figures_held(a.lead, cited)
+            held = not a.label and (not _holds_figure(a.lead) or _figures_held(a.lead, cited))
             return _Verdict(held, held, held)
         words = _content_words(CITE.sub("", a.lead + a.claim))
         have = set().union(*(_content_words(c.words) for c in cited))
@@ -1835,9 +1857,9 @@ class _Grounding:
 
     # a part's prose: judged, repaired, then settled
 
-    def prose(self, heading: str, text: str) -> str:
-        """What of a part's prose stands."""
-        prose = self.judged(heading, text)
+    def prose(self, heading: str, text: str, quoted: bool = False) -> str:
+        """What of a part's prose stands, or of a quote's when `quoted`."""
+        prose = self.judged(heading, text, quoted)
         self.repair(heading, prose)
         return self.settled(heading, prose)
 
@@ -1848,13 +1870,15 @@ class _Grounding:
         return bool(claim) and bool(self.settled(heading, self.judged(
             heading, claim if claim[-1] in ".!?" else f"{claim}.")).strip())
 
-    def judged(self, heading: str, text: str) -> _Prose:
-        """Each sentence of `text` judged. A sentence that cites nothing goes unasked, whatever it says: a reader
-        cannot look up what it rests on."""
+    def judged(self, heading: str, text: str, quoted: bool = False) -> _Prose:
+        """Each sentence of `text` judged. A sentence that cites nothing goes unasked, whatever it says, as a reader
+        cannot look up what it rests on, unless it is a lead on a line of its own: that is read over what it heads.
+        Outside a quote, a line that ends in a colon over a list is such a lead."""
         body = self.strip_unread(heading, text)
         sentences = _prose_sentences(body)
         texts = [s.text for s in sentences]
-        parts = [split_lead(t) for t in texts]
+        parts = [p if p.lead or quoted or not _labels_a_list(body, s) else _Parts(lead=s.text, bare=True, label=True)
+                 for p, s in zip(map(split_lead, texts), sentences)]
         after = [_held_after(body, s.end) for s in sentences]
         absent = [not CITE.search(t) and self.says_none(t, n) for t, n in zip(texts, after)]
         uncited = [not p.bare and not CITE.search(t) and not a for p, t, a in zip(parts, texts, absent)]
@@ -1873,8 +1897,9 @@ class _Grounding:
             verdicts[i] = v
         ok = [held and not u and not g for held, u, g in
               zip(self.read_verdicts(heading, verdicts, sentences, texts, parts, own), uncited, aged)]
-        why = ["its cited evidence does not hold this lead" if p.bare else g or self.why(v, p.claim)
-               for p, g, v in zip(parts, aged, verdicts)]
+        unjudged = self.judge.decider is None  # no judge ran, or the cap stopped it: the words alone decided
+        why = [("it cites nothing" if p.label and unjudged else "its cited evidence does not hold this lead") if p.bare
+               else g or self.why(v, p.claim) for p, g, v in zip(parts, aged, verdicts)]
         skip = [u or a for u, a in zip(uncited, absent)]
         return _Prose(body, sentences, texts, parts, drafted, headed, ok, why, skip)
 
@@ -2012,7 +2037,8 @@ class _Grounding:
     def drop_orphans(self, heading: str, prose: _Prose) -> bool:
         """Drop each kept sentence that opens with a pronoun or a possessive under a lead that went, its own or a
         bold name or a lead on its own line that headed it, or right after the sentence before it in its paragraph
-        went: nothing names its subject. Says whether any went."""
+        went: nothing names its subject. Under a lead on its own line that went, only the first sentence that stands
+        reads on from it, but a bold name heads every sentence after it. Says whether any went."""
         texts, parts, drafted, headed = prose.texts, prose.parts, prose.drafted, prose.headed
         lost = [False] * len(texts)
         for i, d in enumerate(drafted):
@@ -2024,6 +2050,8 @@ class _Grounding:
                 while k < len(texts) and headed[k] == headed[i] and not drafted[k].bare and \
                         not (drafted[k].bold and drafted[k].carry):
                     lost[k] = True
+                    if texts[k] and not d.carry:
+                        break
                     k += 1
         for i in range(1, len(texts)):  # a sentence that read on from the one before it in its paragraph, which went
             if texts[i] and not texts[i - 1] and headed[i] == headed[i - 1] and not drafted[i - 1].bare and \
@@ -2139,7 +2167,7 @@ def _ask_of(parts: list[_Parts], headed: list[int], i: int, after: int) -> _Ask:
     """What the judge reads of sentence `i`. A lead on its own line is read over the claims under it, with their
     citations, while they fit `LEAD_UNDER_FACTS` of claims and of facts."""
     p = parts[i]
-    ask = _Ask(p.lead, p.claim, after, p.bare)
+    ask = _Ask(p.lead, p.claim, after, p.bare, label=p.label)
     if not p.bare:
         return ask
     cites, under, seen, cut = [], [], set(), 0
