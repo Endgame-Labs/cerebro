@@ -396,8 +396,14 @@ def _no_order(what: str, order_by: str, held: list[str]) -> str:
 
 def _none_match(what: str, filters: dict[str, Any], bare: str) -> str:
     """Why a query matched nothing when no check of one filter says: every filter given, so the line stays the same
-    while the data moves, or `bare` when it was given none."""
-    named = ", ".join(f"{k}: {', '.join(_listed(v) or [])}" for k, v in filters.items())
+    while the data moves, a list as its items and a boolean or an empty value as JSON writes it, or `bare` when it
+    was given none."""
+    def spelled(value: Any) -> str:
+        if isinstance(value, list) and value:
+            return ", ".join(spelled(v) for v in value)
+        return json.dumps(value) if isinstance(value, bool) or value in ("", [], None) else str(value)
+
+    named = ", ".join(f"{k}: {spelled(v)}" for k, v in filters.items())
     return f"no {what} matches {named}" if named else bare
 
 
@@ -1050,7 +1056,8 @@ class StoreLookup(Lookup):
             raise OperationError(f"query: {_no_terms(str(about))}: pass a word of three letters or more")
         if isinstance(side, list) or (side is not None and str(side).lower() not in SIDES):
             raise OperationError(f"query: speaker_side takes one of {', '.join(SIDES)}, and got {side!r}: pass one")
-        given = {k: rest.pop(k) for k in ("source", "record", "since") if k in rest and k not in windows}
+        passed = ("source", "record", "since")  # handed to the facts layer
+        given = {k: rest.pop(k) for k in passed if k in rest and k not in windows}
         documents = str(given.get("record", "")).strip().lower() == DOCUMENT
         found = self.extraction.facts(source=given.get("source"), record=None if documents else given.get("record"),
                                       since=given.get("since"), kinds=kinds, latest=not _false(latest))
@@ -1084,9 +1091,9 @@ class StoreLookup(Lookup):
             found = kept
         if not found:
             warnings += [f"no fact has a field {k}: check its name" for k in rest
-                         if k != "window" and k not in FACT_FIELDS]
+                         if k != "window" and k not in FACT_FIELDS and k not in passed]
         if not found and not warnings:
-            warnings.append(_none_match("fact", filters, "this workspace has no facts yet"))
+            warnings.append(_none_match("fact", filters, "this workspace has no current fact"))
         kept = {f.id for f in found}
         return found, warnings, {id: how for id, how in ties.items() if id in kept}
 

@@ -130,19 +130,23 @@ def test_a_facts_query_that_matches_nothing_names_the_filters_that_left_none(tmp
     async def calls(client: Client) -> list[Any]:
         return [await client.call_tool("query", {"from": "facts", **filters}) for filters in (
             {"kind": "decision"}, {"articles": "projects/vega"}, {"articles": "projects/apollo", "window": "next_7_days"},
-            {"dew": "next_30_days"})]
+            {"dew": "next_30_days"}, {"since": "last_7_days"},
+            {"latest": False, "mentions": True, "articles": "projects/orion"})]
 
     workspace = workspace_at(tmp_path / "workspace")
     replies = over_mcp(workspace, calls)
     assert [reply.structured_content["warnings"] for reply in replies] == [
         ["no fact matches kind: decision"], ["no fact matches articles: projects/vega"],
-        ["no fact matches articles: projects/apollo, window: next_7_days"], ["no fact has a field dew: check its name"]]
+        ["no fact matches articles: projects/apollo, window: next_7_days"], ["no fact has a field dew: check its name"],
+        ["no fact matches since: last_7_days"], ["no fact matches latest: false, mentions: true, articles: projects/orion"]]
     assert workspace.query(YOU, "facts", {"articles": ["projects/vega", "projects/orion"]}).warnings == [
         "no fact matches articles: projects/vega, projects/orion"]
+    assert workspace.query(YOU, "facts", {"articles": []}).warnings == ["no fact matches articles: []"]
     (tmp_path / "bare").mkdir()
     (tmp_path / "bare" / "settings.yaml").write_text("{}\n")
     with Cerebro(tmp_path / "bare", store=MemoryStore(), extraction=FakeExtraction()) as bare:
-        assert bare.query(YOU, "facts", {}).warnings == ["this workspace has no facts yet"]
+        bare.retract(YOU, bare.tell(YOU, "The launch moved to Monday.", None, "fact").record, "It did not.")
+        assert bare.query(YOU, "facts", {}).warnings == ["this workspace has no current fact"]
 
 
 def test_a_reply_cut_to_its_budget_says_what_it_left_out_and_how_to_ask_for_the_rest(tmp_path: Path) -> None:
