@@ -17,9 +17,6 @@ are called:
 
 - decides: holds the final call on their side. Signs, owns the budget or the
   approval, gives the go or no-go. A senior title alone is not evidence of it.
-  When no one shows that authority and one person is the obvious decider by
-  title, you may name them as the presumed decider, and the sentence says
-  presumed.
 - champions: argues inside their own company for more work with us. Bringing
   new people in to meet us, introducing us to the one who decides, arguing for
   us in their own meetings. Doing the day-to-day work with us, coordinating

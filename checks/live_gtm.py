@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import posixpath
 import re
 import sys
 import tempfile
@@ -51,7 +52,7 @@ from cerebro.budget import LOG
 from cerebro.evidence import CITE
 from cerebro.first_run import run as first_run
 from cerebro.first_run import see_first
-from cerebro.ground import ABSENCE, link_id, split_sentences
+from cerebro.ground import ABSENCE, split_sentences
 from cerebro.models import HttpDecider, ModelSpec
 from cerebro.records import proposals
 from cerebro.runner import PassResult
@@ -210,10 +211,11 @@ def read_articles(workspace: Cerebro, reasons: list[str]) -> dict[str, list[str]
                 if part.by.startswith(rendered.MARK):
                     continue  # written by code from what the store holds: it cites nothing, and is never grounded
                 for path in re.findall(r"(?<!!)\[[^\]^][^\]]*\]\(([^)\s#]+)", part.text):
+                    target = posixpath.normpath(posixpath.join(posixpath.dirname(full.identity.id), path))
                     if not re.match(r"^[a-z][a-z0-9+.-]*:", path, re.IGNORECASE) and not path.endswith("/") and \
-                            link_id(path) not in opens:
-                        reasons.append(f"{full.identity.id}: {part.heading}: links {path}, which no article that "
-                                       "has been written and no record is")
+                            target.removesuffix(".md") not in opens:  # read from the article's own folder, as a reader opens it
+                        reasons.append(f"{full.identity.id}: {part.heading}: links {path}, which from its folder opens "
+                                       "no article that has been written and no record")
                 for sentence in sentences(part.text):
                     cited = CITE.findall(sentence) + [link.removeprefix("../").removesuffix(".md") for link in
                                                       re.findall(r"\]\((\.\./[^)\s]+\.md)\)", sentence)]
@@ -232,10 +234,11 @@ def stakeholders(workspace: Cerebro, reasons: list[str]) -> None:
     for found in workspace.store.query("accounts"):
         article = workspace.store.article(found.identity.id)
         for part in passages(article):
-            if part.heading == "Stakeholders" and "```" in part.text:
+            if part.heading != "Stakeholders":
+                continue
+            landed.append(article.identity.title)
+            if re.search(r"(?m)^\s*(```|~~~)", part.text):
                 reasons.append(f"{article.identity.id}: the Stakeholders part holds a fence, which a reader sees as data")
-            elif part.heading == "Stakeholders":
-                landed.append(article.identity.title)
     if not any(name in title for title in landed for name in ("Brightwater", "Kestrel")):
         reasons.append("no account whose notes name its people has a Stakeholders part")
 
