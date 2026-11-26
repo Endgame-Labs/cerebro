@@ -1050,16 +1050,6 @@ class StoreLookup(Lookup):
                 raise OperationError(f"query: kind {kind!r} and classes {classes!r} share no kind, so no fact could "
                                      "match both: pass one of them")
         warnings: list[str] = []
-        applied: list[str] = []  # the filters applied so far, in order
-        why: list[str] = []  # those that together left no fact, for a query that matches none
-
-        def left(facts: list[Fact], *keys: str) -> list[Fact]:
-            applied.extend(k for k in keys if k in filters)
-            if not facts and not why:
-                named = ", ".join(f"{k}: {', '.join(_listed(filters[k]) or [])}" for k in applied)
-                why.append(f"no fact matches {named}" if named else "this workspace has no facts yet")
-            return facts
-
         terms = about_terms(str(about)) if about is not None else None
         if terms == []:
             raise OperationError(f"query: {_no_terms(str(about))}: pass a word of three letters or more")
@@ -1072,7 +1062,6 @@ class StoreLookup(Lookup):
         if documents:
             told = Documents(self.root)
             found = [f for f in found if told.holds(f.source, f.record)]
-        found = left(found, *given, "kind", "classes")
         wanted = _listed(relation)
         if wanted is not None and (linked_to is None or not wanted or set(wanted) - set(RELATIONS)):
             raise OperationError(f"query: relation takes {' or '.join(RELATIONS)}, or a list of them, beside articles, "
@@ -1081,18 +1070,16 @@ class StoreLookup(Lookup):
         ties: dict[str, str] = {}
         if linked_to is not None:
             found, ties = self._tied_to(found, linked_to, mentions, wanted)
-            found = left(found, "articles", "relation")
-        for k, w in windows.items():
-            found = left([f for f in found if holds(w, _fact_fields(f).get("at" if k == "window" else k), self.zone)], k)
-        for k, v in rest.items():
-            if k not in windows:
-                found = left([f for f in found if compares(_fact_fields(f).get(k), "=", v)], k)
+        found = [f for f in found
+                 if all(holds(w, _fact_fields(f).get("at" if k == "window" else k), self.zone)
+                        for k, w in windows.items())
+                 and all(compares(_fact_fields(f).get(k), "=", v) for k, v in rest.items() if k not in windows)]
         if speaker is not None:
             want = str(speaker).strip().lower()
-            found = left([f for f in found if any(q.speaker and (want == "any" or q.speaker.strip().lower() == want)
-                                                  for q in f.quotes)], "speaker")
+            found = [f for f in found if any(q.speaker and (want == "any" or q.speaker.strip().lower() == want)
+                                             for q in f.quotes)]
         if side is not None:
-            found = left([f for f in found if any(_side(q) == str(side).lower() for q in f.quotes)], "speaker_side")
+            found = [f for f in found if any(_side(q) == str(side).lower() for q in f.quotes)]
             if not found:
                 warnings += self._side_warning(str(side).lower())
         if terms is not None:
@@ -1103,7 +1090,9 @@ class StoreLookup(Lookup):
         if not found:
             warnings += [f"no fact has a field {k}: check its name" for k in rest
                          if k != "window" and k not in FACT_FIELDS]
-            warnings += [] if warnings else why
+        if not found and not warnings:  # every filter given, so the line stays the same while the data moves
+            named = ", ".join(f"{k}: {', '.join(_listed(v) or [])}" for k, v in filters.items())
+            warnings.append(f"no fact matches {named}" if named else "this workspace has no facts yet")
         kept = {f.id for f in found}
         return found, warnings, {id: how for id, how in ties.items() if id in kept}
 
