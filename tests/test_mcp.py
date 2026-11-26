@@ -81,6 +81,7 @@ def test_a_reply_holds_the_data_and_text_for_a_model_and_every_call_is_logged(tm
     assert query.content[0].text.splitlines() == ["1 match in projects, newest first by compiled_at; 1 to 1 shown",
                                                   "- projects/apollo: Apollo (stage: open)"]
     assert "matches" not in find.structured_content and "nothing is named 'Orion'" in find.content[0].text
+    assert "nothing is named 'Orion'" in find.structured_content["warnings"][0]  # for a client of data alone
     text = read.content[0].text
     assert text.index("missing: projects/none") < text.index("# projects/apollo: Apollo")
     assert "stage: open\ncompiled_at: 2026-11-02T09:00:00Z\n\n## Overview\n\nIt moved." in text
@@ -113,11 +114,31 @@ def test_order_by_orders_a_collection_newest_first_by_its_field_and_refuses_a_fi
     assert workspace.store.rows("mcp-requests")[0].data["args"] == {"from": "projects", "order_by": "due"}
 
 
-def test_the_request_log_cuts_each_long_argument_at_one_kib(tmp_path: Path) -> None:
+def test_the_request_log_keeps_each_argument_sent_and_cuts_a_long_one_at_one_kib(tmp_path: Path) -> None:
+    async def calls(client: Client) -> None:
+        await client.call_tool("find", {"name": "é" * 900})
+        await client.call_tool("query", {"from": "projects", "limit": 0})
+
     workspace = workspace_at(tmp_path / "workspace")
-    over_mcp(workspace, lambda client: client.call_tool("find", {"name": "é" * 900}))
-    logged = workspace.store.rows("mcp-requests")[0].data["args"]["name"]
-    assert logged.endswith("… (1800 bytes)") and len(logged.split("…")[0].encode()) == 1024
+    over_mcp(workspace, calls)
+    cut, zero = (row.data["args"] for row in workspace.store.rows("mcp-requests"))
+    assert cut["name"].endswith("… (1800 bytes)") and len(cut["name"].split("…")[0].encode()) == 1024
+    assert zero == {"from": "projects", "limit": 0}
+
+
+def test_a_facts_query_that_matches_nothing_names_the_filter_that_left_none(tmp_path: Path) -> None:
+    async def calls(client: Client) -> list[Any]:
+        return [await client.call_tool("query", {"from": "facts", **filters}) for filters in (
+            {"kind": "decision"}, {"articles": "projects/vega"}, {"articles": "projects/apollo", "window": "next_7_days"})]
+
+    replies = over_mcp(workspace_at(tmp_path / "workspace"), calls)
+    assert [reply.structured_content["warnings"] for reply in replies] == [
+        ["no fact matches kind: decision"], ["no fact matches articles: projects/vega"],
+        ["no fact matches window: next_7_days"]]
+    (tmp_path / "bare").mkdir()
+    (tmp_path / "bare" / "settings.yaml").write_text("{}\n")
+    with Cerebro(tmp_path / "bare", store=MemoryStore(), extraction=FakeExtraction()) as bare:
+        assert bare.query(YOU, "facts", {}).warnings == ["this workspace has no facts yet"]
 
 
 def test_a_reply_cut_to_its_budget_says_what_it_left_out_and_how_to_ask_for_the_rest(tmp_path: Path) -> None:

@@ -175,6 +175,49 @@ def test_a_person_over_http_hears_the_count_change_after_each_decide_and_decides
     assert [block["text"] for block in second["content"]][1:] == ["No proposals waiting."]
 
 
+def test_an_error_carries_no_note_and_the_next_reply_that_succeeds_still_tells_the_count(tmp_path: Path) -> None:
+    import anyio
+    from mcp import Client
+
+    workspace = waiting(workspace_at(tmp_path / "desk"), "p_a1")
+
+    async def session() -> list[Any]:
+        async with Client(workspace.mcp_server(), mode="legacy") as client:
+            waiting(workspace, "p_a2")
+            return [await client.call_tool("query", {"from": "projects", "window": "last_7_days"}),
+                    await client.call_tool("find", {"name": "Apollo"})]
+
+    refused, found = anyio.run(session)
+    assert refused.is_error and len(refused.content) == 1
+    assert [block.text for block in found.content][1:] == [
+        "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide."]
+
+
+def test_the_note_counts_every_proposal_the_query_it_names_lists(tmp_path: Path) -> None:
+    import anyio
+    from mcp import Client
+
+    from cerebro import Caller
+    from cerebro.agent import load_agents
+    from cerebro.records import Proposal, propose
+
+    workspace = waiting(workspace_at(tmp_path / "desk"), "p_a1")
+    (workspace.root / "agents" / "projects").mkdir(parents=True)
+    (workspace.root / "agents" / "projects" / "curator.md").write_text("---\nheartbeat: [manual]\n---\nKeep projects.\n")
+    workspace.agents += load_agents(workspace.root / "agents")[0]
+    propose(workspace.store, Proposal("p_b1", "article.archive", "projects/apollo", Caller("teams/curator", "agent"),
+                                      "2026-11-03T09:00:00Z"))  # another collection's curator: it waits with projects'
+
+    async def connect() -> str | None:
+        async with Client(workspace.mcp_server(), mode="legacy") as client:
+            return client.instructions
+
+    said = anyio.run(connect)
+    listed = workspace.query(YOU, "proposals", {"status": "waiting"}).count
+    assert listed == 2 and said is not None and said.endswith(
+        "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide.")
+
+
 def test_a_session_with_no_proposal_waiting_hears_nothing_of_proposals(tmp_path: Path) -> None:
     import anyio
     from mcp import Client
@@ -259,7 +302,7 @@ def test_a_connect_and_a_call_count_again_only_what_the_store_says_changed_since
         return said
 
     first = anyio.run(sessions, 1)
-    assert sorted(counted) == ["proposals", "query people", "query projects"]
+    assert sorted(counted) == ["proposals", "query people", "query projects", "query proposals"]
     counted.clear()
     again = anyio.run(sessions, 3)
     assert counted == [] and again == first * 3
@@ -271,7 +314,7 @@ def test_a_connect_and_a_call_count_again_only_what_the_store_says_changed_since
     counted.clear()
     waiting(workspace, "p_a2")
     said = anyio.run(sessions, 1)[0]
-    assert counted == ["proposals"] and said is not None and said.endswith(
+    assert counted == ["query proposals", "proposals"] and said is not None and said.endswith(
         "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide.")
 
 
