@@ -108,23 +108,23 @@
  "reduce": [
   [
    "Thanks.\n\n-----Original Message-----\nAn earlier line.",
-   "-----Original Message-----\nAn earlier line."
+   ""
   ],
   [
    "Thanks.\n\n________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line.",
-   "________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line."
+   ""
   ],
   [
    "Thanks.\n\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line.",
-   "From: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\n\nAn earlier line."
+   ""
   ],
   [
    "Thanks.\n\nOn Oct 8, 2026 Jane wrote:\nAn earlier line.",
-   "On Oct 8, 2026 Jane wrote:\nAn earlier line."
+   ""
   ],
   [
    "Thanks.\r\n\r\n-----Original Message-----\r\nAn earlier line.",
-   "-----Original Message-----\nAn earlier line."
+   ""
   ],
   [
    "-----Original Message-----\nAn earlier line.",
@@ -140,7 +140,7 @@
   ],
   [
    "Thanks.\n\n\u003e An earlier line.",
-   "\u003e An earlier line."
+   ""
   ],
   [
    "---------- Forwarded message ---------\nAn earlier line.",
@@ -169,6 +169,22 @@
   [
    "Sam Rivera\nAccount Executive | Quillmoor\nM: +1 555 0100\u003ctel:+15550100\u003e\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line.",
    "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
+  ],
+  [
+   "Hi Jane\nYes Monday works for us\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
+   "Hi Jane\nYes Monday works for us"
+  ],
+  [
+   "Thanks Jane\nWill send the PO Friday\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
+   "Thanks Jane\nWill send the PO Friday"
+  ],
+  [
+   "Sounds Good\nSee you then\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
+   "Sounds Good\nSee you then"
+  ],
+  [
+   "Hi Jane\nConfirmed for Monday\nSam\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nDoes Monday work?",
+   "Hi Jane\nConfirmed for Monday\nSam"
   ],
   [
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line.",
