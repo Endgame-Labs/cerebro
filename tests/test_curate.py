@@ -232,6 +232,40 @@ def test_the_working_set_a_connector_is_bounded_by_is_the_one_a_pass_extracts_by
         assert in_scope(store, record("mail:1", domain=[value]), curated={"things"}) == (value in bounds)
 
 
+def test_a_key_named_in_another_case_or_spacing_is_read_as_the_name_its_source_writes(tmp_path: Path) -> None:
+    from cerebro.identity import bound_to
+
+    store, agent = MemoryStore(), things(tmp_path, admit=True)
+    listed = Record(id="h-1", source="src", revision="1", keys={"thing_code": ["T-1"]}, into="things")
+    store.set_state("held:src", [asdict(listed)])
+    curate(store, agent, [("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"})], tmp_path)
+    assert store.article("things/alder").identity.keys == {"thing_code": ["T-1"]}
+    assert bound_to(store, listed) == ["things/alder"]
+    curate(store, agent, [("link", {"article": "Alder", "wrong": {"THING_CODE": ["T-1"]}, "reason": "not it"})],
+           tmp_path)
+    assert store.article("things/alder").identity.keys == {}
+
+
+def test_a_key_named_exactly_is_itself_and_one_a_link_adds_in_another_spelling_is_the_sources_name(
+        tmp_path: Path) -> None:
+    store, agent = MemoryStore(), things(tmp_path, admit=True)
+    curate(store, agent, [("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"})], tmp_path)
+    store.set_state("held:src", [asdict(Record(id=f"h-{n}", source="src", revision="1", keys=keys, into="things"))
+                                 for n, keys in enumerate([{"Code": ["X"]}, {"code": ["Y"]}, {"thing_code": ["T-2"]}])])
+    curate(store, agent, [("admit", {"name": "Birch", "keys": {"code": ["Y"]}, "reason": "a maker"}),
+                          ("link", {"article": "Alder", "keys": {"THING CODE": ["T-2"]}, "reason": "its code"})],
+           tmp_path)
+    assert store.article("things/birch").identity.keys == {"code": ["Y"]}
+    assert store.article("things/alder").identity.keys == {"Thing Code": ["T-1"], "thing_code": ["T-2"]}
+
+
+def test_one_key_given_in_two_spellings_lands_as_one_key_with_the_values_of_both(tmp_path: Path) -> None:
+    store, agent = MemoryStore(), things(tmp_path, admit=True)
+    curate(store, agent, [("admit", {"name": "Cedar", "keys": {"tag": ["c-1"], "Tag ": ["c-2"]}, "reason": "a maker"})],
+           tmp_path)
+    assert store.article("things/cedar").identity.keys == {"tag": ["c-1", "c-2"]}
+
+
 def test_what_a_template_file_asks_for_and_the_workspace_skips_gets_a_line_that_names_the_file() -> None:
     from cerebro.agent import load_agents
     from cerebro.curate import unbuilt
