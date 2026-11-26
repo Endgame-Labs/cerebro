@@ -143,6 +143,12 @@ class Compiled:
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
     grounded: list[str] = field(default_factory=list)  # the lines of `dropped` that are grounding's own
+    cleaned: list[str] = field(default_factory=list)  # a line for each thing landing made safe, which a pass counts
+
+
+def made_safe(n: int) -> str:
+    """What landing made safe on an article, as a count alone: made 3 safety edits."""
+    return f"made {n} safety edit{'' if n == 1 else 's'}"
 
 
 def agent_surface(lookup: Lookup, caller: Caller, seen: list[Fact] | None = None) -> list[Callable[..., Any]]:
@@ -1017,8 +1023,8 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
         return Compiled(run, store.article(article), skipped=True, waiting=str(left), left_alone=str(left), runs=[run])
     short = [] if run.status == "done" else [f"its run {run.status} ({run.note})"]
     short += [line for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)] if run.status == "done" else []
-    return _finish(store, article, c.root, Compiled(run, None, dropped=dropped + again, runs=[run], notes=short),
-                   grounding)
+    return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=short,
+                                                    cleaned=again), grounding)
 
 
 def _land_own(c: _Compile, article: str, writers: list[str], agent: Agent, evidence: list[Evidence], writes: _Writes,
@@ -1193,9 +1199,9 @@ NOTES_MOST = 16_000  # characters of what grounding said that one run's line kee
 
 def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], lines: list[str]) -> None:
     """Keep what grounding did on the run's line of the `agent-runs` log: a later row of the same run, as it stood,
-    with `grounding`, the counts by kind, and `notes`, each line of what it repaired or dropped, whole and masked as
-    the store masks a row. One run keeps at most `NOTES_MOST` characters of them, whole lines in order, and a last
-    line counts the rest, so the log grows by a bounded row a run."""
+    with `grounding`, the counts by kind, and `notes`, each line of what it repaired or dropped and of what landing
+    made safe, whole and masked as the store masks a row. One run keeps at most `NOTES_MOST` characters of them, whole
+    lines in order, and a last line counts the rest, so the log grows by a bounded row a run."""
     if run is None or not run.id or not (tally or lines):
         return
     if (last := _run_row(store, run)) is None:
@@ -1728,7 +1734,7 @@ class _Composing:
                 _keep_left(store, self.composer, article, self.lead, own.started_at)
 
         try:
-            compiled.dropped += _land(store, article, plan, "", [*self.writers, *self.orphans], after)
+            compiled.cleaned += _land(store, article, plan, "", [*self.writers, *self.orphans], after)
         except _LeftAlone as left:
             return replace(compiled, article=store.article(article), skipped=True, waiting=str(left), left_alone=str(left))
         return _finish(store, article, c.root, compiled, c.grounding)

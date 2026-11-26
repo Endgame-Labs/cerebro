@@ -142,15 +142,21 @@ def test_a_note_is_kept_whole_and_one_runs_notes_are_bounded(tmp_path: Path, mon
     assert kept["notes"][-1].startswith(f"and {200 - len(kept['notes']) + 1} more, not kept")
 
 
-def test_a_line_that_is_not_groundings_is_said_as_ever_and_counted_nowhere(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root = saying(tmp_path, monkeypatch, lambda ids: {
-        "Summary": f"The review moved <script>alert(1)</script> to March 3 [^{ids[0]}].", "Detail": "Nothing yet."})
+def test_what_landing_made_safe_is_counted_per_article_and_each_line_kept_on_its_runs_line(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    root = saying(tmp_path, monkeypatch, lambda ids: {  # every sentence grounds: only landing changes the text
+        "Summary": f"The review moved <script>alert(1)</script> to March 3 [^{ids[0]}].",
+        "Detail": f"The review moved to March 3 [^{ids[0]}]."})
+    events: list[Progress] = []
     with cli.open_workspace(root) as workspace:
-        result = workspace.run_once()
-    escaped = [line for line in result.warnings if "escaped raw HTML" in line]
-    assert escaped and not set(escaped) & result.grounded  # cleaning's line is no grounding line: said as ever
-    assert sum(result.grounding["digests/weekly"].values()) == len(result.grounded)
+        result = workspace.run_once(on=events.append)
+        kept = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data["notes"]
+    assert not result.grounding and [line for line in kept if "escaped raw HTML" in line], kept
+    assert [e.text for e in events if e.kind == "note"] == ["made 2 safety edits"]  # under the article's row
+    cli._print(result)
+    printed = capsys.readouterr().out
+    assert "cleaned   digests/weekly: made 2 safety edits" in printed.splitlines(), printed
+    assert "escaped raw HTML" not in printed  # no line of it, only its count
 
 
 def test_off_a_terminal_and_in_status_the_counts_are_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

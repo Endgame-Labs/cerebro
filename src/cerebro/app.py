@@ -749,6 +749,7 @@ class Cerebro:
             self._mask_run(run)
         compiled.warning = self.mask_every()(compiled.warning)
         compiled.dropped = [self.mask_every()(line) for line in compiled.dropped]
+        compiled.cleaned = [self.mask_every()(line) for line in compiled.cleaned]
         compiled.notes = [self.mask_every()(line) for line in compiled.notes]
         return compiled
 

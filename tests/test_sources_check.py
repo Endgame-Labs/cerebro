@@ -164,16 +164,28 @@ def test_check_with_a_limit_gets_that_many_and_says_how_many_it_left(tmp_path: P
          "them in")]
 
 
-def test_what_a_listing_notes_is_said_as_a_pass_says_it(tmp_path: Path) -> None:
-    root = _workspace(tmp_path / "w", NOTES)
-    (root / "notes").mkdir()
-    (root / "notes" / "readme.txt").write_text("Not a note.\n")
-    with Cerebro(root, extraction=FakeExtraction()) as workspace:
-        warned = [f"warning   {line}" for line in workspace.run_once(agents=False).warnings]
-    assert warned and all(line.startswith("warning   sources/notes: ") for line in warned)
-    done = _check(root, "notes")
+class Noting(FakeConnector):
+    """A fake source that gives the same notice again with every page, as a source that keeps what it said does."""
+
+    def list(self, since: str | None = None) -> Any:
+        listed = super().list(since)
+        listed.notices = ["every record here is of one kind, as its settings say"]
+        return listed
+
+
+def test_what_a_listing_notes_is_said_once_a_pass_and_as_the_pass_says_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _workspace(tmp_path / "w")
+    source = Noting("things", [Record(id=f"r{n}", source="things", revision="1", body=f"text {n}") for n in range(3)],
+                    page_size=1)
+    monkeypatch.setattr(cli, "open_workspace", lambda folder: Cerebro(root, connectors=[source]))
+    with Cerebro(root, extraction=FakeExtraction(), connectors=[source]) as workspace:
+        result = workspace.run_once(agents=False)
+    assert result.warnings == ["sources/things: every record here is of one kind, as its settings say"]
+    done = _check(root, "things")
     assert done.exit_code == 0, done.output
-    assert [line for line in done.output.splitlines() if line.startswith("warning")] == warned
+    assert [line for line in done.output.splitlines() if "sources/things: " in line] == [
+        f"warning   {result.warnings[0]}"]
 
 
 def test_a_record_the_source_says_is_gone_is_counted_for_the_pass_to_take_back(

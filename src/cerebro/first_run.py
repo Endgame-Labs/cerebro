@@ -1422,6 +1422,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     into.paused |= more.paused
     into.grounding |= more.grounding
     into.grounded |= more.grounded
+    into.cleaned |= more.cleaned
 
 
 def late(workspace: Cerebro, *, say: Callable[[str], None] | None = None,
