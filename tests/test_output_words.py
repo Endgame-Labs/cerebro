@@ -888,6 +888,22 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
 
 
+def test_what_a_find_or_a_query_that_matched_nothing_says_has_no_section_brain_or_page() -> None:
+    from cerebro.fakes import FakeExtraction
+    from cerebro.lookup import StoreLookup
+
+    words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
+    you, store = Caller("you", "person"), MemoryStore()
+    lookup = StoreLookup(store, FakeExtraction())
+    said = lookup.find(you, "Orion").warnings + lookup.query(you, "facts").warnings
+    store.create(Identity("things/a", "things", "A", status="archived"))
+    store.append("proposals", {"id": "p_1", "kind": "admit"})
+    for source, filters in (("facts", {"kind": "decision"}), ("proposals", {"kind": "merge"}), ("merges", {}),
+                            ("things", {}), ("things", {"status": "waiting"})):
+        said += lookup.query(you, source, filters).warnings
+    assert len(said) == 7 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+
+
 def test_no_line_a_presumed_mark_shows_names_a_section_or_a_hand_in() -> None:
     for line in presumed_lines():
         shown = line.split('": ', 1)[-1] if line.startswith("Part: dropped \"") else line
