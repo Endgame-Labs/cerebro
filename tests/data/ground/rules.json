@@ -358,7 +358,7 @@
    ]
   },
   {
-   "name": "under a lead on its own line that went, only the first item that stands reads on from it",
+   "name": "under a label over a list that went, only the first item that stands reads on from it",
    "body": "Ours, all done:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n- Then Acme Corp must finish its security review before its board meets [^f_1].\n",
    "answers": {
     "l1": "states_unheld"
@@ -367,6 +367,49 @@
    "dropped": [
     "Overview: dropped \"Ours, all done:\": its cited evidence does not hold this lead"
    ]
+  },
+  {
+   "name": "a bold name on its own line that went heads every sentence under it, so a later one that opens with a pronoun goes",
+   "body": "**Jane Doe:**\n\nAcme Corp must finish its security review before its board meets [^f_1]. She signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": {
+    "l1": "states_unheld"
+   },
+   "want": "Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "dropped": [
+    "Overview: dropped \"Jane Doe:\": its cited evidence does not hold this lead",
+    "Overview: dropped \"She signs off on the Acme Corp rollout.\": the name it read on from went, and nothing names its subject"
+   ]
+  },
+  {
+   "name": "a line that ends in a colon after another sentence on its line is a sentence, and goes when it cites nothing",
+   "body": "Acme Corp must finish its security review before its board meets [^f_1]. Ours, all done:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": {
+    "l2": "names"
+   },
+   "want": "Acme Corp must finish its security review before its board meets [^f_1].\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, all done:\": it cites nothing"
+   ]
+  },
+  {
+   "name": "a line that ends in a colon under a line of prose is a sentence, and goes when it cites nothing",
+   "body": "Acme Corp must finish its security review before its board meets [^f_1].\nOurs, all done:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": {
+    "l2": "names"
+   },
+   "want": "Acme Corp must finish its security review before its board meets [^f_1].\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, all done:\": it cites nothing"
+   ]
+  },
+  {
+   "name": "a line that ends in a colon and cites a fact is a sentence, judged on what it cites",
+   "body": "Jane Doe took on one step [^f_2]:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "answers": {
+    "l1": "states_unheld"
+   },
+   "want": "Jane Doe took on one step [^f_2]:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
+   "dropped": []
   },
   {
    "name": "a line that only looks like a heading is read as a sentence",
