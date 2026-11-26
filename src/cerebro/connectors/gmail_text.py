@@ -1,7 +1,8 @@
 """A message's text as the Gmail connector reads it, with the standard library alone: its header block, a text part
 in its transfer encoding and charset, HTML turned into text, and the message reduced to what its sender newly wrote.
 
-`reduce` is the one place that decides what is new. It drops quoted lines, the "On ... wrote:" line that introduces
+`reduce` is the one place that decides what is new, for every source that reads email: Gmail, and Salesforce for its
+email messages. It drops quoted lines, the "On ... wrote:" line that introduces
 them, an Outlook header block or "-----Original Message-----" and everything after it, and the signature: a "-- "
 line, however many spaces follow it, and what follows it, a "--" line or a sign-off such as "Best," with the few
 short lines under it, a mobile footer, or a closing block of a name with a title, company, phone or address line
