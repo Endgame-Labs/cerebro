@@ -67,7 +67,9 @@ _MOBILE_FOOTER = re.compile(r"^(sent from my |sent from mail for |sent from outl
 _POSTSCRIPT = re.compile(rf"^p\.?{_S}?p?\.?{_S}?s\b[.:]?", re.IGNORECASE | re.ASCII)
 # An address, a site or a phone number at the start of a line, after a short label such as "M:" or "Tel."
 _CONTACT = re.compile(r"(([a-z]{1,7}:|[a-z]{1,4}\.) *)?([^\s@<>]+@[^\s<>]*|www\.[^\s<>]*|https?://[^\s<>]*"
-                      r"|[+(]?[0-9][0-9 ().-]{5,}[0-9])", re.IGNORECASE | re.ASCII)
+                      r"|(?P<number>[+(]?[0-9][0-9 ().-]{5,}[0-9]))", re.IGNORECASE | re.ASCII)
+# A link's target in brackets, as a line holds it once its markup is read
+_TARGET = re.compile(r"[(<]([^()<>\s]+)[)>]")
 _CLIENT_ATTRIBUTION = re.compile(r"@|[0-9]{1,2}:[0-9]{2}|\b[0-9]{4}\b", re.ASCII)
 _LIST_MARKER = re.compile(rf"^([-*•]|[0-9]+[.)]){_S}")
 _SIGN_OFF = re.compile(
@@ -143,11 +145,24 @@ def _drop_contact_block(lines: list[str]) -> list[str]:
 
 
 def _contact(line: str) -> bool:
-    """Whether a line is contact details: an address, a site or a phone number starts it, with fewer than two
-    lowercase words after it, as a sentence of a reply that starts with a date or a number has."""
+    """Whether a line is contact details: an address, a site or a phone number starts it, or is its last link
+    target, with fewer than two lowercase words after the one or before the other, as a sentence of a reply has. A
+    run of digits alone at the start is a phone number only with nine digits or more: shorter, it is a date or a sum."""
     t = line.strip()
     found = _CONTACT.match(t)
-    return found is not None and sum(word[0].islower() for word in t[found.end():].split()) < 2
+    number = found["number"] if found else None
+    if number and found[1] is None and number[0].isdigit() and sum(c.isdigit() for c in number) < 9:
+        found = None
+    if found and _lowercase_words(t[found.end():]) < 2:
+        return True
+    targets = list(_TARGET.finditer(t))
+    if not targets or _CONTACT.fullmatch(targets[-1][1]) is None:
+        return False
+    return _lowercase_words(t[:targets[-1].start()]) < 2
+
+
+def _lowercase_words(text: str) -> int:
+    return sum(word[0].islower() for word in text.split())
 
 
 def _written(line: str) -> bool:

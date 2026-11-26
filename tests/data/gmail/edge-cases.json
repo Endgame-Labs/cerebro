@@ -211,6 +211,14 @@
    "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
   ],
   [
+   "Sam Rivera\nAccount Executive | Quillmoor\nEmail me\u003cmailto:sam@quillmoor.example\u003e\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line.",
+   "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
+  ],
+  [
+   "Hi Jane\n2026-03-02 works\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
+   "Hi Jane\n2026-03-02 works"
+  ],
+  [
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line.",
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line."
   ],
