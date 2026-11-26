@@ -53,9 +53,9 @@ slipped: the deals of the quarter that ended are closed or past due.
 At risk: each open deal still due this quarter that a fact puts at risk, such
 as a blocker, an objection nobody answered, a competitor, a decision maker
 gone quiet, or a close date the facts no longer support. For those facts, call
-query with { from: facts, articles: <the deal's id> }, and again with its
-account's id, the one in its linked list that starts with accounts/. Never call a deal at risk from its stage, its amount
-or silence alone.
+query with source facts and filters { articles: <the deal's id> }, and again
+with its account's id, the one in its linked list that starts with accounts/.
+Never call a deal at risk from its stage, its amount or silence alone.
 
 Needs attention this week: the three open deals where a step taken this week
 matters most to how they end, the sooner close first when two weigh the same.

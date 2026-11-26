@@ -104,8 +104,8 @@ open deals of the account or the attendees, as far as they fit, and
 it says which it left out. The summary is background: an id in its text is
 not read, so cite it only after you read it. An article left out does not
 bring this article back when it changes. When a sentence needs one, read the
-fact by the id the summary cites, or call query with { from: facts,
-articles: <the article's id> }, and write nothing from it you have not read.
+fact by the id the summary cites, or call query with source facts and
+filters { articles: <the article's id> }, and write nothing from it you have not read.
 
 Every sentence cites a fact or an article. Leave out anything you cannot
 cite. The meeting's description in its facts is the agenda the organizer
