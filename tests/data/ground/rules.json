@@ -328,6 +328,17 @@
    ]
   },
   {
+   "name": "a label over a list that names someone the facts under it do not goes, however sure the judge is",
+   "body": "Their side (Jane Doe):\n\n- Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "answers": {
+    "l1": "names"
+   },
+   "want": "- Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "dropped": [
+    "Overview: dropped \"Their side (Jane Doe):\": its cited evidence does not hold this lead"
+   ]
+  },
+  {
    "name": "with no judge a line that ends in a colon over a list goes unless its words make it a lead, and the items under it are held to their words",
    "body": "Ours, all done:\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n\nTheirs:\n\n- Acme Corp must finish its security review before its board meets [^f_1].\n\n**Rollout at $4,000:**\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n",
    "answers": null,
