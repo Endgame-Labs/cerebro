@@ -76,10 +76,10 @@ _SIGNATURE_LINES = 6  # how many lines under a sign-off may still be signature
 _SIGNATURE_WIDTH = 70  # the longest line, in characters, that counts as signature under a sign-off
 _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", "rd", "blvd", "dr", "ln", "ste", "jr",
                   "sr", "phd", "esq")
-# A mailto or tel target glued to its link's text, as in "Call me<tel:+15550100>", one with no text, whose address or
-# number stays, and an inline image's "[cid:...]". No class takes its own opening bracket, so a long line is linear.
-_MARKUP = re.compile(r"(?<=\S)<(?:mailto|tel):[^<>\n]*>|<(?:mailto|tel):([^<>\n]*)>|\[cid:[^\[\]\n]*\]",
-                     re.IGNORECASE)
+# A mailto or tel link's target as a client writes it after the link's text, as in "Call me<tel:+15550100>", and an
+# inline image's "[cid:...]". No class takes its own opening bracket, so a long line is linear.
+_MARKUP = re.compile(r"<(?:mailto|tel):([^<>\n]*)>|\[cid:[^\[\]\n]*\]", re.IGNORECASE)
+_NOT_ALNUM = re.compile(r"[\W_]+")
 
 # Public mail services. An address at one says nothing about a company, so its domain is never a key.
 
@@ -89,9 +89,9 @@ _MARKUP = re.compile(r"(?<=\S)<(?:mailto|tel):[^<>\n]*>|<(?:mailto|tel):([^<>\n]
 def reduce(text: str) -> str:
     """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
     quote with nothing but a signature or a footer above it is kept from where it begins, less its own signature, so
-    its words are not lost. In the lines kept, a mailto or tel link keeps its text and loses its target, or keeps its
-    address or number when it has no text, and an inline image's cid reference goes. Line endings become \\n, the end
-    of each line is trimmed, and runs of blank lines shrink to one."""
+    its words are not lost. In the lines kept, a mailto or tel link's target goes where its text shows it and stays in
+    brackets where it does not, and an inline image's cid reference goes. Line endings become \\n, the end of each
+    line is trimmed, and runs of blank lines shrink to one."""
     lines = _split_lines(text)
     kept = _drop_quoted(lines)
     own = _drop_signature(kept)
@@ -101,7 +101,21 @@ def reduce(text: str) -> str:
         while start and not _written(lines[start - 1]):
             start -= 1
         own = _drop_signature(lines[start:])
-    return _collapse_blank(_MARKUP.sub(lambda found: found[1] or "", "\n".join(own)))
+    return _collapse_blank(_MARKUP.sub(_markup_as_read, "\n".join(own)))
+
+
+def _markup_as_read(found: re.Match[str]) -> str:
+    """A link's target or an image's cid reference as it reads in a message's text. A cid reference goes, and so
+    does a target the text just before it shows, compared on letters and digits alone and in any case. Any other
+    target stays: in brackets after the text glued to it, or as it is when the link has no text."""
+    target = found[1]
+    if target is None:
+        return ""
+    # A target written out for a reader is never three times as long, so only that much is read and a line is linear.
+    before = found.string[max(found.start() - 3 * len(target), 0):found.start()].rpartition("\n")[2]
+    if _NOT_ALNUM.sub("", before.lower()).endswith(_NOT_ALNUM.sub("", target.lower())):
+        return ""
+    return f" ({target})" if before[-1:].strip() else target
 
 
 def _signed_only(kept: list[str], own: list[str]) -> bool:
