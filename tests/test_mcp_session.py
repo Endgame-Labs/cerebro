@@ -110,9 +110,9 @@ def test_the_collections_are_read_off_the_event_loop_and_a_store_that_fails_leav
 # -- the proposals waiting --------------------------------------------------------------------------------------------
 
 ONE = ("1 proposal waiting for a person. List it with query from proposals and status waiting, which also lists "
-       "those waiting for a curator or another proposal, and decide it with decide.")
+       "those that wait with their collections' curators or with another proposal, and decide it with decide.")
 TWO = ("2 proposals waiting for a person. List them with query from proposals and status waiting, which also lists "
-       "those waiting for a curator or another proposal, and decide them with decide.")
+       "those that wait with their collections' curators or with another proposal, and decide them with decide.")
 
 
 def waiting(workspace: Cerebro, *ids: str, target: str = "projects/vega") -> Cerebro:

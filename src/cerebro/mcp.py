@@ -1290,8 +1290,8 @@ def proposals_note(waiting: int) -> str:
     one = waiting == 1
     them = "it" if one else "them"
     return f"{waiting} proposal{'' if one else 's'} waiting for a person. List {them} with query from proposals and " \
-        f"status waiting, which also lists those waiting for a curator or another proposal, and decide {them} with " \
-        "decide."
+        "status waiting, which also lists those that wait with their collections' curators or with another " \
+        f"proposal, and decide {them} with decide."
 
 
 STORE_MARK = own_key("counted", "store")  # a value made once per store, so a store replaced in place reads as another
