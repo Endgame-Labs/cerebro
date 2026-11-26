@@ -267,7 +267,7 @@ def test_plain_text_comes_before_html_and_a_latin1_body_reads(standin: StandIn) 
 
 
 def test_a_text_part_with_no_new_words_gives_way_to_the_next_one(standin: StandIn) -> None:
-    standin.deliver(Mail(PRIYA, "Quoted", date=NOW, text="> All of it quoted.\n", html="<p>New words.</p>"), 305)
+    standin.deliver(Mail(PRIYA, "Signed", date=NOW, text="Thanks,\nPriya\n", html="<p>New words.</p>"), 305)
     standin.deliver(Mail(PRIYA, "Nothing", date=NOW, attachment="%PDF-1.7"), 306)
     assert [words(make(standin).get(id)) for id in ("305", "306")] == ["New words.", ""]
 

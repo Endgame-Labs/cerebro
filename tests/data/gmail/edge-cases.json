@@ -128,7 +128,7 @@
   ],
   [
    "-----Original Message-----\nAn earlier line.",
-   ""
+   "-----Original Message-----\nAn earlier line."
   ],
   [
    "On Oct 8, 2026 Jane wrote:\nAn earlier line.",
@@ -145,6 +145,10 @@
   [
    "---------- Forwarded message ---------\nAn earlier line.",
    "---------- Forwarded message ---------\nAn earlier line."
+  ],
+  [
+   "---------- Forwarded message ---------\nFrom: Jane Doe <jane-doe@acme.example>\nDate: Monday\nTo: Lee Moss\n\nAn earlier line.",
+   "---------- Forwarded message ---------\nFrom: Jane Doe <jane-doe@acme.example>\nDate: Monday\nTo: Lee Moss\n\nAn earlier line."
   ],
   [
    "Here it is.\n\n---------- Forwarded message ---------\nAn earlier line.",

@@ -83,9 +83,21 @@ _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", 
 # -- reduce
 
 def reduce(text: str) -> str:
-    """What a message's sender newly wrote: the message without its quoted replies and its signature. Line endings
+    """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
+    quote with nothing written above it is kept whole but for its signature, so its words are not lost. Line endings
     become \\n, the end of each line is trimmed, and runs of blank lines shrink to one."""
-    return _collapse_blank("\n".join(_drop_signature(_drop_quoted(_split_lines(text)))))
+    lines = _split_lines(text)
+    own = _drop_quoted(lines)
+    if not any(_written(line) for line in own):
+        own = lines
+    return _collapse_blank("\n".join(_drop_signature(own)))
+
+
+def _written(line: str) -> bool:
+    """Whether a line holds words, other than a line a mail client puts above a forward, such as
+    "---------- Forwarded message ---------"."""
+    t = line.strip()
+    return t != "" and not (t.startswith("---") and t.endswith("---"))
 
 
 def _split_lines(text: str) -> list[str]:
