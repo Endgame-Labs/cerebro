@@ -109,6 +109,12 @@ def test_the_collections_are_read_off_the_event_loop_and_a_store_that_fails_leav
 
 # -- the proposals waiting --------------------------------------------------------------------------------------------
 
+ONE = ("1 proposal waiting for a person. List it with query from proposals and status waiting, which also lists "
+       "those that wait with their collections' curators or with another proposal, and decide it with decide.")
+TWO = ("2 proposals waiting for a person. List them with query from proposals and status waiting, which also lists "
+       "those that wait with their collections' curators or with another proposal, and decide them with decide.")
+
+
 def waiting(workspace: Cerebro, *ids: str, target: str = "projects/vega") -> Cerebro:
     """`workspace` with a curator's proposal to archive `target` waiting for each id."""
     from cerebro import Caller
@@ -139,11 +145,10 @@ def test_a_local_session_hears_how_many_proposals_wait_how_to_list_them_and_who_
 
     said, (listed, after, again) = anyio.run(session)
     waiting(workspace, "p_a3")
-    alone = "1 proposal waiting. List it with query from proposals and status waiting, and decide it with decide."
-    assert [[block.text for block in reply.content][1:] for reply in anyio.run(unopened)] == [[alone]] * 2
-    assert said is not None and said.split("\n\n")[-1] == alone
+    assert [[block.text for block in reply.content][1:] for reply in anyio.run(unopened)] == [[ONE]] * 2
+    assert said is not None and said.split("\n\n")[-1] == ONE
     assert "p_a1" in [item["id"] for item in listed.structured_content["items"]] and len(listed.content) == 1
-    assert [block.text for block in after.content][1:] == ["No proposals waiting."]
+    assert [block.text for block in after.content][1:] == ["No proposals waiting for a person."]
     assert len(again.content) == 1
 
 
@@ -165,14 +170,12 @@ def test_a_person_over_http_hears_the_count_change_after_each_decide_and_decides
         listed = session.call("query", {"from": "proposals", "status": "waiting"})
         first = session.call("decide", {"accept": ["p_a1"]})
         second = session.call("decide", {"reject": [{"id": "p_a2", "reason": "Vega is still open."}]})
-    assert session.instructions.split("\n\n")[-1] == (
-        "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide.")
+    assert session.instructions.split("\n\n")[-1] == TWO
     assert {"p_a1", "p_a2"} <= {item["id"] for item in listed["structuredContent"]["items"]}
     assert len(listed["content"]) == 1
     assert first["structuredContent"]["answers"] == {"p_a1": "decided"}
-    assert [block["text"] for block in first["content"]][1:] == [
-        "1 proposal waiting. List it with query from proposals and status waiting, and decide it with decide."]
-    assert [block["text"] for block in second["content"]][1:] == ["No proposals waiting."]
+    assert [block["text"] for block in first["content"]][1:] == [ONE]
+    assert [block["text"] for block in second["content"]][1:] == ["No proposals waiting for a person."]
 
 
 def test_an_error_carries_no_note_and_the_next_reply_that_succeeds_still_tells_the_count(tmp_path: Path) -> None:
@@ -189,11 +192,10 @@ def test_an_error_carries_no_note_and_the_next_reply_that_succeeds_still_tells_t
 
     refused, found = anyio.run(session)
     assert refused.is_error and len(refused.content) == 1
-    assert [block.text for block in found.content][1:] == [
-        "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide."]
+    assert [block.text for block in found.content][1:] == [TWO]
 
 
-def test_the_note_counts_every_proposal_the_query_it_names_lists(tmp_path: Path) -> None:
+def test_the_note_counts_what_status_counts_and_says_the_query_it_names_lists_more(tmp_path: Path) -> None:
     import anyio
     from mcp import Client
 
@@ -206,7 +208,7 @@ def test_the_note_counts_every_proposal_the_query_it_names_lists(tmp_path: Path)
     (workspace.root / "agents" / "projects" / "curator.md").write_text("---\nheartbeat: [manual]\n---\nKeep projects.\n")
     workspace.agents += load_agents(workspace.root / "agents")[0]
     propose(workspace.store, Proposal("p_b1", "article.archive", "projects/apollo", Caller("teams/curator", "agent"),
-                                      "2026-11-03T09:00:00Z"))  # another collection's curator: it waits with projects'
+                                      "2026-11-03T09:00:00Z"))  # another collection's curator: projects' answers it
 
     async def connect() -> str | None:
         async with Client(workspace.mcp_server(), mode="legacy") as client:
@@ -214,8 +216,7 @@ def test_the_note_counts_every_proposal_the_query_it_names_lists(tmp_path: Path)
 
     said = anyio.run(connect)
     listed = workspace.query(YOU, "proposals", {"status": "waiting"}).count
-    assert listed == 2 and said is not None and said.endswith(
-        "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide.")
+    assert listed == 2 and workspace.status()["waiting"] == 1 and said is not None and said.endswith(ONE)
 
 
 def test_a_session_with_no_proposal_waiting_hears_nothing_of_proposals(tmp_path: Path) -> None:
@@ -302,7 +303,7 @@ def test_a_connect_and_a_call_count_again_only_what_the_store_says_changed_since
         return said
 
     first = anyio.run(sessions, 1)
-    assert sorted(counted) == ["proposals", "query people", "query projects", "query proposals"]
+    assert sorted(counted) == ["proposals", "query people", "query projects"]
     counted.clear()
     again = anyio.run(sessions, 3)
     assert counted == [] and again == first * 3
@@ -314,8 +315,7 @@ def test_a_connect_and_a_call_count_again_only_what_the_store_says_changed_since
     counted.clear()
     waiting(workspace, "p_a2")
     said = anyio.run(sessions, 1)[0]
-    assert counted == ["query proposals", "proposals"] and said is not None and said.endswith(
-        "2 proposals waiting. List them with query from proposals and status waiting, and decide them with decide.")
+    assert counted == ["proposals"] and said is not None and said.endswith(TWO)
 
 
 def test_a_first_runs_proposed_article_moves_the_count_when_its_proposal_is_decided_or_filed(tmp_path: Path) -> None:

@@ -65,6 +65,9 @@ _OUTLOOK_TO = re.compile(rf"^\*?\*?(to|subject|cc|à|an|objet|betreff):\*?\*?{_S
 _MOBILE_FOOTER = re.compile(r"^(sent from my |sent from mail for |sent from outlook for |get outlook for |sent via "
                             r"|sent from yahoo mail)", re.IGNORECASE)
 _POSTSCRIPT = re.compile(rf"^p\.?{_S}?p?\.?{_S}?s\b[.:]?", re.IGNORECASE | re.ASCII)
+# An address, a site or a phone number at the start of a line, after a short label such as "M:" or "Tel."
+_CONTACT = re.compile(r"(([a-z]{1,7}:|[a-z]{1,4}\.) *)?([^\s@<>]+@[^\s<>]*|www\.[^\s<>]*|https?://[^\s<>]*"
+                      r"|[+(]?[0-9][0-9 ().-]{5,}[0-9])", re.IGNORECASE | re.ASCII)
 _CLIENT_ATTRIBUTION = re.compile(r"@|[0-9]{1,2}:[0-9]{2}|\b[0-9]{4}\b", re.ASCII)
 _LIST_MARKER = re.compile(rf"^([-*•]|[0-9]+[.)]){_S}")
 _SIGN_OFF = re.compile(
@@ -121,20 +124,27 @@ def _markup_as_read(found: re.Match[str]) -> str:
 def _signed_only(kept: list[str], own: list[str]) -> bool:
     """Whether the lines above a quote or a forward, `kept`, hold nothing their sender wrote, `own` being what is
     left of them without their signature: only a footer, a signature, a sign-off with a name under it, or a closing
-    block with an address, a site or a phone number in it. A sign-off with nothing under it is the message."""
-    above = _trim_blank_end(_drop_contact_block(_trim_blank_end(kept)))
+    block with a line that an address, a site or a phone number starts. A sign-off with nothing but a footer or such
+    a block under it is the message."""
+    above = _trim_blank_end(_drop_contact_block(_drop_footer(kept)))
     if above and _SIGN_OFF.match(above[-1].strip()):
         return False
     return not any(_written(line) for line in _drop_contact_block(own))
 
 
 def _drop_contact_block(lines: list[str]) -> list[str]:
-    """The lines without a closing block that holds an address, a site or a phone number: a short reply can read as
-    a name and a title, but it holds none of those."""
+    """The lines without a closing block that holds a line of contact details: a short reply can read as a name and a
+    title, but none of its lines is contact details."""
     start = _closing_block(lines)
-    contact = any("@" in line or "://" in line or "www." in line or sum(c.isdigit() for c in line) >= 7
-                  for line in lines[start:])
-    return lines[:start] if contact else lines
+    return lines[:start] if any(_contact(line) for line in lines[start:]) else lines
+
+
+def _contact(line: str) -> bool:
+    """Whether a line is contact details: an address, a site or a phone number starts it, with fewer than two
+    lowercase words after it, as a sentence of a reply that starts with a date or a number has."""
+    t = line.strip()
+    found = _CONTACT.match(t)
+    return found is not None and sum(word[0].islower() for word in t[found.end():].split()) < 2
 
 
 def _written(line: str) -> bool:
@@ -232,11 +242,17 @@ def _trim_blank_end(lines: list[str]) -> list[str]:
     return lines[:end]
 
 
-def _drop_signature(lines: list[str]) -> list[str]:
-    """The lines without a signature at the end. A P.S. under a sign-off is the sender's words and stays."""
+def _drop_footer(lines: list[str]) -> list[str]:
+    """The lines without the blank lines and mobile footers at their end."""
     lines = _trim_blank_end(lines)
     while lines and _MOBILE_FOOTER.match(lines[-1].strip()):
         lines = _trim_blank_end(lines[:-1])
+    return lines
+
+
+def _drop_signature(lines: list[str]) -> list[str]:
+    """The lines without a signature at the end. A P.S. under a sign-off is the sender's words and stays."""
+    lines = _drop_footer(lines)
     i = len(lines) - 1
     while i >= 0 and len(lines) - i <= 21:
         # With a space after it, however much follows, it is the signature marker. Without one, as HTML gives it,
@@ -299,6 +315,8 @@ def _full_name(line: str) -> bool:
 
 def _signature_line(line: str) -> bool:
     t = line.strip()
+    if _contact(t):
+        return True
     if not t or len(t) > 60 or len(t.split()) > 8 or _LIST_MARKER.match(t):
         return False
     if t[-1] in ".?!:;," and not _ends_in_abbreviation(t):

@@ -466,19 +466,28 @@ def test_a_firm_no_claim_verdict_keeps_a_sentence_only_when_it_holds_no_number()
         assert ("Overview" in grounded.parts) is stands, body
 
 
-def test_an_unsure_verdict_keeps_a_lead_only_on_names_or_states_held_and_its_figures_in_its_cited_facts() -> None:
+def test_an_unsure_verdict_on_a_lead_does_not_keep_the_lead() -> None:
     body = "**Rollout:** Jane Doe signs off on the Acme Corp rollout [^f_2]."
-    for choice, stands in (("names", True), ("states_held", True), ("states_unheld", False)):
-        unsure = ground(agent(), {"Overview": body}, citable(RULE_FACTS), facts=RULE_FACTS,
-                        decider=Leaning({"s1": "grounded", "l1": choice}, {"l1": JUDGE_MIN_CONFIDENCE - 0.01}))
-        assert (unsure.parts.get("Overview", "") == body) is stands, choice
-    figure = "**Rollout at $4,000:** Jane Doe signs off on the Acme Corp rollout [^f_2]."
-    unheld = ground(agent(), {"Overview": figure}, citable(RULE_FACTS), facts=RULE_FACTS,
-                    decider=Leaning({"s1": "grounded", "l1": "states_held"}, {"l1": JUDGE_MIN_CONFIDENCE - 0.01}))
-    assert unheld.parts == {"Overview": "Jane Doe signs off on the Acme Corp rollout [^f_2]."}
-    firm = ground(agent(), {"Overview": figure}, citable(RULE_FACTS), facts=RULE_FACTS,
-                  decider=FakeDecider({"s1": "grounded", "l1": "states_held"}))
-    assert firm.parts == {"Overview": figure}
+    firm = ground(agent(), {"Overview": body}, citable(RULE_FACTS), facts=RULE_FACTS,
+                  decider=FakeDecider({"s1": "grounded", "l1": "names"}))
+    assert firm.parts == {"Overview": body}
+    unsure = ground(agent(), {"Overview": body}, citable(RULE_FACTS), facts=RULE_FACTS,
+                    decider=Leaning({"s1": "grounded", "l1": "names"}, {"l1": JUDGE_MIN_CONFIDENCE - 0.01}))
+    assert unsure.parts.get("Overview", "") != body
+
+
+def test_a_lean_to_names_or_states_held_keeps_a_label_over_a_list_whose_figures_its_cited_facts_hold() -> None:
+    item = "\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n"
+    for body, choice, stands in (("Ours:" + item, "names", True), ("Ours, all done:" + item, "states_held", True),
+                                 ("Ours, all done:" + item, "states_unheld", False),
+                                 ("Ours, at $4,000:" + item, "states_held", False),
+                                 ("**Jane Doe:**" + item.replace("- ", ""), "names", False)):
+        out = ground(agent(), {"Overview": body}, citable(RULE_FACTS), facts=RULE_FACTS,
+                     decider=Leaning({"l1": choice}, {"l1": JUDGE_MIN_CONFIDENCE - 0.01}))
+        assert (out.parts["Overview"] == body) is stands, (body, choice)
+    firm = ground(agent(), {"Overview": "Ours, at $4,000:" + item}, citable(RULE_FACTS), facts=RULE_FACTS,
+                  decider=FakeDecider({"l1": "states_held"}))
+    assert firm.parts == {"Overview": "Ours, at $4,000:" + item}
 
 
 def test_a_link_to_cited_evidence_that_is_not_an_article_counts_as_a_citation() -> None:

@@ -297,7 +297,7 @@ def test_under_serve_a_failed_first_run_says_so_names_the_command_and_is_not_ask
         printed = _loop(workspace, 3, lambda line: None)
         text = "\n".join(printed)
         assert "agents    none" not in text
-        assert printed.count("Done: 0 written, 2 failed.") == 1  # the pass that asked them; the next two asked nobody
+        assert printed.count("Done: 2 failed.") == 1  # the pass that asked them; the next two asked nobody
         assert printed.count("next      cerebro secrets set fireworks") == 3  # what mends it, on every pass
         assert sum(line.startswith("failed    things/curator") for line in printed) == 1
         assert sum(line.startswith("skipped   things/curator: the first run failed") for line in printed) == 2
@@ -309,7 +309,10 @@ def test_under_serve_a_failed_first_run_says_so_names_the_command_and_is_not_ask
         assert script.ran.count("things/curator") == 2
 
 
-def test_under_serve_a_failed_first_run_is_asked_again_as_soon_as_a_key_it_lacked_is_there(tmp_path: Path) -> None:
+def test_under_serve_a_failed_first_run_is_asked_again_as_soon_as_a_key_it_lacked_is_there(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from cerebro import cli
+
     script = Script({"things/curator": [by_record("T1")], "parts/curator": []})
     missing = [True]
     said: list[str] = []
@@ -326,6 +329,12 @@ def test_under_serve_a_failed_first_run_is_asked_again_as_soon_as_a_key_it_lacke
         result = served(workspace, say=said.append)
         assert asked() == 2 and script.ran.count("things/curator") == 1  # the key is there: asked at once
         assert result is not None and not result.failed and workspace.store.state(KEY)["status"] == "waiting"
+    with Cerebro(tmp_path, agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
+                 connectors=[FakeConnector("src", list(RECORDS)), FakeConnector("fresh", [])]) as workspace:
+        waits = served(workspace)  # while the list waits, a source added since is listed from the start
+    assert waits is not None
+    cli._print(waits)
+    assert "listed    fresh: 0 records" in capsys.readouterr().out.splitlines()
 
 
 def test_serve_once_asks_a_failed_first_run_again_at_once_whatever_serve_waits_for(tmp_path: Path) -> None:

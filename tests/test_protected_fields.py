@@ -229,7 +229,7 @@ def test_a_store_query_on_a_protected_field_reads_the_systems_value(tmp_path: Pa
 def test_why_a_query_matched_nothing_names_no_models_claim_of_a_protected_field() -> None:
     from cerebro.lookup import StoreLookup
 
-    lines = StoreLookup._why_empty("things", [_claimed()], {"id": "things/q", "stage": "lost"}, {})
+    lines = StoreLookup._why_empty("things", [_claimed()], {"id": "things/q", "stage": "lost"}, {}, None)
     assert not any("things/x" in line for line in lines), lines  # a model's id is no value the article holds
     assert any("stage: lost, which holds won" in line for line in lines), lines
 
