@@ -336,14 +336,16 @@ def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_pa
 
 def test_the_lines_a_pass_and_a_run_by_hand_end_with_for_a_run_that_wrote_nothing_say_no_section_brain_or_page(
         capsys: Any) -> None:
-    """A pass's line for each run that ran and wrote nothing and its closing count, and a run by hand's line for one."""
+    """A pass's line for each run that ran and wrote nothing, its count of what landing made safe and its closing count,
+    and a run by hand's line for one."""
     from cerebro import cli
     from cerebro.compile import Compiled
     from cerebro.run import HANDED_NOTHING, WROTE_NOTHING, Run, Usage
     from cerebro.runner import PassResult
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
-    cli._print(PassResult(compiled=["things/first"], ran={"things/article on things/second": HANDED_NOTHING}))
+    cli._print(PassResult(compiled=["things/first"], ran={"things/article on things/second": HANDED_NOTHING},
+                          cleaned={"things/first": 2}))
     run = Run(id="r1", agent="things/article", target="things", status=WROTE_NOTHING, transcript=[],
               usage=Usage(model="scripted"), note=HANDED_NOTHING)
     cli._print_compiled("things/article", "things/second", Compiled(run=run, article=None, runs=[run]))

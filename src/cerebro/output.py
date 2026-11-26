@@ -767,8 +767,8 @@ class Printer:
             return line + " " + st.paint("hint", "Run:") + " " + st.paint("key", run) if run else line
         if self._state.checks:
             check = _commands(st, " ".join(self._state.checks[0].split("\n")))
-            if len(self._state.checks) > 1:
-                check += st.paint("muted", f" (and {len(self._state.checks) - 1} more above)")
+            if (n := len(self._state.checks) - 1) > 0:
+                check += st.paint("muted", f" (and {n} more warning{'' if n == 1 else 's'} above)")
             return state(Mark.WARNING, "Done with warnings.") + " " + st.paint("hint", "Check:") + " " + check
         line = state(Mark.DONE, "Done.")
         if self._state.next:

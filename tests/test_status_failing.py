@@ -108,7 +108,7 @@ def test_a_run_held_after_failing_says_when_it_runs_again_and_one_whose_wait_end
                      "its schedule comes")
     assert lines[at + 1] == ("          reports/weekly on reports/weekly: failed 2 times, runs again after "
                              "2026-11-19T10:00:30Z: failed")  # a run kept with no note gives its end as the reason
-    assert lines[-1] == CLOSING + "1 agent failed its last run: see the failing line (and 1 more above)"
+    assert lines[-1] == CLOSING + "1 agent failed its last run: see the failing line (and 1 more warning above)"
     data = json.loads(status(monkeypatch, root, store, "--json").output)
     assert data["held_runs"] == [{"agent": "reports/weekly", "article": "reports/weekly", "times": 2,
                                   "at": "2026-11-19T09:59:30Z", "until": "2026-11-19T10:00:30Z", "reason": "failed"}]
@@ -145,7 +145,7 @@ def test_a_spent_cap_leads_status_with_when_it_was_reached_and_when_calls_resume
                           "00:00 UTC."),
                          f"workspace {root}"]
     assert lines[-1] == (CLOSING + "the daily budget is spent: model calls resume at 00:00 UTC, or raise "
-                         "budget.daily_usd in settings.yaml (and 1 more above)")
+                         "budget.daily_usd in settings.yaml (and 1 more warning above)")
     data = json.loads(status(monkeypatch, root, store, "--json").output)
     assert data["caps_reached"] == [
         {"cap": "daily_usd", "layer": "all", "usd": 50.0, "spent": 60.0, "at": "2026-11-19T00:05:00Z",
@@ -179,7 +179,7 @@ def test_a_model_with_no_price_under_a_cap_and_an_agents_own_missing_key_are_nam
             "call runs on it while budget.daily_usd is set: pick a priced model, or remove the cap") in lines
     assert ("price     agents/reports/weekly.md runs on openai made-up-9, which the model catalog has no price for, so "
             "no call runs on it while budget.daily_usd is set: pick a priced model, or remove the cap") in lines
-    assert lines[-1] == CLOSING + "1 agent lacks a key for its own model: see the key lines (and 1 more above)"
+    assert lines[-1] == CLOSING + "1 agent lacks a key for its own model: see the key lines (and 1 more warning above)"
     data = json.loads(status(monkeypatch, root, MemoryStore(), "--json").output)
     assert data["agent_keys"] == [{"agent": "reports/weekly", "provider": "openai", "model": "made-up-9",
                                    "variable": "OPENAI_API_KEY"}]
@@ -435,4 +435,4 @@ def test_the_last_line_of_status_is_plain_and_asks_the_terminal_nothing(monkeypa
     monkeypatch.setenv("TERM", "xterm-256color")
     monkeypatch.setattr(output, "Printer", no_printer)
     cli._closing(["1 model key not set: see the key lines", "another"])
-    assert err.getvalue() == "[!] Done with warnings. Check: 1 model key not set: see the key lines (and 1 more above)\n"
+    assert err.getvalue() == "[!] Done with warnings. Check: 1 model key not set: see the key lines (and 1 more warning above)\n"

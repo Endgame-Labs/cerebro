@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -17,7 +19,7 @@ from test_output import Terminal, env
 
 from cerebro.output import Printer, strip_escapes
 from cerebro.progress import FirstRunScreen, LiveProgress
-from cerebro.runner import Progress
+from cerebro.runner import PassResult, Progress
 
 CHECKS = Path(__file__).resolve().parents[1] / "checks"
 
@@ -387,14 +389,49 @@ def test_a_pass_ends_on_a_terminal_with_a_table_and_says_only_what_its_region_di
     assert "    Summary: dropped one: it cites nothing" in shown
     for row in ("Sources checked   1", "Records landed    3", "Facts appended    7", "Articles written  1"):
         assert row in shown, row
+    assert "Agents run" not in shown  # a count of none is left out
     # each said once, under its row or on stderr, and the first named again by the last line
     assert shown.count("dropped one") == 2 and shown.count("a warning of no row") == 1
     assert "cerebro: warning: things/other: a warning of no row" in shown
     last = " ".join(shown[shown.rindex("!"):].split())  # the last line, broken at a space past the width
     assert last == "! Done with warnings. Check: parts/writer on parts/gamma: Summary: dropped one: it cites nothing (and " \
-                   "1 more above)"
+                   "1 more warning above)"
     assert all(len(row) < 100 for row in shown.split("\n"))
     assert "wrote     " not in shown and "listed    " not in shown
+
+
+def test_what_waits_for_the_person_is_what_the_last_line_names_and_nothing_follows_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    from test_first_run import ADMITS, YOU, Script, lay_out_workspace, open_it, settled
+
+    from cerebro import cli
+    from cerebro.fakes import FakeConnector
+    from cerebro.first_run import run
+
+    listed = FakeConnector.list  # the source notes a line on its listing, which warns too
+    monkeypatch.setattr(FakeConnector, "list", lambda self, since=None: replace(listed(self, since), notices=["noted"]))
+
+    def choose(pile: Any) -> Any:  # Alder and Initech ticked, and a no to Initech given while the list is open
+        initech = next(r.id for r in pile.rows() if r.name == "Initech")
+        workspace.call(YOU, "decide", {"reject": [{"id": initech, "reason": "not ours"}]})
+        return settled(pile, {r.id for r in pile.rows() if r.name in ("Alder Works", "Initech")})
+
+    screen, out, _ = still()
+    admits = [*ADMITS[:2], ("admit", {"record": {"source": "crm", "id": "001C"}, "reason": "One call.", "group": "you own (crm)"})]
+    with open_it(lay_out_workspace(tmp_path), Script({"things/curator": admits})) as workspace:
+        cli._print_first_run(run(workspace, on=screen, choose=choose), workspace, screen=screen)
+    shown = screen_of(out.getvalue()).split("\n")
+    assert any(line.startswith("notice    p_") and line.endswith(" is already rejected") for line in shown[:-2]), shown
+    assert "cerebro: warning: sources/crm: noted" in shown and sum("more is waiting" in line for line in shown) == 1
+    assert "Check: 1 more is waiting. Run cerebro review" in " ".join(shown[-2:]) and capsys.readouterr().out == ""
+    screen, out, _ = still()  # a run that fails names what to run last, so what waits is said above it
+    screen(Progress("build", "start"))
+    screen(Progress("build", "end"))
+    failed = SimpleNamespace(applied=[], quit=False, result=PassResult(failed={"things/a": "a model error"}), lines=[],
+                             after=["1 more is waiting."])
+    with pytest.raises(SystemExit):
+        cli._print_first_run(failed, screen=screen)
+    assert "cerebro: warning: 1 more is waiting." in screen_of(out.getvalue()).split("\n")
 
 
 def test_ctrl_c_during_a_first_run_says_one_line_and_exits_130_with_no_traceback(
