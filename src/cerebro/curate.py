@@ -332,18 +332,18 @@ def _undoes(act: str, p: Proposal) -> bool:
 
 
 def _link_values(store: Store, p: Proposal | None, payload: Mapping[str, Any], target: str) -> tuple[set[Any], set[Any]]:
-    """The values a link adds and takes off, as (key, value in lower case): from what a row carried out, or from
-    what it asks when it was not carried out, as one rejected."""
+    """The values a link adds and takes off, as (key name as `word` folds it, value in lower case): from what a row
+    carried out, or from what it asks when it was not carried out, as one rejected."""
     if p is not None and p.applied:
         keys, links = p.applied.get("keys") or {}, p.applied.get("linked") or {}
-        added, removed = ({*((k, str(v).lower()) for k, vs in (keys.get(part) or {}).items() for v in vs),
+        added, removed = ({*((word(k), str(v).lower()) for k, vs in (keys.get(part) or {}).items() for v in vs),
                            *(("linked", str(v).lower()) for v in links.get(part) or [])} for part in ("added", "removed"))
         return added, removed
     found = store.article(target)
     held = found.identity.keys if found is not None else {}
-    adds = {(k, str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() for v in vs or []}
-    offs = {(k, str(v).lower()) for k, vs in dict(payload.get("wrong") or {}).items() for v in vs}
-    offs |= {(k, str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() if vs is None
+    adds = {(word(k), str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() for v in vs or []}
+    offs = {(word(k), str(v).lower()) for k, vs in dict(payload.get("wrong") or {}).items() for v in vs}
+    offs |= {(word(k), str(v).lower()) for k, vs in dict(payload.get("keys") or {}).items() if vs is None
              for v in held.get(k, [])}
     adds |= {("linked", str(v).lower()) for v in payload.get("linked") or []}
     offs |= {("linked", str(v).lower()) for v in payload.get("unlinked") or []}
@@ -654,13 +654,15 @@ def address_form(keys: dict[str, list[Any]]) -> dict[str, list[str]]:
     return out
 
 
+def word(name: str) -> str:
+    """A key name folded for case and spacing, so `Thing Code` and `thing_code` read alike."""
+    return "_".join(name.casefold().replace("_", " ").split())
+
+
 def read_keys(given: Iterable[tuple[Any, list[Any]]], spellings: Sequence[str]) -> dict[str, list[Any]]:
     """Keys as a curator gives them, read as it means them. A name that is one of `spellings` is itself. Any other is
     read as the first of them that spells it in another case or spacing, so `Thing Code` is a source's `thing_code`,
     else as it was first given, so two spellings of one name are one key."""
-    def word(name: str) -> str:
-        return "_".join(name.casefold().replace("_", " ").split())
-
     spelled: dict[str, str] = {}
     for name in spellings:
         spelled.setdefault(word(name), name)
@@ -1570,15 +1572,18 @@ class _Curation:
         another collection waits there."""
         other = self.other(collection)
         who = self.find(article, collection=other)
-        held = self.spellings() if keys or wrong else []
-        # a key goes on as the sources write it, and comes off as the article holds it
-        on, off = [*held, *who.keys], [*who.keys, *held]
-        adds = address_form(read_keys(((k, v) for k, v in keys.items() if v is not None), on))
-        cleared, wrong = read_keys(((k, []) for k, v in keys.items() if v is None), off), read_keys(wrong.items(), off)
-        # a key given null and values comes all off, then the values go on
-        wrong |= {k: [*wrong.get(k, []), *who.keys.get(k, [])] for k in cleared if k in adds}
+
+        def off(name: Any) -> list[str]:  # a key comes off as named, else off each spelling the article holds it in
+            name = str(name).strip()
+            return [name] if name in who.keys else [k for k in who.keys if word(k) == word(name)] or [name]
+
+        # a key goes on as the sources write it
+        adds = address_form(read_keys(((k, v) for k, v in keys.items() if v is not None),
+                                      [*(self.spellings() if keys else []), *who.keys]))
+        cleared = [n for k, v in keys.items() if v is None for n in off(k)]
+        wrong = read_keys(((n, vs) for k, vs in wrong.items() for n in off(k)), list(who.keys))
         payload: dict[str, Any] = {
-            "keys": adds | {key: None for key in cleared if key not in adds},
+            "keys": {k: None for k in cleared} | adds,
             "wrong": address_form(wrong),
             "linked": [p.strip() for p in linked if p.strip()], "unlinked": [p.strip() for p in unlinked if p.strip()]}
         payload = {k: v for k, v in payload.items() if v}

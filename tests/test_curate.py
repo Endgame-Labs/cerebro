@@ -647,6 +647,23 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
     assert "'removed'" in run(store, (off[0], {**off[1], "proposals": [wrong]}), at=hour(3))[0]  # its own word
     assert store.article("things/alder").identity.keys == {"code": ["a-1", "a-9"]}
 
+    # a value a caller took off or turned down stays so once a source writes its key in another spelling
+    store = MemoryStore()
+    run(store, ("admit", {"name": "Alder", "keys": {"Thing Code": ["T-1"]}, "reason": "a maker"}), at=hour(0))
+    propose(store, Proposal("p_t2", "article.link", "things/alder", Caller("people/curator", "agent"), stamp(hour(0)),
+                            payload={"keys": {"Thing Code": ["T-2"]}}))
+    decide(store, YOU, reject=[Decision("p_t2", "not its code")], clock=lambda: hour(1))
+    store.set_state("held:src", [asdict(Record(id="h-1", source="src", revision="1", at=stamp(hour(-1)),
+                                               keys={"thing_code": ["T-1"]}, into="things"))])
+    no = told(store, "article.link", "things/alder", "T-1 is not its code", hour(1))
+    run(store, ("link", {"article": "Alder", "wrong": {"Thing Code": ["T-1"]}, "reason": "asked", "proposals": [no]}),
+        at=hour(1))
+    again = run(store, *(("link", {"article": "Alder", "keys": {"Thing Code": [code]}, "reason": "its code"})
+                         for code in ("T-1", "T-2")), at=hour(2))
+    assert f"a caller took off thing_code t-1 from things/alder in {no}" in again[0]
+    assert "a caller rejected link of things/alder in p_t2: not its code" in again[1]
+    assert store.article("things/alder").identity.keys == {}
+
     # an admit carrying out an ask is checked on the article it lands on, but for the ask's own path
     store = MemoryStore()
     run(store, TWO[0], at=hour(0))
