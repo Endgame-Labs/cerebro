@@ -79,6 +79,10 @@ _SIGNATURE_LINES = 6  # how many lines under a sign-off may still be signature
 _SIGNATURE_WIDTH = 70  # the longest line, in characters, that counts as signature under a sign-off
 _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", "rd", "blvd", "dr", "ln", "ste", "jr",
                   "sr", "phd", "esq")
+# A mailto or tel link's target as a client writes it after the link's text, as in "Call me<tel:+15550100>", and an
+# inline image's "[cid:...]". No class takes its own opening bracket, so a long line is linear.
+_MARKUP = re.compile(r"<(?:mailto|tel):([^<>\n]*)>|\[cid:[^\[\]\n]*\]", re.IGNORECASE)
+_NOT_ALNUM_OR_AT = re.compile(r"[^\w@]+|_")
 
 # Public mail services. An address at one says nothing about a company, so its domain is never a key.
 
@@ -88,9 +92,13 @@ _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", 
 def reduce(text: str) -> str:
     """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
     quote with nothing but a signature or a footer above it is kept from where it begins, less its own signature, so
-    its words are not lost. Line endings become \\n, the end of each line is trimmed, and runs of blank lines shrink
-    to one."""
-    lines = _split_lines(text)
+    its words are not lost. Each line is read first as a person sees it: a mailto or tel link's target goes where its
+    text shows it and stays in brackets where it does not, an inline image's cid reference goes, and a line that held
+    nothing else goes with it. Line endings become \\n, the end of each line is trimmed, and runs of blank lines
+    shrink to one."""
+    # a line emptied of its markup goes, so a logo inside a signature does not split it in two
+    lines = [clean for line in _split_lines(text)
+             if (clean := _MARKUP.sub(_markup_as_read, line)).strip() or not line.strip()]
     kept = _drop_quoted(lines)
     own = _drop_signature(kept)
     # kept and lines part at the first line dropped: there the quote or forward begins
@@ -100,6 +108,20 @@ def reduce(text: str) -> str:
             start -= 1
         own = _drop_signature(lines[start:])
     return _collapse_blank("\n".join(own))
+
+
+def _markup_as_read(found: re.Match[str]) -> str:
+    """A link's target or an image's cid reference as it reads in a message's text. A cid reference goes, and so
+    does a target the text just before it on its line shows, compared on letters, digits and "@" alone and in any
+    case. Any other target stays: in brackets after the text glued to it, or as it is when the link has no text."""
+    target = found[1]
+    if target is None:
+        return ""
+    # A target written out for a reader is never three times as long, so only that much is read and a line is linear.
+    before = found.string[max(found.start() - 3 * len(target), 0):found.start()]
+    if _NOT_ALNUM_OR_AT.sub("", before.lower()).endswith(_NOT_ALNUM_OR_AT.sub("", target.lower())):
+        return ""
+    return f" ({target})" if before[-1:].strip() else target
 
 
 def _signed_only(kept: list[str], own: list[str]) -> bool:

@@ -171,6 +171,10 @@
    "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
   ],
   [
+   "Sam Rivera\nAccount Executive | Quillmoor\nM: +1 555 0100\u003ctel:+15550100\u003e\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003cmailto:jane-doe@acme.example\u003e\u003e\nSent: Monday\nTo: Lee Moss \u003clee@quillmoor.example\u003cmailto:lee@quillmoor.example\u003e\u003e\nSubject: Pilot\n\nAn earlier line.",
+   "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss \u003clee@quillmoor.example\u003e\nSubject: Pilot\n\nAn earlier line."
+  ],
+  [
    "Hi Jane\nYes Monday works for us\n\nOn Mon, 5 Oct 2026 at 09:14, Jane Doe \u003cjane-doe@acme.example\u003e wrote:\n\u003e Does Monday work?",
    "Hi Jane\nYes Monday works for us"
   ],
@@ -389,6 +393,26 @@
   [
    "The offer holds.\nSincerely\n\n\nAda\n\nP.S. call me",
    "The offer holds.\n\nP.S. call me"
+  ],
+  [
+   "Call me\u003ctel:+15550100\u003e or write to \u003cmailto:legal@quillmoor.example\u003e today.\n\u003ctel:+15550199\u003e\nThe plan is below.\n[cid:image001.png@01DA2B3C.example]\nIt starts on 2 March.",
+   "Call me (+15550100) or write to legal@quillmoor.example today.\n+15550199\nThe plan is below.\nIt starts on 2 March."
+  ],
+  [
+   "Reach me at +1 555 0100\u003ctel:+15550100\u003e or Sam.Rivera@Quillmoor.example\u003cmailto:sam.rivera@quillmoor.example\u003e this week.",
+   "Reach me at +1 555 0100 or Sam.Rivera@Quillmoor.example this week."
+  ],
+  [
+   "Hi Jane\nConfirmed for Monday\nSam\n[cid:image001.png@01DA2B3C.example]\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nDoes Monday work?",
+   "Hi Jane\nConfirmed for Monday\nSam"
+  ],
+  [
+   "Jordan Lee\nHead of Operations | Quillmoor\n\u003cmailto:jordan@quillmoor.example\u003e\n\n________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line.",
+   "________________________________\nFrom: Jane Doe \u003cjane-doe@acme.example\u003e\nSent: Monday\nTo: Lee Moss\nSubject: Pilot\n\nAn earlier line."
+  ],
+  [
+   "Write to Support Quillmoor Example\u003cmailto:support@quillmoor.example\u003e for help.",
+   "Write to Support Quillmoor Example (support@quillmoor.example) for help."
   ]
  ]
 }
