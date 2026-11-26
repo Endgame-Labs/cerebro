@@ -14,7 +14,8 @@ A part meets four steps.
    by an alias is never read, and goes whole. A `presumed` mark buys an item one guess, which the judge is asked
    about apart and which is never evidence.
 2. Its prose. It splits into sentences, and a sentence into its lead, a bold name or a label before a colon, and its
-   claim, judged apart. A label the agent's own file writes, as `Watch:`, is never judged.
+   claim, judged apart. A sentence that ends in a colon is a lead over what follows it. A label the agent's own file
+   writes, as `Watch:`, is never judged.
 3. The verdicts. Code guards and the judge decides. A sentence that cites nothing goes unasked, unless it says only
    that the evidence holds none of something or counts the items right after it, and so does one that gives an
    earlier save's value as what holds now. A claim whose every citation holds no words, as an article cited by its
@@ -796,9 +797,12 @@ def _bold_words(words: str) -> int:
 
 
 def split_lead(text: str) -> _Parts:
-    """Read a sentence's lead from its marks: a short bold name, closed or alone, and a label of up to three words
-    and a colon. A lead holding a link or a citation is none, a label holding a digit is none, and bold past
-    `BOLD_LEAD_MAX_WORDS` words without a digit is the sentence's own text."""
+    """Read a sentence's lead from its marks: a short bold name, closed or alone, a label of up to three words and a
+    colon, and a sentence that ends in a colon, whatever its words, which labels what follows. A lead holding a link
+    or a citation is none, a label before a claim holding a digit is none, and bold past `BOLD_LEAD_MAX_WORDS` words
+    without a digit is the sentence's own text."""
+    if text.rstrip(" *").endswith(":") and not any(ch in text for ch in "[]"):
+        return _Parts(lead=text, bare=True)
     p = _Parts(claim=text)
     if m := BOLD_LEAD.match(text):
         inner, closer = m.group(1), m.group(2) or ""

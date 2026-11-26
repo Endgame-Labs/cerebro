@@ -316,6 +316,18 @@
    "dropped": []
   },
   {
+   "name": "a line that ends in a colon is a lead over the list under it, whatever its words, kept or dropped by the judge as any lead is",
+   "body": "Their side (Jane Doe / Acme Corp):\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n\nOurs, done:\n\n- Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "answers": {
+    "l1": "names",
+    "l3": "states_unheld"
+   },
+   "want": "Their side (Jane Doe / Acme Corp):\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n\n- Acme Corp must finish its security review before its board meets [^f_1].\n",
+   "dropped": [
+    "Overview: dropped \"Ours, done:\": its cited evidence does not hold this lead"
+   ]
+  },
+  {
    "name": "a line that only looks like a heading is read as a sentence",
    "body": "Jane Doe signs off on the rollout [^f_2].\n\n    ### Acme Corp lost its board vote\n\n#1 risk: Acme Corp lost its board vote\n",
    "answers": null,
