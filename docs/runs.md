@@ -59,6 +59,8 @@ skipped   projects/atlas: nothing it reads has moved since its last run: cerebro
 
 `cerebro status` shows the state of the whole workspace: each source's last check, what the wiki holds, each agent's last run, and what today cost.
 
+When two collections read each other, `cerebro status` shows `compile order: parts <-> things (compiled once per pass, in path order)`. Inside that cycle, articles compile in path order, so a `parts` article can read a `things` article before it's written, and a later pass catches up because what it read has changed.
+
 ## The first run
 
 The first pass on a new workspace with curators writes nothing until you agree. Each curator starts from what your sources hold of the last 14 days, and proposes what clearly matters to its collection. Later passes fill in the rest. You see the proposals as one tree:
