@@ -7,9 +7,10 @@ the decision model, which reads it against the facts it cites and the passage be
 short reason: the meaning on `SCALE` of the level it most likely holds. A citation is never removed: one that names
 nothing the run read, nor a fact of the article's own, reaches the judge and the writer as not found.
 
-Every line a reader sees is scored: a heading as a unit of the passage it heads, a fenced block as one unit, and an
-HTML comment as prose, since it lands shown as written. A mark never goes inside a fence or a code span: a fence's
-goes on the line after it closes.
+Every line a reader sees is scored: a heading as a unit of the passage it heads, a block of code as one unit, and an
+HTML comment as prose, since it lands shown as written. Code is what CommonMark reads as code: a fence, in a list
+item too, an indented block and a code span. A mark never goes inside it: a block's goes on a line of its own after
+it, at its indent, and a fence left open, which holds the rest of the text, gets none.
 
 `review` gives the writer each sentence under its floor, `min_grounding`, with its score and reason, while it can
 still revise. `marked` gives the text as it lands: `[^unsupported]` after each sentence under the floor, which the
@@ -29,8 +30,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from .article import MARK, UNSUPPORTED, Blocks, Citation, atx, fence_open
+from .article import MARK, UNSUPPORTED, Citation, atx
 from .budget import BudgetSpent
+from .clean import PARSER
 from .errors import CerebroError
 from .evidence import CITE
 from .facts import Fact
@@ -52,22 +54,50 @@ BEFORE = 3  # the sentences before a request's first that it shows, when a passa
 BEFORE_ANY = "(before the first heading)"  # how a line names text that stands before any heading
 
 
-class _Fences(Blocks):
-    """`Blocks` that reads an HTML comment as text, as an article shows one once it lands: only a fence is skipped."""
+@dataclass
+class _Code:
+    """A block of code: where it starts, where its last line ends, and the mark that goes after it, or "" for none."""
 
-    def skip(self, line: str) -> bool:
-        return bool(self.fence or fence_open(line.rstrip("\r\n"))) and super().skip(line)
+    start: int
+    end: int
+    mark: str
+
+
+def _code(text: str) -> list[_Code]:
+    """Each block of code in `text`, as CommonMark reads it: a fence, in a list item too, or an indented block. A
+    fence left open holds whatever follows it, so no mark can go after it."""
+    lines = text.split("\n")
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line) + 1)
+    out = []
+    for tok in PARSER.parse(text):
+        if tok.type not in ("fence", "code_block") or tok.map is None:
+            continue
+        first, last = tok.map[0], min(tok.map[1], len(lines)) - 1
+        close, lead = lines[last].strip().lstrip("> "), lines[first][:len(lines[first]) - len(lines[first].lstrip(" "))]
+        shut = tok.type == "code_block" or last > first and close.startswith(tok.markup) and not close.strip(
+            tok.markup[0])
+        eol = "\r\n" if lines[last].endswith("\r") else "\n"
+        mark = eol + (lead[:-4] if tok.type == "code_block" else lead) + MARK if shut else ""
+        out.append(_Code(starts[first], starts[last] + len(lines[last].rstrip("\r")), mark))
+    return out
+
+
+def _in_code(code: list[_Code], at: int) -> bool:
+    return any(c.start <= at <= c.end for c in code)
 
 
 def unmarked(text: str) -> str:
-    """`text` without the marks grounding gave it, nor a line that copies their definition. A mark inside a fence or a
-    code span is the writer's own, and stays."""
-    out, fences = [], _Fences()
+    """`text` without the marks grounding gave it, nor a line that copies their definition. A mark inside code is the
+    writer's own, and stays."""
+    out, code, at = [], _code(text), 0
     for line in text.splitlines(keepends=True):
-        if fences.skip(line):
+        if _in_code(code, at):
             out.append(line)
         elif not MARK_LINE.fullmatch(line):
             out.append(SPAN_OR_MARK.sub(lambda m: m.group() if m.group(1) else "", line))
+        at += len(line)
     return "".join(out)
 
 
@@ -364,10 +394,9 @@ def split_sentences(body: str, start: int = 0, end: int | None = None) -> list[_
     return out
 
 
-def _prose_sentences(body: str) -> list[_Sentence]:
-    """The sentences of each paragraph and list item of `body`, a quote's and a comment's among them, outside fences."""
+def _prose_sentences(body: str, code: list[_Code]) -> list[_Sentence]:
+    """The sentences of each paragraph and list item of `body`, a quote's and a comment's among them, outside code."""
     out: list[_Sentence] = []
-    blocks = _Fences()
     offset, para_start, para_end, in_quote = 0, -1, -1, False
 
     def flush() -> None:
@@ -379,7 +408,7 @@ def _prose_sentences(body: str) -> list[_Sentence]:
     for line in body.splitlines(keepends=True):
         start = offset
         offset += len(line)
-        if blocks.skip(line):
+        if _in_code(code, start):
             flush()
             continue
         text = line.rstrip("\r\n")
@@ -406,16 +435,16 @@ def _cells(row: str) -> list[str]:
     return [cell.strip() for cell in re.split(r"(?<!\\)\|", row.strip().strip("|"))]
 
 
-def _rows(body: str) -> list[_Sentence]:
-    """Each line of `body` outside fences that starts with a pipe, as a table's row, its header's and separator's
+def _rows(body: str, code: list[_Code]) -> list[_Sentence]:
+    """Each line of `body` outside code that starts with a pipe, as a table's row, its header's and separator's
     aside: a row under a header read with the header's cells as its labels, and ending where a mark after it stays in
     its last cell. A line with no separator under a header is read as its cells alone."""
     lines = body.splitlines(keepends=True)
     starts = [sum(len(line) for line in lines[:n]) for n in range(len(lines))]
-    blocks, header, out = _Fences(), [], []
+    header, out = [], []
     for n, line in enumerate(lines):
         row = line.strip()
-        if blocks.skip(line) or not row.startswith("|"):
+        if _in_code(code, starts[n]) or not row.startswith("|"):
             header = []
             continue
         if TABLE_SEPARATOR.match(row):
@@ -433,27 +462,11 @@ def _rows(body: str) -> list[_Sentence]:
     return out
 
 
-def _fenced(body: str) -> list[_Sentence]:
-    """Each fenced block of `body`, its fence lines among it, ending at the end of its closing line."""
-    out, fences, at, start = [], _Fences(), 0, -1
-    for line in body.splitlines(keepends=True):
-        inside = bool(fences.fence)
-        if fences.skip(line) and not inside:
-            start = at
-        at += len(line)
-        if start >= 0 and not fences.fence:
-            end = at - len(line) + len(line.rstrip("\r\n"))
-            out.append(_Sentence(start, end, body[start:end]))
-            start = -1
-    if start >= 0:
-        out.append(_Sentence(start, len(body), body[start:].rstrip("\r\n")))
-    return out
-
-
 @dataclass
 class _Unit:
-    """One thing scored: a sentence, a table row, a fenced block or a heading, its words for the judge and the ids it
-    cites, and where in the text `mark` goes after it, or None for a heading the text does not hold."""
+    """One thing scored: a sentence, a table row, a block of code or a heading, its words for the judge and the ids it
+    cites, and where in the text `mark` goes after it, or None for a heading the text does not hold or a fence left
+    open."""
 
     said: str
     cited: list[str]
@@ -485,19 +498,21 @@ def _passages(text: str, first: str = "") -> list[_Passage]:
     under `first`, whose heading is scored though the text does not hold it, as a part is under the heading the
     article shows above it."""
     out: list[_Passage] = []
-    blocks, at, heading, begin = _Fences(), 0, first, 0
+    code, at, heading, begin = _code(text), 0, first, 0
     head = _unit(first, None) if first else None
 
     def close(end: int) -> None:
-        body = text[begin:end]
-        found = [_unit(s.text, begin + s.end) for s in _prose_sentences(body) + _rows(body)] + [
-            _unit(s.text, begin + s.end, CITE.sub("", s.text).strip(), "\n" + MARK) for s in _fenced(body)]
-        units = [u for u in [head, *sorted(found, key=lambda u: u.end or 0)] if u and any(c.isalnum() for c in u.said)]
+        body, own = text[begin:end], _code(text[begin:end])
+        found = [_unit(s.text, begin + s.end) for s in _prose_sentences(body, own) + _rows(body, own)] + [
+            _unit(body[c.start:c.end], begin + c.end if c.mark else None, CITE.sub("", body[c.start:c.end]).strip(),
+                  c.mark) for c in own]
+        units = [u for u in [head, *sorted(found, key=lambda u: end if u.end is None else u.end)]
+                 if u and any(c.isalnum() for c in u.said)]
         if body.strip() or head is not None and head.end is not None:
             out.append(_Passage(heading, body, units))
 
     for line in text.splitlines(keepends=True):
-        if not blocks.skip(line) and (found := atx(line)) is not None:
+        if not _in_code(code, at) and (found := atx(line)) is not None:
             close(at)
             heading, begin = found[1], at + len(line)
             head = _unit(found[1], at + len(line.rstrip("\r\n").rstrip()))

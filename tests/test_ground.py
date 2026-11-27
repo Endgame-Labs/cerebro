@@ -83,6 +83,24 @@ def test_each_line_a_reader_sees_under_the_floor_lands_whole_with_one_mark_after
     assert editor(FakeDecider()).marked(copied) == TEXT  # a mark a later score does not call for comes off
 
 
+CODE = {  # code as CommonMark reads it, and the text as it lands: no mark inside code, and none after an open fence
+    "1.  Step one [^f_1].\n\n    ```yaml\n    term: ten years\n    ```\n2.  Step two [^f_1].\n":
+        "1.  Step one [^f_1].[^unsupported]\n\n    ```yaml\n    term: ten years\n    ```\n    [^unsupported]\n"
+        "2.  Step two [^f_1].[^unsupported]\n",
+    "Run this [^f_1].\n\n    make ten years. Then ship.\n\nDone [^f_1].\n":
+        "Run this [^f_1].[^unsupported]\n\n    make ten years. Then ship.\n[^unsupported]\n\nDone [^f_1].[^unsupported]\n",
+    "Run this [^f_1].\n\n```yaml\nterm: ten years\n": "Run this [^f_1].[^unsupported]\n\n```yaml\nterm: ten years\n",
+    "Run this [^f_1].\r\n\r\n```yaml\r\nterm: ten years\r\n```\r\nDone [^f_1].\r\n":
+        "Run this [^f_1].[^unsupported]\r\n\r\n```yaml\r\nterm: ten years\r\n```\r\n[^unsupported]\r\n"
+        "Done [^f_1].[^unsupported]\r\n"}
+
+
+@pytest.mark.parametrize("text", CODE, ids=["a fence in a list item", "an indented block", "an open fence", "CRLF"])
+def test_no_mark_lands_inside_code_and_text_marked_again_gains_none(text: str) -> None:
+    once = editor(Weak("")).marked(text)
+    assert once == CODE[text] and editor(Weak("")).marked(once) == once
+
+
 def test_the_judge_reads_one_passage_a_request_each_cited_fact_once_and_an_id_read_nowhere_as_not_found() -> None:
     decider = FakeDecider()
     weak = editor(decider)
