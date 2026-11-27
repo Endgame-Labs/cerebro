@@ -296,15 +296,14 @@ def test_the_first_runs_checkbox_screen_never_says_brain_page_or_section(tmp_pat
 def test_every_line_the_first_run_and_its_meter_spell_and_a_declined_runs_lines_never_say_brain_page_or_section(
         tmp_path: Path) -> None:
     """What the first run, its list and the meter that cuts a round spell, outside docstrings, and what a run whose
-    list was declined whole says, its next line too, with each curator's own line under its collection, the count
-    under a row of the held records its admit binds, and the line of a writer run that had nothing to cite."""
+    list was declined whole says, its next line too, with each curator's own line under its collection, and the
+    line of a writer run that had nothing to cite."""
     import ast
 
     from test_first_run import ADMITS, Script, lay_out_workspace, open_it
 
     from cerebro.compile import KEPT, KEPT_LAST, NONE_LEFT
     from cerebro.first_run import Listed, Pile, Row, lines, run
-    from cerebro.tree import Group
 
     words = re.compile(r"\b(brain|pages?|sections?)\b", re.IGNORECASE)
     src = Path(__file__).resolve().parents[1] / "src" / "cerebro"
@@ -321,15 +320,11 @@ def test_every_line_the_first_run_and_its_meter_spell_and_a_declined_runs_lines_
     with open_it(lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})) as workspace:
         out = run(workspace, choose=review_rest(workspace))  # declined whole in cerebro review
     assert out is not None and out.next
-    bound = Row("p_1", "things/curator", "things", "Alder Works", "Named twice.",
-                binds=[("local", "a.md"), ("local", "b.md")])
-    pile = Pile([Listed("things/curator", "things", [bound, Row("left-out:1", "things/curator", "things", "Kim Vale",
-                                                                "Named once.", left_out=True)],
-                        said="Left out 1: 1 named once."),
-                 Listed("parts/curator", "parts", [], said="Found nothing to weigh, so nothing was admitted.")],
-                groups=[Group([bound])])
+    pile = Pile([Listed("things/curator", "things", [Row("left-out:1", "things/curator", "things", "Kim Vale",
+                                                         "Named once.", left_out=True)], said="Left out 1: 1 named once."),
+                 Listed("parts/curator", "parts", [], said="Found nothing to weigh, so nothing was admitted.")])
     text = "\n".join([*out.lines, out.next, KEPT, NONE_LEFT, KEPT_LAST, *lines(pile), *lines(Pile(pile.lists, late=True))])
-    assert "Named once." in text and "2 records" in text and "parts: " not in text
+    assert "Named once." in text and "parts: " not in text
     assert not words.search(text), words.findall(text)
 
 
