@@ -63,6 +63,8 @@ Notes is an app. It lives under `apps/notes/` and uses the framework like any ap
 
 Every fact comes out of Factoid, from a record. A tell is a record that triage turns into facts and proposals, or neither, each citing it. It writes no field. Front matter has two writers: a curator when it admits an article, and the article's agents. No code decides what a field says.
 
+A person's yes goes to its curator, which carries it out in a run. Code never creates or changes an article from a yes.
+
 ## Words
 
 | Say | Not |
