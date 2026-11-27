@@ -94,12 +94,13 @@ def _ask(row: Row) -> dict[str, Any]:
 def items(rows: list[Row]) -> list[list[Row]]:
     """The proposals of one article, each item once, in the order they were filed: one path of one kind, but asks of
     it that are other things, as `curate.one_thing` says, are items of their own, as a decide makes them."""
-    from .curate import one_thing
+    from .curate import key_weights, one_thing
 
     out: list[list[Row]] = []
+    weights = key_weights()  # no store is at hand: the table every kind of source declares
     for row in rows:
         same = next((item for item in out if (item[0].kind, item[0].path or item[0].id) == (row.kind, row.path or row.id)
-                     and all(one_thing(_ask(r), _ask(row)) for r in item)), None)
+                     and all(one_thing(_ask(r), _ask(row), weights) for r in item)), None)
         if same is None:
             out.append([row])
         else:
@@ -135,7 +136,7 @@ def checked(text: str, found: list[list[Row]]) -> tuple[list[Group] | None, str]
     """The groups a reply gives, in its order, and a line on the groups it put together that may be other things, or
     None with why the whole reply is refused. A group it refuses stays separate items at the place the group held, and
     no two of them are ticked."""
-    from .curate import one_thing
+    from .curate import key_weights, one_thing
     from .first_run import NAME_CAP
 
     match = re.search(r"\{.*\}", text or "", re.DOTALL)
@@ -151,6 +152,7 @@ def checked(text: str, found: list[list[Row]]) -> tuple[list[Group] | None, str]
         return [i for i in (part if isinstance(part, list) else [part]) if isinstance(i, str) and i in by_id]
 
     group_of = {id: (id,) for id in by_id}
+    weights = key_weights()  # no store is at hand: the table every kind of source declares
     refused: list[list[str]] = []
     said: list[list[str]] = []
     for same in reply["same"]:
@@ -158,7 +160,8 @@ def checked(text: str, found: list[list[Row]]) -> tuple[list[Group] | None, str]
         rows = [row for i in ids for row in by_id[i]]
         if len({*ids}) != len(ids) or any(len(group_of[i]) > 1 for i in ids):
             refused.append(sorted({*ids}, key=lambda i: int(i[1:])))
-        elif len({row.collection for row in rows}) > 1 or not all(one_thing(_ask(a), _ask(b)) for a in rows for b in rows):
+        elif len({row.collection for row in rows}) > 1 or not all(one_thing(_ask(a), _ask(b), weights)
+                                                                  for a in rows for b in rows):
             refused.append(sorted(ids, key=lambda i: int(i[1:])))
             if refused[-1] not in said:
                 said.append(refused[-1])
