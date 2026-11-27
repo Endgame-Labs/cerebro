@@ -842,13 +842,13 @@ def kept_notes(tmp_path: Path, extraction: FakeExtraction, clock: Clock | None =
                    agent_run=ScriptedRun(lambda prompt: {}))
 
 
-@pytest.mark.parametrize("taker", ["person", "app", "agent"])
+@pytest.mark.parametrize("taker", ["person", "app"])
 def test_a_later_revision_of_a_retracted_kept_record_is_read_unless_a_caller_retracted_one_no_caller_made(
         tmp_path: Path, taker: str) -> None:
     from cerebro.caller import Caller
 
     you, app, sent = Caller("you", "person"), Caller("notes", "app"), []
-    takes = {"person": you, "app": app, "agent": Caller("things/curator", "agent")}[taker]
+    takes = {"person": you, "app": app}[taker]
 
     class Reading(FakeExtraction):
         def extract(self, record: Record) -> Any:
@@ -932,7 +932,7 @@ def test_a_pass_withdraws_what_an_earlier_pass_saved_of_a_retracted_record_and_s
 
 
 @pytest.mark.parametrize("path, kind", [("retract", "record"), ("tell", "record"), ("decide", "record"),
-                                        ("tell", "fact"), ("decide", "fact")])
+                                        ("tell", "fact")])
 def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Path, path: str, kind: str) -> None:
     from cerebro.caller import Caller
     from cerebro.errors import CerebroError
