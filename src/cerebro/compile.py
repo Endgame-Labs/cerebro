@@ -94,7 +94,7 @@ from .ground import (
 from .identity import follow, in_working_set, redirects
 from .lookup import LINKED, MAX_READ, Lookup, ReadResult
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
-from .records import proposals
+from .records import proposals, retracted_records
 from .reply import outside
 from .run import STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
 from .secrets import MARK
@@ -668,7 +668,7 @@ class _Grounding:
         all, and retracted, one taken back by a person, an agent or its source, whose record was removed or saved
         again, and a cited record an accepted `record.retract` took back."""
         store = getattr(self.lookup, "store", None)
-        taken = {p.target for p in proposals(store, "accepted") if p.kind == "record.retract"} if store else set()
+        taken = retracted_records(store) if store else {}
         retracted = {c.id for c in citations if c.id in taken}  # a record a person or a source took back
         ids = list(dict.fromkeys(c.id for c in citations if c.kind == "fact"))
         if not ids or self.lookup.extraction is None:
