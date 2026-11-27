@@ -15,10 +15,10 @@ The file follows the parts of a run:
 - Which text lands. A candidate is a hand-in, or a reply that holds text under a heading the agent was given: the
   model marks its article by writing those headings, and code only reads the mark. The run lands its latest candidate
   with the mark. The first hand-in is held while the model is told, once, what `REVIEW` says of it, when it says
-  anything: grounding's scores of each sentence under its floor, which takes one retry of its own. A reply that hands
-  in nothing is asked once to hand in. With nothing to land, a normal end wrote nothing, which is no
-  failure, and a run whose room or calls were spent, or whose reply was cut at its output limit, fails, so it runs
-  again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
+  anything: grounding's scores of each sentence under its floor, and each number in brackets that cites nothing,
+  which takes one retry of its own. A reply that hands in nothing is asked once to hand in. With nothing to land, a
+  normal end wrote nothing, which is no failure, and a run whose room or calls were spent, or whose reply was cut at
+  its output limit, fails, so it runs again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
   content standing. An error on any request fails the run, once its tries are spent: a held hand-in lands however
   the run ends after it. A request to a provider is
   streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with

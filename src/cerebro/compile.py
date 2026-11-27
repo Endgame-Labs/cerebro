@@ -6,9 +6,10 @@ it writes, so the same evidence does not run it again. A run, or a gather, that 
 
 Every run goes through `run_agent`, so each is held to the cap and leaves its spend and its `agent-runs` row. An
 editor (`ground.Editor`) scores each sentence a run hands in against what it read, and the run is told, once, of
-each sentence under its floor: `min_grounding` in its agent file, else in `settings.yaml`, else `ground.FLOOR`. What
-it hands in lands whole in one write (`_land`), each sentence still under the floor marked, with the fields it set
-with `override`, or not at all; each sentence's score and why stay on its run's row of the `agent-runs` log. A run
+each number in brackets that cites nothing and each sentence under its floor: `min_grounding` in its agent file, else
+in `settings.yaml`, else `ground.FLOOR`. What it hands in lands whole in one write (`_land`), each sentence still
+under the floor marked, with the fields it set with `override`, or not at all; each sentence's score and why stay on
+its run's row of the `agent-runs` log. A run
 writes only its own part, its fields, and the article's identity only when a fixed article is first born. A run that
 lands nothing leaves the article as it was, but for a line whose facts were all withdrawn. Then the mirror copy is
 written. The store is the truth: a copy that fails to write is a warning, and the article stands.
