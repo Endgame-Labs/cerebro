@@ -394,6 +394,8 @@ def _query(file: _File, n: int, kind: str, value: Any, curates: bool) -> None:
         raise file.fail(f"{where} from collections takes no filter: it lists every collection the site shows")
     sided = False
     for key, filter_value in filters.items():
+        if source == "facts" and key in ("classes", "kind") and isinstance(filter_value, list):
+            continue
         if isinstance(filter_value, (dict, list)):
             raise file.fail(f"{where} filter {key} takes one value, not a list or a map: write {key}: <value>")
         if str(key).lower() == "limit":
