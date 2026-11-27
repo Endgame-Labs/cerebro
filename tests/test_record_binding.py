@@ -87,6 +87,7 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
     admitted = _admit(store, tmp_path, one) if by_record else _admit(store, tmp_path, None, name="Unit 7", keys=keys)
     assert "'admitted': 'parts/unit-7'" in admitted
     assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["2"]
+    assert link(store, Fact("f2", "It ships Friday.", "", "fact", "", "src", other.id), other) == []  # read all the same
     assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # a thing of its own
 
 

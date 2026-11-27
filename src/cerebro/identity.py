@@ -25,8 +25,9 @@ the closest tie of a fact to an article, and `held_by` the articles of a collect
 A record binds the articles that hold a key that names it, and the article an admit made of it. A key its
 connector says it only carries (`Record.carried`), such as its parties' addresses, binds nothing: `bound_to` skips
 it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does. A record that
-shares with an article only its title, or values of keys that name no one thing, as a name, binds it only while no
-key that names one thing tells the two apart, as `_apart` reads it, so two things of one name stay two.
+shares with an article only its title, or values of keys that name no one thing, as a name, binds it, and links its
+facts to it by steps 1 and 3, only while no key that names one thing tells the two apart, as `_apart` reads it, so
+two things of one name stay two.
 
 A record's fields land on its own articles alone, as `own_articles` gives them: those of its own collection, `into`,
 that it is bound to, so a part's stage lands on the part and never on its parent, while its facts link to both.
@@ -256,7 +257,7 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
         made.extend((id, how) for id in ids if (id, how) not in made)
 
     if record is not None:
-        tie(_by_keys(store, linked_keys(record)), RECORD)  # by every key, those it only carries too
+        tie(_keyed(store, record, linked_keys(record)), RECORD)  # by every key, those it only carries too
         tie(admitted_from(store, record), RECORD)
     for mention in fact.mentions:
         tie(_by_keys(store, mention.keys), SUBJECT if mention.role == SUBJECT else MENTIONS)
@@ -272,7 +273,7 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
         if name in listed and not _names_it(fact, name):
             continue
         named = store.named(name)
-        if len(named) == 1 and not _namesake(store, record, name, named[0]):
+        if len(named) == 1 and not _namesake(store, record, name, named[0]) and not _apart(store, record, named[0]):
             tie(named, RECORD if name not in listed else _subject_how(fact) if _tokens(name) == _tokens(fact.subject)
                 else MENTIONS)
     if judge is not None and fact.subject and not exact:
