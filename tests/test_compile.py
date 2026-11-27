@@ -1442,7 +1442,8 @@ def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_artic
                                sorted(["briefs/subagents/people", "briefs/subagents/risks"] * 4))
 
 
-def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote() -> None:
+def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote_but_not_beside_one_that_stands(
+        ) -> None:
     from types import SimpleNamespace
 
     from cerebro.article import Compilation, Identity
@@ -1451,7 +1452,7 @@ def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_
     from cerebro.facts import Fact
     from cerebro.fakes import MemoryStore
 
-    gone, kept = "f 1<x>", "f_2"
+    gone, kept, beside = "f 1<x>", "f_2", "f_3"
     asked: list[str] = []
 
     class Facts:
@@ -1460,20 +1461,22 @@ def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_
                 return []  # the retracted fact's record holds no fact now
             asked.extend(ids)
             return [Fact(id, "x", "Halden", "note", "2026-11-03", "files", "local/halden.md",
-                         status="retracted" if id == gone else "current") for id in ids]
+                         status="retracted" if id in (gone, beside) else "current") for id in ids]
 
     assert label(gone) != gone
     store = MemoryStore()
     store.create(Identity("things/halden", "things", "Halden"))
-    store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].[^unsupported]\nIt has a dock [^{kept}].\n",
-                                by="things/parts", citations=[Citation("fact", gone), Citation("fact", kept)]))
+    store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].[^unsupported]\nIt has a dock [^{kept}].\n"
+                                                     f"It grew [^{beside}] [^{kept}].\n", by="things/parts",
+                                citations=[Citation("fact", gone), Citation("fact", kept), Citation("fact", beside)]))
     grounding = _Grounding("things/halden", lookup=SimpleNamespace(extraction=Facts()),  # type: ignore[arg-type]
                            root=Path("."), ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,
                            zone=UTC, floor=0.6)
     said = _withdrawn(grounding, store, "things/halden", ["things/parts"])
     part = next(s for s in store.article("things/halden").compilations if s.by == "things/parts")
-    assert sorted(asked) == sorted([gone, kept]) and len(said) == 1
-    assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept]
+    assert sorted(asked) == sorted([gone, kept, beside]) and len(said) == 1
+    assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept, beside]
+    assert "It grew" in part.text  # a fact it cites still stands
 
 
 LINKS = "---\nevidence:\n  - items: {}\n  - articles: [this.linked]\n---\n\n# Instructions\n\nDraft it.\n"

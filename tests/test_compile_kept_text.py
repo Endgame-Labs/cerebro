@@ -269,6 +269,16 @@ def test_a_composer_that_adds_nothing_lands_its_subagents_new_draft_in_place_of_
     assert VALVE[:-1] in space.text(), again.warnings
 
 
+def test_a_writers_text_is_never_cut_as_it_lands_even_a_line_that_cites_a_fact_taken_back(tmp_path: Path) -> None:
+    space = Facts(tmp_path, {"reports/weekly.md": WRITER}, "reports/weekly", run=Drafts)
+    pump = next(f.id for fs in space.extraction.by_record.values() for f in fs if f.text == PUMP)
+    space.run.again = f"\n{PUMP[:-1]} [^{pump}]."
+    space.notes.remove("n0")
+    space.notes.add(Record(id="n1", source="notes", revision="1", at="2026-11-15T09:00:00Z", body=VALVE))
+    result = space.workspace.run_once()
+    assert VALVE[:-1] in space.text() and PUMP[:-1] in space.text(), result.warnings  # its editor scores it
+
+
 def test_a_draft_that_stood_while_another_lands_loses_a_line_whose_fact_its_source_took_back(tmp_path: Path) -> None:
     pump_only = EVIDENCE.replace("window: last_365_days", "record: n0")  # it has nothing new to say once n0 goes
     files = {"briefs/article.md": BRIEF, "briefs/subagents/risks.md": pump_only + "# Instructions\n\nDraft it.\n\n"

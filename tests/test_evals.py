@@ -265,6 +265,13 @@ def test_a_grounding_case_against_its_label_lowers_the_score_and_says_how_it_sco
     assert report.groups["all"].held == 0
 
 
+def test_a_grounding_case_of_two_sentences_scores_as_its_weakest() -> None:
+    suite = load(GROUND)
+    sliced = replace(suite, cases=[c for c in suite.cases if c.id == "voice23"])  # its second sentence is made up
+    report = run(None, sliced, decider=FakeDecider({"s2": 0}), model=RUNE, ledger=ledger(), clock=lambda: NOW)
+    assert report.score == 1.0 and report.scored[0].outcome == "0.00"
+
+
 @pytest.fixture(scope="module")
 def corpus_run() -> Any:
     """The whole grounding corpus run once on a stand-in judge that finds every case backed: the same for every test

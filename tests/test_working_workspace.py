@@ -5,10 +5,9 @@ The workspace holds every gtm template agent file, a files source over `local/` 
 stand-in CRM whose records carry a stage, and a calendar source with no login, built by the real kinds. The facts layer is the stand-in extraction handler, the decision model
 the stand-in decider, and each agent's run a scripted one: no network and no model call. The test walks the loop: a
 curator admits an article, a record that carries its key is in scope and one that carries none is held, its facts
-are linked, a composer and its subagents write the article, grounding keeps a supported claim and drops an
-unsupported one, a pass with nothing changed runs nothing, the article reads back over MCP with its citations, and
-a person's tell becomes facts on the article and writes none of its front matter, which a source's fields never
-reach either.
+are linked, a composer and its subagents write the article, grounding marks a claim its fact does not back, a pass
+with nothing changed runs nothing, the article reads back over MCP with its citations, and a person's tell becomes
+facts on the article and writes none of its front matter, which a source's fields never reach either.
 """
 
 from __future__ import annotations
@@ -177,7 +176,44 @@ def test_a_pass_on_a_gtm_template_workspace_compiles_a_real_article_from_a_folde
         assert "stage" not in workspace.store.article("accounts/acme-corp").properties
 
 
-def test_the_index_is_told_to_leave_out_the_contents_the_wiki_writes_so_grounding_drops_no_part_of_it(
+def test_a_data_blocks_citation_reads_back_over_mcp_and_http_and_keeps_its_footnote(tmp_path: Path) -> None:
+    root = gtm_workspace(tmp_path / "workspace")
+    (root / "local" / "acme.md").write_text("Domain: acme.example\nDate: 2026-11-10\n\n"
+                                            "Dana Reyes, the CFO of Acme Corp, signed the two year renewal.\n")
+
+    def stakeholders(prompt: str) -> dict[str, str]:
+        found = re.search(r"\[\^(fact_\w+)\] Dana Reyes", prompt)
+        assert found, "the stakeholders evidence holds the signature"
+        return {"Stakeholders": f"```yaml\n- person: Dana Reyes\n  role: decides\n  fact: \"[^{found[1]}]\"\n```\n"}
+
+    admit = ScriptedRun(lambda prompt: {}, clock=lambda: NOW, calls=[(
+        "admit", {"name": "Acme Corp", "keys": {"domain": ["acme.example"]}, "reason": "a renewal in local notes"})])
+    runs = ByAgent({"accounts/curator": admit,
+                    "accounts/subagents/stakeholders": ScriptedRun(stakeholders, clock=lambda: NOW)})
+    with Cerebro(root, extraction=FakeExtraction(["identity", "relationship", "decision_commitment"]), agent_run=runs,
+                 decider=FakeDecider(), clock=lambda: NOW) as workspace:
+        workspace.run_once()
+        [signed] = workspace.extraction.facts(record="local/acme.md")
+        block = f"```yaml\n- person: Dana Reyes\n  role: decides\n  fact: \"[^{signed.id}]\"\n```"
+        [compilation] = workspace.store.article("accounts/acme-corp").compilations
+        assert compilation.text.strip() == block and [c.id for c in compilation.citations] == [signed.id]
+        copy = (root / "articles" / "accounts" / "acme-corp.md").read_text()
+        assert block in copy and re.search(rf"(?m)^\[\^{signed.id}\]: ", copy)
+
+        async def read() -> str:
+            async with Client(workspace.mcp_server()) as client:
+                return (await client.call_tool("read", {"ids": ["accounts/acme-corp"]})).content[0].text
+
+        assert block in anyio.run(read).replace("\\n", "\n").replace('\\"', '"')
+        token = workspace.make_token("agent-a").token
+        with serving(workspace) as client:
+            reply = client.post("/api/v1/read", json={"ids": ["accounts/acme-corp"]},
+                                headers={"Authorization": f"Bearer {token}"})
+        [article] = reply.json()["articles"]
+        assert block in article["text"]
+
+
+def test_the_index_is_told_to_leave_out_the_contents_the_wiki_writes_so_grounding_marks_no_part_of_it(
         tmp_path: Path) -> None:
     root = gtm_workspace(tmp_path / "workspace")
     asked: list[str] = []
