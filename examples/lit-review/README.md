@@ -136,7 +136,7 @@ One real run on the default models (`glm-5p3` writing, `glm-5p3-flash` extractin
 | Records | 27: 10 reading notes, 7 meeting notes, and 10 reading-list rows |
 | Facts | 166 current, from 24 records |
 | Articles | 15: 7 papers, 3 concepts, and 5 open questions |
-| Cost | $3.85 in all. The first run's curators took about $1.80 of it, and the articles about $2 over two passes. |
+| Cost | $4.15 in all. The first run's curators took about $1.80 of it, and writing and rewriting the articles the rest. |
 | Eval, `--no-model` | 8 cases, score 1.00 |
 | Eval, judged by `jev-1.13.0` | 8 cases, score 1.00, $0.0007 |
 
