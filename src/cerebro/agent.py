@@ -32,7 +32,7 @@ import yaml
 from .apps import bind
 from .article import atx
 from .errors import CerebroError
-from .models import ModelSettingsError, read_model
+from .models import ENTRY_KEYS, ModelSettingsError, read_model
 from .store import LOGS, RELATIONS
 from .window import is_window, shaped
 
@@ -606,7 +606,7 @@ def _model(file: _File, value: Any) -> dict[str, Any] | None:
     try:
         read_model(value, "model:")
     except ModelSettingsError as error:
-        extra = sorted(set(value) - {"provider", "model", "effort"}, key=str)
+        extra = sorted(set(value) - set(ENTRY_KEYS), key=str)
         raise file.fail(str(error), "model", *extra[:1]) from None
     return value
 

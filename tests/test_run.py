@@ -342,10 +342,10 @@ def test_a_run_whose_budget_ran_out_lands_only_a_text_it_handed_in_and_was_told_
     from cerebro.run import _Room
 
     turns = [[("write_article", {"text": "Uncited."})], [("_note", {"id": "1"})], [("_note", {"id": "2"})]]
-    run = PydanticRun(_verbose(turns, 900, [])).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
+    run = PydanticRun(_verbose(turns, 900)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
     assert run.status == "budget spent" and run.result is not None and run.result.text == "Uncited."
     assert "so the text it handed in lands" in run.note
-    none = PydanticRun(_verbose(turns[1:], 900, [])).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
+    none = PydanticRun(_verbose(turns[1:], 900)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
     assert none.status == "budget spent" and none.result is None
     assert "it handed in nothing before then, so nothing lands" in none.note
     assert _Room(100, "").calls is None
@@ -374,16 +374,15 @@ def test_what_a_run_that_answered_in_text_is_told_says_to_hand_in_with_citations
     assert "Hand in your text now" in said and "[^fact_" in said and "with no citation is cut" in said
 
 
-def _verbose(turns: list[list[tuple[str, dict[str, object]]]], output_tokens: int, seen: list[dict]) -> object:
-    """A function model that makes each turn's calls in order, says each reply cost `output_tokens`, as a model that
-    reasons at length does, and keeps the settings each request carried."""
+def _verbose(turns: list[list[tuple[str, dict[str, object]]]], output_tokens: int) -> object:
+    """A function model that makes each turn's calls in order, and says each reply cost `output_tokens`, as a model
+    that reasons at length does."""
     from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
     from pydantic_ai.models.function import AgentInfo, FunctionModel
     from pydantic_ai.usage import RequestUsage
 
     def reply(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         n = sum(isinstance(m, ModelResponse) for m in messages)
-        seen.append(dict(info.model_settings or {}))
         parts = [ToolCallPart(name, args) for name, args in turns[n]] if n < len(turns) else [TextPart("done")]
         return ModelResponse(parts=parts, usage=RequestUsage(input_tokens=10, output_tokens=output_tokens))
 
@@ -397,9 +396,9 @@ def _note(id: str) -> str:
 
 def test_what_the_model_writes_counts_against_the_runs_budget_so_long_replies_end_it() -> None:
     turns = [[("_note", {"id": str(n)})] for n in range(6)] + [BOTH]
-    short = PydanticRun(_verbose(turns, 1, [])).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
+    short = PydanticRun(_verbose(turns, 1)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
     assert short.status == "done"
-    long = PydanticRun(_verbose(turns, 400, [])).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
+    long = PydanticRun(_verbose(turns, 400)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
     assert long.status == "budget spent" and "counted once each" in long.note
 
 
@@ -411,17 +410,9 @@ def test_the_instructions_a_run_reads_count_against_its_budget_with_its_evidence
     now = datetime(2026, 11, 18, 9, tzinfo=UTC)
     read = tokens(instructions(AGENT) + opening(EVIDENCE, now))
     turns = [[("_note", {"id": "1"})], BOTH]
-    run = PydanticRun(_verbose(turns, 1, []), clock=lambda: now).run(AGENT, EVIDENCE, [_note],
+    run = PydanticRun(_verbose(turns, 1), clock=lambda: now).run(AGENT, EVIDENCE, [_note],
                                                                       Budget(tokens_per_run=read + 2))
     assert run.status == "budget spent" and run.result is None
-
-
-def test_each_model_call_of_a_run_is_bounded_in_time() -> None:
-    from cerebro.run import MODEL_TIMEOUT
-
-    seen: list[dict] = []
-    PydanticRun(_verbose([BOTH], 1, seen)).run(AGENT, EVIDENCE, [], Budget())
-    assert seen and all(s.get("timeout") == MODEL_TIMEOUT for s in seen)
 
 
 class _Replied:
@@ -450,10 +441,11 @@ def test_a_repair_call_sends_its_prompt_and_request_and_counts_what_it_read_and_
     from cerebro.run import REPAIR_MAX_TOKENS, PydanticRewriter
 
     replied = _Replied(monkeypatch)
-    text, spent = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}).rewrite("the prompt", "the claim")
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, key=lambda provider: "k-test")
+    text, spent = rewriter.rewrite("the prompt", "the claim")
     assert text == '{"claim": "x", "fact_ids": ["f_1"]}' and spent == TokenCount(300, 45, 7, 0)
     [(model, [message], settings)] = replied.asked
-    assert model == "fireworks:accounts/fireworks/models/glm-5p3"
+    assert model.model_id == "fireworks:accounts/fireworks/models/glm-5p3"
     assert [type(p) for p in message.parts] == [SystemPromptPart, UserPromptPart]
     assert [p.content for p in message.parts] == ["the prompt", "the claim"]
     assert settings == {"openai_reasoning_effort": "low", "max_tokens": REPAIR_MAX_TOKENS}

@@ -104,8 +104,10 @@ Each run is capped at 100,000 tokens and 40 tool calls. Raise or lower it per ag
 
 ```yaml
 budget: { tokens_per_run: 200000, tool_calls: 60 }
-model: { provider: fireworks, model: glm-5p3 }   # in place of settings.yaml's compilation model
+model: { provider: fireworks, model: glm-5p3, retries: 5 }   # in place of settings.yaml's compilation model
 ```
+
+`retries` is how many times a model call is tried again after a timeout, a rate limit or a server error. Leave it out and the agent takes the `retries` of the compilation model in `settings.yaml`, or 3.
 
 ## One agent for a whole collection
 
