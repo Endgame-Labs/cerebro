@@ -502,9 +502,9 @@ NONE_LEFT = "nothing of the run landed, and each line of its earlier text cited 
 
 
 def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[str]) -> list[str]:
-    """After a run that landed nothing, take out of each part `writers` wrote on `article` each line whose every
-    citation names a fact withdrawn since, as `_Grounding.withdrawn` reads them, and nothing else: the article stays
-    as it was, but a claim whose fact was taken back does not stay for good. A part left with no text, only headings
+    """After the writers' own run landed nothing, take out of each part `writers` wrote on `article` each line whose
+    every citation names what was taken back since, as `_Grounding.withdrawn` reads it, and nothing else: the article
+    stays as it was, but a claim whose fact was taken back does not stay for good. A part left with no text, only headings
     or nothing, goes. Gives a line for each line taken out. The text cites a fact by the label the store wrote, so
     each label is read back as its citation's id."""
     current = store.article(article)
@@ -514,8 +514,7 @@ def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[
     def cited(text: str) -> list[str]:
         return [by_label.get(found, found) for found in CITE.findall(unmarked(text))]
 
-    retired, retracted = grounding.withdrawn([c for s in mine for c in s.citations])
-    gone = retired | retracted
+    gone = grounding.withdrawn([c for s in mine for c in s.citations])
     if not gone:
         return []
     said: list[str] = []
@@ -611,19 +610,21 @@ class _Grounding:
         """The current facts linked to the article, as `read` gives them."""
         return self.lookup.read(Caller("compile", "agent"), [self.article]).facts
 
-    def withdrawn(self, citations: list[Citation]) -> tuple[set[str], set[str]]:
-        """Of the facts `citations` name, those withdrawn since: retired, a fact the extraction no longer holds at
-        all, and retracted, one taken back by a person, an agent or its source, and a cited record an accepted
-        `record.retract` took back. A fact of an earlier save of its record is none of them: it still says what was."""
+    def withdrawn(self, citations: list[Citation]) -> set[str]:
+        """Of what `citations` name, what was taken back since: a record a person retracted, and each retracted fact
+        whose record holds no fact now, as a person retracted the record or its source removed it. A fact of an
+        earlier save, and one taken back while its record still stands, are neither."""
         store = getattr(self.lookup, "store", None)
         taken = {p.target for p in proposals(store, "accepted") if p.kind == "record.retract"} if store else set()
-        retracted = {c.id for c in citations if c.id in taken}  # a record a person or a source took back
+        gone = {c.id for c in citations if c.id in taken}
         ids = list(dict.fromkeys(c.id for c in citations if c.kind == "fact"))
-        if not ids or self.lookup.extraction is None:
-            return set(), retracted
-        found = {f.id: f for f in self.lookup.extraction.facts(ids=ids)}
-        return ({id for id in ids if id not in found},
-                retracted | {id for id, f in found.items() if f.status == "retracted"})
+        extraction = self.lookup.extraction
+        if not ids or extraction is None:
+            return gone
+        out = [f for f in extraction.facts(ids=ids) if f.status == "retracted"]
+        empty = {(f.source, f.record) for f in out
+                 if not extraction.facts(source=f.source, record=f.record, latest=False)}
+        return gone | {f.id for f in out if (f.source, f.record) in empty}
 
     def stale(self, facts: Mapping[str, Fact]) -> dict[str, str]:
         """The line a read shows under each of `facts` whose document a person marked out of date, or flagged, by id,
@@ -1601,8 +1602,6 @@ class _Composing:
             self.read()
             if self.leave and not compiled.runs:  # no run, and nothing it reads moved: the article stands, unwritten
                 return Compiled(None, current, skipped=True)
-            if self.leave:  # what it wrote stands, less each line whose every cited fact was withdrawn
-                compiled.dropped += _withdrawn(c.grounding, store, article, self.writers)
             return compiled if not self.leave else _finish(store, article, c.root, compiled, c.grounding)
         if fixed(self.composer) and plan:
             birth(store, self.composer, article, min((p.started for p in plan if p.started), default=stamp(c.clock())))

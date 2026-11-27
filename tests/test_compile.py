@@ -1455,7 +1455,9 @@ def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_
     asked: list[str] = []
 
     class Facts:
-        def facts(self, ids: list[str]) -> list[Fact]:
+        def facts(self, ids: list[str] | None = None, **record: str) -> list[Fact]:
+            if ids is None:
+                return []  # the retracted fact's record holds no fact now
             asked.extend(ids)
             return [Fact(id, "x", "Halden", "note", "2026-11-03", "files", "local/halden.md",
                          status="retracted" if id == gone else "current") for id in ids]

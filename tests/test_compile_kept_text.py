@@ -38,22 +38,23 @@ def _body(store: Any, article: str) -> str:
 # -- a kept body -----------------------------------------------------------------------------------------------------
 
 
-def test_a_retract_by_an_agent_or_a_source_drops_a_kept_citation_and_an_earlier_save_keeps_its_own(
-        tmp_path: Path) -> None:
-    def fact(id: str, status: str) -> Fact:
-        return Fact(id=id, text="x", subject="the pump", kind="event", at="2026-11-10", source="notes", record="n0",
+def test_a_fact_counts_as_taken_back_only_when_its_record_holds_no_fact_now(tmp_path: Path) -> None:
+    def fact(id: str, status: str, record: str) -> Fact:
+        return Fact(id=id, text="x", subject="the pump", kind="event", at="2026-11-10", source="notes", record=record,
                     status=status)
 
-    held = {f.id: f for f in (fact("f_you", "retracted"), fact("f_agent", "retracted"),
-                              fact("f_source", "superseded"), fact("f_kept", "current"))}
-    extraction = SimpleNamespace(facts=lambda ids: [held[id] for id in ids if id in held])
-    grounding = _Grounding("things/alder", lookup=SimpleNamespace(extraction=extraction),  # type: ignore[arg-type]
+    held = {f.id: f for f in (fact("f_gone", "retracted", "n0"), fact("f_one", "retracted", "n1"),
+                              fact("f_stands", "current", "n1"), fact("f_old", "superseded", "n2"))}
+
+    def facts(ids: list[str] | None = None, source: str = "", record: str = "", latest: bool = True) -> list[Fact]:
+        return [held[id] for id in ids if id in held] if ids is not None else [
+            f for f in held.values() if f.record == record and f.status != "retracted"]
+
+    grounding = _Grounding("things/alder", lookup=SimpleNamespace(extraction=SimpleNamespace(facts=facts)),  # type: ignore[arg-type]
                            root=tmp_path, ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,
                            zone=UTC, floor=0.6)
-    cites = [Citation("fact", id) for id in ("f_you", "f_agent", "f_source", "f_gone", "f_kept")]
-    cites.append(Citation("record", "r0"))
-    retired, retracted = grounding.withdrawn(cites)
-    assert (retired, retracted) == ({"f_gone"}, {"f_you", "f_agent"})  # an earlier save still says what was
+    cites = [Citation("fact", id) for id in ("f_gone", "f_one", "f_old", "f_unknown")]
+    assert grounding.withdrawn(cites) == {"f_gone"}  # an earlier save, or a fact its standing record left, stays
 
 
 def test_a_kept_body_drops_a_line_citing_only_a_record_taken_back(tmp_path: Path) -> None:
@@ -67,7 +68,7 @@ def test_a_kept_body_drops_a_line_citing_only_a_record_taken_back(tmp_path: Path
     grounding = _Grounding("things/alder", lookup=StoreLookup(store, extraction), root=tmp_path,
                            ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None, zone=UTC,
                            floor=0.6)
-    gone = set().union(*grounding.withdrawn([Citation("record", told), Citation("record", kept_record)]))
+    gone = grounding.withdrawn([Citation("record", told), Citation("record", kept_record)])
     assert told in gone and kept_record not in gone
 
 
@@ -207,13 +208,14 @@ def test_a_writers_only_cited_fact_taken_back_leaves_the_article(tmp_path: Path,
 
 
 @pytest.mark.parametrize("how", ["retracted", "removed"])
-def test_a_composers_verdict_that_cites_a_fact_taken_back_goes(tmp_path: Path, how: str) -> None:
+def test_a_composers_verdict_that_cites_a_fact_taken_back_stands_while_the_composer_does_not_run_again(
+        tmp_path: Path, how: str) -> None:
     files = {"briefs/article.md": BRIEF.replace("[risks, people]", "[risks]"), "briefs/subagents/risks.md": RISKS}
     space = Facts(tmp_path, files, "briefs/alder")
     assert "Verdict:" in space.text()
     space.take_back(how)
     result = space.workspace.run_once()
-    assert PUMP[:-1] not in space.text(), result.warnings
+    assert f"Verdict: {PUMP[:-1]}" in space.text(), result.warnings  # only its own run landing nothing takes it out
 
 
 VALVE = "The valve in hall three leaked on Tuesday."
