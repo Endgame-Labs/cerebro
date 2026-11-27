@@ -289,7 +289,7 @@ def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = 
         if not until:
             result.tell("stage     extract: reading what the sources listed into facts, and linking them")
             if workspace.extraction is not None:
-                _finish_retracts(workspace, result)
+                _leave_no_retract_half_done(workspace, result)
             _link(workspace, _extract_all(workspace, sources, result) + _extract_kept(workspace, result), result)
             if workspace.lookup.extraction is not None:
                 _retry_told(workspace, result)
@@ -1780,7 +1780,7 @@ def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) 
     return True
 
 
-def _finish_retracts(workspace: Cerebro, result: PassResult) -> None:
+def _leave_no_retract_half_done(workspace: Cerebro, result: PassResult) -> None:
     """Finish each retract of a record whose take-back stopped partway, and say what it withdrew."""
     withdrawn, failed = finish_retracts(workspace.store, workspace.extraction,  # type: ignore[arg-type]
                                         stamp(workspace.clock()))
