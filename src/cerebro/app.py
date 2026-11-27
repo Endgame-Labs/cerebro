@@ -889,8 +889,8 @@ class Cerebro:
         it offers, or the compilation model as a list of proposals is arranged: the bundled prompt named `prompt`, or
         the workspace's ejected copy, with `$workspace` filled from `workspace.md`, and the `request`. Refused in one
         line, with nothing sent, when the model has no key, or when a question to the extraction model passes
-        `EXTRACTION_INPUT_BYTES`. Checked against the job's layer's cap before it is sent, and what it spent recorded
-        after, under the prompt's name, also when it failed. `asker` stands in for the model, as a test's does. The
+        `EXTRACTION_INPUT_BYTES`. Held to the job's layer's cap try by try, as `budget.Held` holds a call, under the
+        prompt's name. `asker` stands in for the model, as a test's does. The
         reply's text."""
         system = self._system(prompt)
         spec = self.models[job]
@@ -903,19 +903,12 @@ class Cerebro:
         asker = self.asker or PydanticRewriter.from_spec(spec, key=self._compile_key, masks=self.mask_every,
                                                          what=prompt, gateway=self.gateway,
                                                          max_tokens=32_000 if job == "compilation" else None)
-        self.ledger.check(job, self.clock(), spec)
-        try:
-            reply, usage = asker.rewrite(system, request)
-        except RewriteFailed as error:
-            self.ledger.record(job, self.clock(), spec, error.spent, prompt)
-            raise
-        self.ledger.record(job, self.clock(), spec, usage, prompt)
-        return reply
+        return Held(asker, self.ledger, job, spec, self.clock, prompt).rewrite(system, request)[0]
 
     def prove_key(self, job: str, spec: ModelSpec, value: str) -> None:
-        """Prove a key not yet kept with one small call on `spec`, the model of `job`, checked against the day's budget
-        first, so a model with no known price is refused under a daily cap before any call, with the runtime's line,
-        and what it spent recorded after, under `keys.PROOF`. A decision model is asked one yes or no on its decision
+        """Prove a key not yet kept with one small call on `spec`, the model of `job`, held to the day's budget try by
+        try as `budget.Held` holds a call, so a model with no known price is refused under a daily cap before any call,
+        with the runtime's line, and what it spent recorded under `keys.PROOF`. A decision model is asked one yes or no on its decision
         API; any other model is asked to reply with a word. `asker` stands in for the model, as a test's does. The
         value is masked from then on. Raises with why it did not verify."""
         from .keys import PROOF
@@ -923,7 +916,6 @@ class Cerebro:
         self.mask.add(value)
         value = NO_KEY if self.gateway.route(spec.provider).base_url else value  # a gateway gets no provider's key
         layer = "extraction" if job == "extraction" else "compilation"
-        self.ledger.check(layer, self.clock(), spec)
         if self.asker is None and spec.job == "decision" and PROVIDERS[spec.provider].decision_url:
             asked = HttpDecider(spec, key=lambda: value, route=self.gateway.route(spec.provider), call=PROOF)
             Held(asked, self.ledger, layer, spec, self.clock, PROOF).decide(
@@ -932,16 +924,14 @@ class Cerebro:
         asker = self.asker or PydanticRewriter.from_spec(spec, key=lambda provider: value, masks=self.mask_every,
                                                          what=PROOF, gateway=self.gateway)
         try:
-            _, usage = asker.rewrite("Reply with the word ok.", "ok")
+            Held(asker, self.ledger, layer, spec, self.clock, PROOF).rewrite("Reply with the word ok.", "ok")
         except RewriteFailed as error:
-            self.ledger.record(layer, self.clock(), spec, error.spent, PROOF)
             cause = error.__cause__  # the provider's reply may echo the key, which no mask holds before it is kept
             if cause is None:
                 raise
             status = getattr(cause, "status_code", None)
             raise RewriteFailed(f"the {PROOF} call failed: {type(cause).__name__}"
-                                + (f" (status {status})" if status is not None else ""), error.spent) from None
-        self.ledger.record(layer, self.clock(), spec, usage, PROOF)
+                                + (f" (status {status})" if status is not None else "")) from None
 
     # -- building connectors -------------------------------------------------------------------------------------------
     @property

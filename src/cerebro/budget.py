@@ -556,27 +556,34 @@ class Ledger:
 
 
 class Held(Decider):
-    """A decider held to `layer`'s cap call by call and try by try: each call, and each try of it again, is checked
-    against the ledger before it starts, and what each try spent is recorded right after it under `run`, a try that
-    failed at what it sent. `calls`, `usage` and `usd` total what it was asked and spent."""
+    """A decider, or a writing model asked one request (`run.Rewriter`), held to `layer`'s cap call by call and try
+    by try: each call, and each try of it again, is checked against the ledger before it starts, and what each try
+    spent is recorded right after it under `run`, a try that failed at what it sent. `calls`, `usage` and `usd` total
+    what it was asked and spent."""
 
-    def __init__(self, inner: Decider, ledger: Ledger, layer: str, model: ModelSpec, clock: Callable[[], datetime],
+    def __init__(self, inner: Any, ledger: Ledger, layer: str, model: ModelSpec, clock: Callable[[], datetime],
                  run: str):
         self.inner, self.ledger, self.layer, self.model, self.clock, self.run = inner, ledger, layer, model, clock, run
         self.calls, self.usage, self.usd = 0, TokenCount(), 0.0
         self._lock = threading.Lock()
 
     def decide(self, state: Any, questions: Mapping[str, Any]) -> Decision:
+        return self._held(lambda: self.inner.decide(state, questions), lambda decision: decision.usage)
+
+    def rewrite(self, system: str, request: str) -> tuple[str, Tokens]:
+        return self._held(lambda: self.inner.rewrite(system, request), lambda reply: reply[1])
+
+    def _held(self, call: Callable[[], Any], usage: Callable[[Any], Tokens]) -> Any:
         self.again()
         with self._lock:
             self.calls += 1
         tried = TRIES.set(self)
         try:
-            decision = self.inner.decide(state, questions)  # a call that raises gives no count of what it spent
+            out = call()  # a call that raises gives no count of what it spent: each try that failed told `spent`
         finally:
             TRIES.reset(tried)
-        self.spent(decision.usage)
-        return decision
+        self.spent(usage(out))
+        return out
 
     def again(self) -> None:
         self.ledger.check(self.layer, self.clock(), self.model)

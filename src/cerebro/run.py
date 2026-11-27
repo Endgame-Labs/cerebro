@@ -57,12 +57,12 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from . import prompts
 from .agent import Agent, Budget
 from .apps import ToolError
-from .budget import METER, MeterTurn, RoundCut, Stopped, cancelling
+from .budget import METER, BudgetSpent, MeterTurn, RoundCut, Stopped, cancelling
 from .clock import Clock, stamp, system_clock
 from .errors import ArgumentsRefused, CerebroError
 from .evidence import Evidence
 from .file import File
-from .models import RETRIES, WAIT_MOST, ModelSpec, TokenCount, Tried, cost, wire_id
+from .models import RETRIES, TRIES, WAIT_MOST, ModelSpec, TokenCount, Tried, cost, wire_id
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import BinaryContent, ModelMessage, ModelResponse
@@ -1466,17 +1466,27 @@ class PydanticRun(AgentRun):
 
 
 class RewriteFailed(CerebroError):
-    """A one-request call that failed after its provider was asked, with what it is held to have spent: `spent`."""
+    """A one-request call that failed after its provider was asked."""
 
-    def __init__(self, message: str, spent: TokenCount):
-        super().__init__(message)
-        self.spent = spent
+
+@dataclass(frozen=True)
+class _Sent:
+    """A caller's `Tried` for one request: a try that failed with no count of what it read is held at `tokens`."""
+
+    tried: Tried
+    tokens: int
+
+    def again(self) -> None:
+        self.tried.again()
+
+    def spent(self, usage: Any) -> None:
+        self.tried.spent(usage if usage is not None and usage.input_tokens else TokenCount(input_tokens=self.tokens))
 
 
 class Rewriter:
     """The seam a writing model asked one request implements: it reads `system` and `request` and gives its reply's
-    text and what the call spent. A call that fails once its provider was asked raises `RewriteFailed` with what it
-    spent."""
+    text and what the call spent. A call that fails once its provider was asked raises `RewriteFailed`. Each try of it
+    is told to the caller's `models.TRIES`, as a decision's are."""
 
     def rewrite(self, system: str, request: str) -> tuple[str, TokenCount]:
         raise NotImplementedError
@@ -1513,20 +1523,20 @@ class PydanticRewriter(Rewriter):
         model: Any = model_name(block)
         route = self.gateway.route(model.partition(":")[0]) if self.gateway is not None else None
         sent = {"extra_headers": route.sent(self.what)} if route is not None and route.headers else {}
-        model = _provided(model, self.key, route)
+        tried = TRIES.get()
+        model = _provided(model, self.key, route, _Sent(tried, tokens(system + request)) if tried else None)
         from pydantic_ai.exceptions import UserError
 
         try:
             reply = model_request_sync(model, [ModelRequest(parts=[SystemPromptPart(system), UserPromptPart(request)])],
                                        model_settings={**model_settings(block), **sent, "max_tokens": self.max_tokens})
-        except UserError:
-            raise  # refused before any request was sent, such as for a missing key
-        except Exception as error:  # the provider was asked: what it read is held as spent, since no count came back
+        except (UserError, BudgetSpent):
+            raise  # refused before a request was sent, such as for a missing key, or before a try at the cap
+        except Exception as error:  # the provider was asked: each try that failed was told to `tried` as it failed
             if route is not None and isinstance(status := getattr(error, "status_code", None), int):
                 route.refused(status, self.what)
             said = self.masks()(str(error)) if self.masks is not None else str(error)  # masked whole, then cut
-            raise RewriteFailed(f"the {self.what} call failed: {type(error).__name__}: {said[:300]}",
-                                TokenCount(input_tokens=tokens(system + request))) from error
+            raise RewriteFailed(f"the {self.what} call failed: {type(error).__name__}: {said[:300]}") from error
         u = reply.usage
         return ("".join(p.content for p in reply.parts if isinstance(p, TextPart)),
                 TokenCount(u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens))

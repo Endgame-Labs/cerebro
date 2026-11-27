@@ -257,11 +257,17 @@ def _proof_road(tmp_path: Path, decider: Any, store: Any) -> None:
     workspace.prove_key("decision", RUNE, "k-proof")
 
 
+def _rerank_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    DecisionReranker(decider, ledger=Ledger(store, CAPS), decision=RUNE, clock=lambda: NOW).order(
+        "a thing", [Hit("f1", 1.0, {"kind": FACT, "text": "A thing moved."})])
+
+
 CAPS = Caps(extraction=1.0, compilation=1.0, evaluation=1.0)
 # Each decision caller that tries a call again, by the layer it spends, as it builds and holds its decider.
 TRIED = {"grounding judge": ("compilation", _grounding_road), "keep judge": ("compilation", _keep_road),
          "tell sort": ("extraction", _sort_road), "near-match judge": ("extraction", _near_road),
-         "eval judge": ("evaluation", _eval_road), "key proof": ("compilation", _proof_road)}
+         "eval judge": ("evaluation", _eval_road), "key proof": ("compilation", _proof_road),
+         "rerank": ("rerank", _rerank_road)}
 
 
 @pytest.mark.parametrize("road", list(TRIED))
@@ -275,7 +281,7 @@ def test_each_try_of_a_decision_call_is_checked_against_the_cap_before_it_starts
     store, net = SQLiteStore(), Network(503)
 
     def meet(_: float) -> None:  # while the first try waits to go again, calls side by side meet every cap
-        for spent in ("extraction", "compilation", "evaluation"):
+        for spent in ("extraction", "compilation", "evaluation", "rerank"):
             Ledger(store, CAPS).record(spent, NOW, RUNE, TokenCount(input_tokens=10**9), "side by side")
 
     def flaky(spec: ModelSpec, **kw: Any) -> HttpDecider:
@@ -290,3 +296,37 @@ def test_each_try_of_a_decision_call_is_checked_against_the_cap_before_it_starts
     paid = [r for r in store.rows(LOG, {"layer": layer}) if r.data["run"] != "side by side"
             and r.data["model"] in (RUNE.model, DEFAULTS["decision"].model)]
     assert len(paid) == 1, [r.data for r in store.rows(LOG)]  # the try that failed counts
+
+
+def test_each_try_of_a_writing_models_call_is_checked_against_the_cap_before_it_starts_and_a_failed_try_counts(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+    import pydantic_ai.models
+    import pydantic_ai.providers
+    from openai import AsyncOpenAI
+
+    from cerebro import scaffold
+    from cerebro.app import Cerebro
+
+    store, sent = SQLiteStore(), []
+    root = scaffold.init(tmp_path / "wiki", daily_usd=None, timezone="UTC", environ={}).root
+    workspace = Cerebro(root, store=store, clock=lambda: NOW, trusted=True)  # left open: the test reads its store
+    workspace.ledger = Ledger(store, CAPS)
+
+    def erred(request: httpx.Request) -> httpx.Response:  # a server error, while calls side by side meet the cap
+        sent.append(request.url)
+        Ledger(store, CAPS).record("extraction", NOW, RUNE, TokenCount(input_tokens=10**9), "side by side")
+        return httpx.Response(503, headers={"retry-after": "0"})
+
+    made = pydantic_ai.providers.infer_provider_class
+    monkeypatch.setattr(pydantic_ai.providers, "infer_provider_class", lambda name: lambda **kw: made(name)(
+        openai_client=AsyncOpenAI(api_key=kw["api_key"], max_retries=0,
+                                  http_client=httpx.AsyncClient(transport=httpx.MockTransport(erred)))))
+    monkeypatch.setattr(pydantic_ai.models, "ALLOW_MODEL_REQUESTS", True)
+    monkeypatch.setattr("cerebro.run.WAIT_MOST", 0)
+    monkeypatch.setenv(workspace.models["extraction"].variable, "k")
+    with pytest.raises(BudgetSpent):
+        workspace.ask_model("slack-channel-grouping", "{}")
+    assert len(sent) == 1, f"{len(sent)} tries started; the second after the cap was met"
+    paid = [r for r in store.rows(LOG, {"layer": "extraction"}) if r.data["run"] != "side by side"]
+    assert len(paid) == 1 and paid[0].data["usd"] > 0  # the try that failed counts, at what it sent
