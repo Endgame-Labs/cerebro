@@ -1,0 +1,19 @@
+kind: files
+window: { behind: all }
+select:
+  - glob: data/routes.csv
+    rows: csv
+    extract: facts
+    fields: { name: "{row.name}", description: "{row.description}" }
+    id: "{row.route_id}"
+    at: "{row.date}"
+    into: routes
+    identity: { route_id: "{row.route_id}" }
+  - glob: data/stops.csv
+    rows: csv
+    extract: facts
+    fields: { name: "{row.name}", description: "{row.description}" }
+    id: "{row.stop_id}"
+    at: "{row.date}"
+    into: stops
+    identity: { stop_id: "{row.stop_id}" }
