@@ -49,6 +49,8 @@ The folder under `agents/` is the collection. The file's name says what the agen
 | `projects/curator.md` | Decides which articles `projects` holds |
 | `projects/subagents/<name>.md` | Writes one part of each article, for the `article.md` beside it |
 
+The title comes from the file's name, so `reports/weekly-briefing.md` writes "Weekly briefing". A new name starts a new article at the new path, and the old one stays until you archive it, which needs a curator: run `cerebro agents new reports/curator`, then `cerebro archive reports/week`.
+
 `cerebro agents new` writes a starting file for each. `cerebro agents list` shows each agent's id, its job and when it runs, and names any file that doesn't load and why:
 
 ```text
@@ -268,7 +270,7 @@ Atlas moves to spring because the audit runs late [^fact_01m7p4qga4pxpjkgvf].[^u
 [^unsupported]: Not fully backed by the facts it cites.
 ```
 
-When a person takes a fact back, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
+When you take a fact back, at the command line or through a client over MCP or the JSON API, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
 
 The floor is 0.6. Set `min_grounding` in an agent's front matter to change it for that agent, or in `settings.yaml` for every agent:
 

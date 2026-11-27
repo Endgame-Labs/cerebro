@@ -20,6 +20,7 @@ from cerebro.agent import Agent, Budget
 from cerebro.run import (
     CUT_NOTHING,
     HANDED_NOTHING,
+    MALFORMED,
     SPENT_NOTHING,
     STANDS,
     TOOK_REPLY,
@@ -266,7 +267,8 @@ def test_a_run_the_loop_ends_on_a_call_it_refuses_twice_fails_with_the_error_and
     for name, make in cases.items():
         run = PydanticRun(_each(make)).run(AGENT, EVIDENCE, [lookup], Budget())
         assert run.status == "failed" and run.result is None, (name, run.status, run.note)
-        assert run.note.startswith("UnexpectedModelBehavior: "), (name, run.note)
+        plain = name == "a malformed hand-in"  # the library's words for hand-ins asked for again, in plain ones
+        assert run.note == MALFORMED if plain else run.note.startswith("UnexpectedModelBehavior: "), (name, run.note)
 
 
 def test_an_uncited_hand_in_then_plain_text_lands_the_held_text() -> None:

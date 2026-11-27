@@ -85,7 +85,20 @@ from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
 from .records import RETRACTS, proposals
 from .reply import outside
-from .run import REVIEW, RUN_ID, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, new_run_id, tokens
+from .run import (
+    FAILED_AFTER,
+    REVIEW,
+    RUN_ID,
+    STANDS,
+    STOPPED,
+    WROTE_NOTHING,
+    AgentRun,
+    Run,
+    Usage,
+    masked,
+    new_run_id,
+    tokens,
+)
 from .secrets import MARK
 from .store import PropertyError, Store, StoreError, check_value, own_key, update_state
 from .tokens import MASKED
@@ -908,7 +921,8 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
         return Compiled(run, store.article(article), skipped=True, waiting=str(left), left_alone=str(left), runs=[run])
     _scored(store, run, editor)
     short = [] if run.status == "done" else [f"its run {run.status} ({run.note})"]
-    short += [line for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)] if run.status == "done" else []
+    short += [line for line in run.note.split("; ") if line.startswith((SUMMARY_NOTE, FAILED_AFTER))] \
+        if run.status == "done" else []
     return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=[*short, *noted],
                                                     cleaned=again), grounding)
 
@@ -1388,8 +1402,9 @@ class _Composing:
         self.compiled = Compiled(None, None, runs=[run for n, run in self.ran.items() if n not in self.holds])
         self.failed = [n for n, run in self.ran.items() if run.status not in ("done", WROTE_NOTHING)
                        and not (run.status == "budget spent" and run.result)]
-        self.compiled.notes += [line for n, run in self.ran.items() if n not in self.failed
-                                for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)]
+        self.compiled.notes += [line if line.startswith(SUMMARY_NOTE) else f"{subs[n].id}: {line}"
+                                for n, run in self.ran.items() if n not in self.failed
+                                for line in run.note.split("; ") if line.startswith((SUMMARY_NOTE, FAILED_AFTER))]
         for n in self.failed:
             if n in self.holds:
                 self.compiled.notes.append(f"{subs[n].id}: held for room under the cap ({self.ran[n].note}), so what "
@@ -1487,6 +1502,8 @@ class _Composing:
         if own is not None and own.result is not None and own.status in ("done", "budget spent"):
             text, dropped = _landing(self.editor, composer, own.result.text)
             self.compiled.dropped += dropped
+            self.compiled.notes += [f"{composer.id}: {line}" for line in own.note.split("; ")
+                                    if line.startswith(FAILED_AFTER)]
             if text:
                 self.plan = [_Part(composer.id, composer.id, text, self.everything, own.started_at, own.ended_at,
                                    whole=True)]

@@ -234,7 +234,7 @@ SLICE = ["r01", "r02", "r05", "r09", "y01"]  # each cites facts of its own, so a
 
 def test_the_grounding_cases_run_through_the_same_entry_point_and_score_as_labelled() -> None:
     suite = load(GROUND)
-    assert suite.kind == "ground" and len(suite.cases) == 258
+    assert suite.kind == "ground" and len(suite.cases) == 259
     cases = corpus_ids()
     cited = {id: frozenset(re.findall(r"\[\^([^\]\s]+)\]", cases[id]["sentence"])) for id in SLICE}
     assert len(set(cited.values())) == len(SLICE)
@@ -288,20 +288,20 @@ def test_what_a_test_does_to_its_corpus_report_leaves_the_run_the_next_test_is_h
         corpus_report: Any, corpus_run: Any) -> None:
     corpus_report.scored.clear()
     corpus_report.groups["all"].supported = -1
-    assert len(corpus_run.scored) == 258 and corpus_run.groups["all"].supported == 111
+    assert len(corpus_run.scored) == 259 and corpus_run.groups["all"].supported == 111
 
 
 def test_the_whole_corpus_runs_case_by_case_and_with_no_decision_model_each_case_is_unscored(
         corpus_report: Any) -> None:
     report = corpus_report
-    assert len(report.scored) == 258 and not report.unscored and report.calls == 258
+    assert len(report.scored) == 259 and not report.unscored and report.calls == 259
     groups = report.groups
     assert set(groups) == {"all", "rows", "sense", "claims", "held_out", "structure", "steering", "lead_value", "joins",
                            "saves", "expired", "roles", "data", "planted", "voice", "injection"}
-    assert groups["all"].supported == 111 and groups["all"].unsupported == 147
+    assert groups["all"].supported == 111 and groups["all"].unsupported == 148
     assert groups["all"].scored == sum(g.scored for name, g in groups.items() if name != "all")
     printed = lines(report)
-    assert printed[0].startswith("corpus: ground, 258 cases, judge ") and ", score " in printed[0]
+    assert printed[0].startswith("corpus: ground, 259 cases, judge ") and ", score " in printed[0]
     assert printed[1].startswith("all: supported at or above 0.6 111 of 111 ")
     quiet = run(None, load(GROUND), group="steering")
     assert len(quiet.unscored) == 4 and quiet.score is None and quiet.calls == 0

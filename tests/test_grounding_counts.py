@@ -205,7 +205,7 @@ def test_off_a_terminal_and_in_status_the_latest_runs_counts_are_said(
     assert said is None or "marked" in said
     with cli.open_workspace(root) as workspace:
         extraction = workspace.extraction.handler  # the stand-in facts layer the pass filled
-    labels = Saying(lambda ids: {"Summary": "Risks:", "Detail": "Next steps:"})  # no sentence to score
+    labels = Saying(lambda ids: {"Summary": "Risks:", "Detail": "Next steps:"})  # each scored, backed by the fake judge
     monkeypatch.setattr(cli, "open_workspace", lambda path: Cerebro(path, agent_run=labels, extraction=extraction,
                                                                 clock=lambda: datetime(2026, 11, 18, 9, tzinfo=UTC),
                                                                 decider=FakeDecider()))
