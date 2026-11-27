@@ -1,12 +1,18 @@
 """The words a citation of a fact shows: the quotes the fact kept when it was extracted, the sentences its
-extraction cited as stating it, and never a sentence code guessed, nor words the source does not hold."""
+extraction cited as stating it, each under the record it is in, and never a sentence code guessed, nor words the
+source does not hold."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from test_facts import on_factoid
+
 from cerebro.article import Article, Compilation, Identity, markdown
+from cerebro.connector import Record
 from cerebro.evidence import _item
 from cerebro.facts import Fact, Quote
-from cerebro.ground import QUOTE_BOUND, quote_for
+from cerebro.ground import QUOTE_BOUND, fields_of, quote_for
 
 HARBOR = ("Mara Okafor said the Harbor beta moves from 2 December to 9 December, because the data export is not "
           "finished.\nBen Ito owns the data export and expects to finish it by 4 December.\nThe beta starts with "
@@ -40,6 +46,21 @@ def test_the_quickstart_note_quoted_sentence_by_sentence_gives_each_fact_the_sen
     item = _item(facts[2])
     assert item.text == (f'- [^fact_c] Ben Ito expects to finish the data export by 4 December. (quote: "{second}", '
                          "local/2026-11-16-harbor-sync.md)")
+
+
+def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_record(tmp_path: Path) -> None:
+    handler, models = on_factoid(tmp_path)
+    models.pairs = "duplicate"  # the second record states the first one's fact again, so Factoid adds its quote
+    handler.extract(Record(id="local/a.md", source="local", revision="1", body="Vega leads the review."))
+    handler.extract(Record(id="local/b.md", source="local", revision="1",
+                           body="Orion signs the plan.\n\nVega leads the review, as agreed."))
+    told = next(f for f in handler.facts() if f.record == "local/a.md")
+    handler.close()
+    own, again = '"Vega leads the review."', '"Vega leads the review, as agreed."'
+    assert [line for line in copy_of([told]).splitlines() if line.startswith("[^")] == [
+        f"[^{told.id}]: local/a.md {own} · local/b.md {again}"]  # passages 1 and 2, of two records: no neighbours
+    assert _item(told).text == f"- [^{told.id}] {told.text} (quote: {own} · local/b.md {again}, local/a.md)"
+    assert fields_of(told.id, None, told)["more_sources"] == [{"quote": again[1:-1], "record": "local/b.md"}]
 
 
 def test_a_fact_that_kept_a_whole_passage_shows_it_and_never_a_sentence_guessed_from_shared_words() -> None:

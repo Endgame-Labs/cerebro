@@ -203,18 +203,23 @@ def _bounded(text: str, bound: int = QUOTE_BOUND) -> str:
 
 
 def quote_for(fact: Fact) -> str:
-    """The words of the source a citation of `fact` shows, on one line: the quotes the fact kept, each once, in the
-    record's order when their passages are known, up to `QUOTE_BOUND` characters, cut at a word. Quotes next to each
-    other in the record join with a space, others with ` … `. No code guesses which sentence holds a fact."""
-    kept: dict[str, int] = {}
+    """The words of the source a citation of `fact` shows, on one line after the name of the fact's record: the quotes
+    the fact kept, each once, its record's first, each record's in its order when their passages are known, up to
+    `QUOTE_BOUND` characters, cut at a word. Quotes next to each other in one record join with a space, others with
+    ` … `, and another record's follow ` · `, its name and a quotation mark, as in `a.md "…" · b.md "…"`. No code
+    guesses which sentence holds a fact."""
+    kept: dict[tuple[str, str], int] = {}
     for q in fact.quotes:
         if q.text.strip():
-            kept.setdefault(" ".join(q.text.split()), q.passage)
-    quotes = sorted(kept.items(), key=lambda kv: kv[1]) if all(kept.values()) else list(kept.items())
+            kept.setdefault((q.record or fact.record, " ".join(q.text.split())), q.passage)
+    order = {r: i for i, r in enumerate(dict.fromkeys([fact.record, *(r for r, _ in kept)]))}
+    known = all(kept.values())
+    quotes = sorted(kept.items(), key=lambda kv: (order[kv[0][0]], kv[1] if known else 0))
     shown = ""
-    for i, (text, n) in enumerate(quotes):
-        next_to = i > 0 and n > 0 and quotes[i - 1][1] > 0 and n == quotes[i - 1][1] + 1
-        shown += text if i == 0 else (" " if next_to else " … ") + text
+    for i, ((record, text), n) in enumerate(quotes):
+        (was, _), m = quotes[i - 1] if i else ((fact.record, ""), 0)
+        next_to = i > 0 and n > 0 and m > 0 and n == m + 1
+        shown += (f'" · {record} "' if record != was else " " if next_to else " … " if i else "") + text
     return _bounded(shown)
 
 
@@ -264,8 +269,8 @@ def fields_of(id: str, citation: Citation | None, fact: Fact | None, text: str =
             fields["about"] = fact.subject
         if stated := _stated_on(fact.at):
             fields["stated_on"] = stated
-        sources = [{k: v for k, v in (("speaker", q.speaker.strip()),
-                                      ("quote", " ".join(q.text.split())), ("record", fact.record)) if v}
+        sources = [{k: v for k, v in (("speaker", q.speaker.strip()), ("quote", " ".join(q.text.split())),
+                                      ("record", q.record or fact.record)) if v}
                    for q in fact.quotes] or [{k: v for k, v in (("record", fact.record),) if v}]
         fields |= sources[0]
         if sources[1:]:
