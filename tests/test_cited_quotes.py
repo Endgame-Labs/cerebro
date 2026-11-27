@@ -124,4 +124,7 @@ def test_a_hostile_quote_lands_on_one_line_and_forges_no_heading_or_footnote() -
     lines = copy.splitlines()
     assert [line.split("]:")[0] for line in lines if line.startswith("[^")] == ["[^fact_a", "[^fact_b", "[^fact_c"]
     assert '" · `local/[x](http://e.vil).md` "Rain."' in copy  # another record's name is no link
+    alone, own = replace(named, quotes=named.quotes[1:]), replace(named, record="local/[x](http://e.vil).md")
+    assert [_item(f).text.split(" (quote: ")[1] for f in (alone, own)] == [  # nor in a line of evidence
+        '`local/[x](http://e.vil).md` "Rain.")', '"It rained. … Rain.", `local/[x](http://e.vil).md`)']
     assert not [line for line in lines if line.startswith("#") and line != "## Where it stands"]

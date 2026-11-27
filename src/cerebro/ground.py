@@ -250,12 +250,13 @@ def quote_named(fact: Fact) -> str:
 def quote_line(fact: Fact) -> str:
     """`quote_for` as a line of evidence gives it: after it the fact's record, as ` (quote: "…", a.md)`, or when it
     holds another record's words, before it the record they start with, as the footnote has it:
-    ` (quote: a.md "…" · b.md "…")`. Empty for no quote."""
+    ` (quote: a.md "…" · b.md "…")`, each name as `inert` shows it. Empty for no quote."""
     quote = quote_for(fact)
     if not quote:
         return ""
-    one = all(record == fact.record for record, _ in _quoted(fact))
-    return f' (quote: "{quote}", {fact.record})' if one else f' (quote: {citation_of(fact).source} "{quote}")'
+    if all(record == fact.record for record, _ in _quoted(fact)):
+        return f' (quote: "{quote}", {inert(fact.record)})'
+    return f' (quote: {inert(citation_of(fact).source)} "{quote}")'
 
 
 def _stated_on(at: str) -> str:
