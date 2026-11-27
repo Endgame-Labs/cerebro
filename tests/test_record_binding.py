@@ -96,6 +96,21 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
     assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # back by its own record: no merge asked
 
 
+@pytest.mark.parametrize("names", [["Ann Lee"], None])  # a subject by its name alone, or with the record's keys
+def test_a_fact_whose_subject_is_its_records_own_name_ties_to_no_article_the_record_is_told_apart_from(
+        tmp_path: Path, names: list[str] | None) -> None:
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    other = Record(id="2", source="src", revision="1", at="2026-11-10", body="Ann Lee joined Birch as CFO.",
+                   keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]}, fields={"subject": "Ann Lee"})
+    workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=names),
+                        connectors=[FakeConnector("src", [other])])  # no curator: every record is read
+    workspace.store.create(Identity("things/ann-lee", "things", "Ann Lee",
+                                    {"name": ["Ann Lee"], "email": ["ann@alder.example"]}, "active"))
+    workspace.run_once(agents=False)
+    assert [f.subject for f in workspace.extraction.facts(record="2")] == ["Ann Lee"]
+    assert workspace.store.facts_of("things/ann-lee") == []
+
+
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:
     store = MemoryStore()
     record = _part("4", "ann@alder.example")
