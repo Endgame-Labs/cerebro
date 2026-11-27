@@ -571,9 +571,10 @@ def _row_revision(row: _Row) -> str:
 
 
 def _row_text(row: _Row) -> str:
-    """A row as text, one column a line. A column with no value is left out, since the facts layer joins a passage's
-    lines and would read the next column's name as its value."""
-    return "".join(f"{column}: {value}\n" for column in row.order() if (value := _scalar(row.values[column])))
+    """A row as text, one column a line. A column with no value, or only spaces, is left out, since the facts layer
+    joins a passage's lines and would read the next column's name as its value."""
+    return "".join(f"{column}: {value}\n" for column in row.order()
+                   if (value := _scalar(row.values[column])).strip())
 
 
 def _not_utf8(row: _Row) -> str:
