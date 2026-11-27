@@ -1,5 +1,6 @@
 """Model calls through the `providers:` block: every road goes to its `base_url` with its headers, a refusal that
-means stop is one request and stops the pass, trust pins the host, and `status` names it."""
+means stop is one request and stops the pass, a 400 fails its call alone, trust pins the host, and `status` names
+it."""
 
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from cerebro.agent import Agent, Budget
 from cerebro.app import Cerebro
 from cerebro.budget import CallRefused
 from cerebro.connector import Record
+from cerebro.errors import CerebroError
 from cerebro.facts import FactoidExtraction
 from cerebro.models import ModelSpec, YesNo
 from cerebro.project import WorkspaceError, load
@@ -181,6 +183,26 @@ def test_a_403_through_base_url_is_one_request_says_no_secret_it_echoes_and_stop
         assert "HTTP 403 at 09:00 UTC" in workspace.gateway.said
         with pytest.raises(CallRefused):
             workspace.ledger.check("compilation", NOW)
+
+
+@pytest.mark.parametrize(("road", "hint"), [
+    ("decision", "jev-1.13.0 answered HTTP 400: check the model id and the request"),
+    ("facts layer", ": check the extraction model; the record is tried again next pass"),
+])
+def test_a_400_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(
+        tmp_path: Path, gateway: Gateway, road: str, hint: str) -> None:
+    """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, and what a
+    road says of it sending the person to their key or to the gateway's settings."""
+    call, _, _ = ROADS[road]
+    gateway.status = 400
+    with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
+        with pytest.raises(CerebroError) as failed:
+            call(workspace)
+        assert len(gateway.sent) == 1 and str(failed.value).endswith(hint), str(failed.value)
+        gateway.status = 0
+        workspace.ledger.check("compilation", NOW)
+        call(workspace)
+        assert len(gateway.sent) > 1 and workspace.gateway.said == ""
 
 
 def test_a_refused_pass_stops_after_one_request_with_its_stop_line_and_never_prints_the_secret_header(

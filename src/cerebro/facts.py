@@ -1105,7 +1105,7 @@ class FactoidExtraction(Extraction):
         def failed(error: Exception) -> str:
             said = f"record {record.id} of {record.source}: factoid failed: {error}"
             if _factoids_own(error):
-                return f"{said}: check the extraction model and its key; the record is tried again next pass"
+                return f"{said}: check the extraction model; the record is tried again next pass"
             return said
 
         with _active(self.app) as app:
