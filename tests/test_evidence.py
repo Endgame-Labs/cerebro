@@ -189,6 +189,8 @@ def test_a_query_line_on_facts_takes_a_list_of_classes_or_kinds_as_a_facts_line_
     both, one = gather(reader, StoreLookup(MemoryStore(), extraction), {}, this="parts/one")
     assert sorted(c.source for c in both.citations) == ["alpha", "beta"] and [c.source for c in one.citations] == [
         "gamma"]
+    with pytest.raises(AgentFileError, match=r"evidence 1, query kind is not a class or a list of them"):
+        agent(tmp_path, "parts/article.md", "evidence:\n  - query: { from: facts, kind: [{ a: b }] }\n")
 
 
 def test_an_article_about_another_reads_it_its_fields_and_its_summary_and_a_limit_is_said(tmp_path: Path) -> None:
