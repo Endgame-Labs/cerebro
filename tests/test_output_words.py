@@ -302,8 +302,8 @@ def test_the_admit_lines_the_review_and_connect_waits_the_cooldown_and_the_compi
 
 def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_page() -> None:
     """The lines a run gives the model or a person about its hand-in and its room: the line that names the article
-    it writes, the note on a reply taken as text, on a run that handed in nothing at each ending, the step and a
-    pass's line, its cost split into writing and checks, of a run that ran and wrote nothing, the line to decide
+    it writes, the note on a reply taken as text, on a run that handed in nothing at each ending, the step and the
+    pass's line of a run that ran and wrote nothing, with its cost split into writing and checks, the line to decide
     now, the note before a curator's turn, and what a curator out of room or calls is told, which never asks it to
     hand in text, since it hands in none."""
     from types import SimpleNamespace
