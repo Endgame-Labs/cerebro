@@ -518,22 +518,49 @@ def test_a_persons_instruction_reaches_the_writer_at_its_next_run(tmp_path: Path
     assert "Lead with the risk." in prompts[-1]
 
 
-def test_a_citation_of_a_persons_instruction_is_found_and_one_of_nothing_lands_shown_as_not_found(
+def test_a_persons_instruction_is_cited_by_its_record_and_an_agents_waiting_ask_lands_shown_as_not_found(
         tmp_path: Path) -> None:
     from cerebro.article import markdown
+    from cerebro.records import Proposal, propose
 
     store, _, _, common = setup(tmp_path)
     store.create(Identity("reports/weekly", "reports", "Weekly"))
-    common["lookup"].tell(Caller("you", "person"), "Lead with the risk.", "reports/weekly", as_="proposal")
+    told = common["lookup"].tell(Caller("you", "person"), "Lead with the risk.", "reports/weekly", as_="proposal")
+    propose(store, Proposal("prop_agent1", "article.archive", "reports/weekly", Caller("reports/curator", "agent"),
+                            "2026-11-20T00:00:00Z", reason="Weekly lost its owner."))
 
     def write(prompt: str) -> dict[str, str]:
         asked = re.search(r"\[\^(\S+?)\] instruction from you", prompt)
-        return {"Summary": f"The risk leads [^{asked.group(1)}]. It slipped [^nope]."}  # type: ignore[union-attr]
+        assert "- [prop_agent1] waiting archive from reports/curator" in prompt  # shown, with no id to cite
+        return {"Summary": f"The risk leads [^{asked.group(1)}]. It lost its owner [^prop_agent1]."}  # type: ignore[union-attr]
 
     compiled = compile_article(AGENT, agent_run=ScriptedRun(write), **common)
     [part] = compiled.article.compilations
-    assert [c.kind for c in part.citations] == ["proposal"] and "It slipped [^nope]." in body(compiled.article)
-    assert "[^nope]: not found" in markdown(compiled.article)
+    assert [(c.kind, c.id) for c in part.citations] == [("record", told.record)]
+    assert "[^prop_agent1]: not found" in markdown(compiled.article)
+
+
+@pytest.mark.parametrize("role", ["writer", "subagent"])
+def test_an_article_read_by_tool_is_cited_as_found_and_the_judge_reads_its_text(tmp_path: Path, role: str) -> None:
+    from cerebro.article import Compilation, markdown
+    from cerebro.fakes import FakeDecider
+
+    agents = workspace(tmp_path, {"briefs/article.md": BRIEF.replace("[risks, people]", "[risks]"),
+                                  "briefs/subagents/risks.md": part("Risks")})
+    store, _, _, common = setup(tmp_path)
+    store.create(Identity("things/beta", "things", "Beta"))
+    store.write_compilation(Compilation("things/beta", "things/beta", "Beta ships in May.", by="x", whole=True))
+    store.create(Identity("briefs/alder", "briefs", "Alder"))
+    reads = ScriptedRun(lambda p: "Beta ships in May [^things/beta].", calls=[("read", {"ids": ["things/beta"]})])
+    decider = FakeDecider()
+    if role == "writer":
+        compiled = compile_article(AGENT, agent_run=reads, decider=decider, **common)
+    else:
+        run = ByAgent({"briefs/subagents/risks": reads, "briefs/article": ScriptedRun(lambda p: "")})
+        compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider,
+                                   **common)
+    assert "Beta ships in May." in decider.asked[0][0]["facts"]["things/beta"]["text"]
+    assert "[^things/beta]: not found" not in markdown(compiled.article)
 
 
 def test_a_composer_stopped_by_the_cap_leaves_the_paid_drafts_standing(tmp_path: Path) -> None:

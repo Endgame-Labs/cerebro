@@ -51,7 +51,7 @@ from .article import (
     Compilation,
     Identity,
     Property,
-    fields,
+    body,
     mirror,
     pieces,
     protected,
@@ -72,6 +72,7 @@ from .evidence import (
     Item,
     LastSets,
     Starter,
+    _front,
     digest,
     digest_of,
     fingerprint,
@@ -182,7 +183,9 @@ def _refuse_role(agent: Agent) -> None:
 def _inbox(store: Store, agent: Agent, article: str) -> list[Evidence]:
     """What people left for this agent, as one evidence entry, or none: each accepted instruction for its article, its
     collection or the agent itself, and each waiting proposal about its article, oldest first. It
-    counts in the digest, so a new one makes the agent due, and it is picked up at its next run, like inbound mail."""
+    counts in the digest, so a new one makes the agent due, and it is picked up at its next run, like inbound mail.
+    Only a person's instruction may be cited, by the record that carried it: a curator's is context and never a
+    source, and a waiting proposal is an ask, not a fact."""
     from .curate import standing  # imported here: curate runs its agents through this module
 
     collection = article.rpartition("/")[0]
@@ -199,8 +202,9 @@ def _inbox(store: Store, agent: Agent, article: str) -> list[Evidence]:
         what = "instruction" if p.kind == "article.instruct" else f"waiting {p.kind.partition('.')[2] or p.kind}"
         what = f"the curator's {what}, context and never a source," if p.by.kind == "agent" and \
             p.kind == "article.instruct" else what
-        text = f"- [^{p.id}] {what} from {p.by.name} ({p.by.kind}), {p.at[:10]}: {said}"
-        items.append(Item(f"proposal:{p.id}:{p.status}", text, [Citation("proposal", p.id, p.target, said)]))
+        record = p.cites[0] if p.kind == "article.instruct" and p.by.kind == "person" and p.cites else ""
+        text = f"- {f'[^{record}]' if record else f'[{p.id}]'} {what} from {p.by.name} ({p.by.kind}), {p.at[:10]}: {said}"
+        items.append(Item(f"proposal:{p.id}:{p.status}", text, [Citation("record", record, record, said)] if record else []))
     return [Evidence(INBOX, [item.text for item in items], [c for item in items for c in item.citations], items=items,
                      spelled="inbox")]
 
@@ -360,20 +364,17 @@ def _by_tool(read: list[Fact | Article]) -> list[Evidence]:
 
 
 def _articles_read(read: list[Fact | Article]) -> list[Evidence]:
-    """The articles a run read through its tools, as an entry that lets it cite them, which counts in no digest: an
-    article moves at every write, and its facts move a reader's digest already."""
+    """The articles a run read through its tools, as an entry that lets it cite them, each line its title, fields and
+    text, as the run read it, which counts in no digest: an article moves at every write, and its facts move a
+    reader's digest already."""
     found = {a.identity.id: a for a in read if isinstance(a, Article)}
     if not found:
         return []
-    lines = [f"- [^{id}] {a.identity.title}: {json.dumps(_fields(a), sort_keys=True, default=str)}"
+    lines = [f"- [^{id}] {a.identity.title}: {json.dumps(_front(a), sort_keys=True, default=str)}\n\n{body(a)}"
              for id, a in sorted(found.items())]
     return [Evidence(BY_TOOL, lines, citations=[Citation("article", id, id) for id in sorted(found)],
                      items=[Item(f"article:{id}", line, [Citation("article", id, id)])
                             for id, line in zip(sorted(found), lines)])]
-
-
-def _fields(article: Article) -> dict[str, Any]:
-    return {name: prop.value for name, prop in fields(article).items()}
 
 
 def _tool_reads(agent: Agent, article: str) -> str:
@@ -649,7 +650,8 @@ class _Grounding:
             wanted = [id for id in ids if id in citable and id not in facts]
             if wanted and self.lookup.extraction is not None:
                 facts |= {f.id: f for f in self.lookup.extraction.facts(ids=wanted)}
-            texts = {c.id: item.text for entry in entries for item in entry.items if item.text in entry.lines
+            scrub = self.lookup.store.scrubbing() or (lambda text: text)
+            texts = {c.id: scrub(item.text) for entry in entries for item in entry.items if item.text in entry.lines
                      for c in item.citations}
             cited = {id: facts[id] for id in ids if id in facts}
             stale, sides = self.stale(cited), own_sides(self.lookup.store.record, cited.values())
@@ -1259,6 +1261,7 @@ class _Composing:
         self.own_tools: list[Callable[..., Any]] = []
         self.sub_writes: dict[int, _Writes] = {}  # the fields each subagent's run sets
         self.editors: dict[int, Editor] = {}  # what scores each subagent's run
+        self.sub_seen: dict[int, list[Fact | Article]] = {}  # what each subagent's run read by its tools
         self.holds: dict[int, BudgetSpent] = {}  # the subagents refused under the cap before they ran
         self.rows: dict[str, Compilation] = {}  # each subagent's part on the article, by its id
         self.ran: dict[int, Run] = {}  # each subagent's run
@@ -1273,7 +1276,8 @@ class _Composing:
         self.writes = _Writes(article, c.store, composer.id)  # the fields the agent's own run sets
         self.own: Run | None = None  # the agent's own run, when it ran
         self.editor = c.grounding.editor(composer, lambda: [  # what scores the agent's own run, on all it read
-            *self.lead, *_by_tool(self.own_seen), *_articles_read(self.own_seen), *(e for r in self.reads for e in r)])
+            *self.lead, *_by_tool(self.own_seen), *_articles_read(self.own_seen), *(e for r in self.reads for e in r),
+            *_articles_read([a for seen in self.sub_seen.values() for a in seen])])
         # plan_own, join and settle
         self.plan: list[_Part] = []  # the parts that land
         self.drafts: set[int] = set()  # drafts returned since the agent last composed, never landed
@@ -1345,7 +1349,7 @@ class _Composing:
         article's run failed when one of them failed. A stop of serve is raised once what the others returned is
         kept."""
         c, store, article, subs = self.c, self.c.store, self.article, self.subs
-        seen: dict[int, list[Fact | Article]] = {n: [] for n in self.stale}
+        seen = self.sub_seen = {n: [] for n in self.stale}
         tools = {n: _tools(subs[n], c.lookup, c.agent_tools, c.workspace, seen[n]) for n in self.stale}  # refused first
         self.own_tools = _tools(self.composer, c.lookup, c.agent_tools, c.workspace, self.own_seen)
         self.sub_writes = {n: _Writes(article, store, subs[n].id) for n in self.stale}
@@ -1429,10 +1433,12 @@ class _Composing:
         moved: the article's run, ended, when that run waits or fails."""
         c, store, article, subs, composer = self.c, self.c.store, self.article, self.subs, self.composer
         compiled = self.compiled
-        self.citable = [_citable(part, by) for part, by in zip(self.parts, self.before)]
+        self.citable = [_citable(part, by, _articles_read(self.sub_seen.get(n, [])))
+                        for n, (part, by) in enumerate(zip(self.parts, self.before))]
         self.reads = [part if n in self.ran and n not in self.holds else part + by
                       for n, (part, by) in enumerate(zip(self.parts, self.before))]
-        self.everything = _citable(self.lead, *self.reads)  # a subagent that did not run read by its tools before
+        subs_read = _articles_read([a for seen in self.sub_seen.values() for a in seen])
+        self.everything = _citable(self.lead, *self.reads, subs_read)  # one that did not run read by its tools before
         own_now = _stamp_of(self.own_read, *_returned(subs, self.held))
         own_due = self.instructed and (c.scheduled or store.state(_read(composer, article)) != own_now)
         own_wait = ""
@@ -1452,7 +1458,7 @@ class _Composing:
             self.own = own
             compiled.runs.append(own)
             self.lead = self.lead + _by_tool(self.own_seen)
-            self.everything = _citable(self.lead, *self.reads, _articles_read(self.own_seen))
+            self.everything = _citable(self.lead, *self.reads, subs_read, _articles_read(self.own_seen))
             store.set_state(_tool_reads(composer, article), sorted({f.id for f in self.own_seen
                                                                   if isinstance(f, Fact)}))
             _tried(store, composer, article, _stamp_of(digest(composer, self.lead), *_returned(subs, self.held)),
