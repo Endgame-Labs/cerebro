@@ -30,6 +30,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from .errors import CerebroError
+from .shown import shown
 
 if TYPE_CHECKING:
     from .gateway import Route
@@ -493,14 +494,16 @@ class HttpDecider(Decider):
     host settings name for the provider, with their headers, `call` naming the kind of call.
     A timeout, a rate limit or a server error is tried again up to the spec's `retries` times, waiting as
     `Retry-After` asks or 1, 2, 4 seconds and on, a minute at most; a refused key is not.
+    A failed call's error holds the first 300 characters of the reply, masked whole by `mask` first. With no `mask`
+    it holds none of it, since a server that echoes the request would echo the key.
     """
 
     def __init__(self, spec: ModelSpec, *, key: Callable[[], str] | None = None, send: Send | None = None,
                  sleep: Callable[[float], None] = time.sleep, url: str = "", route: Route | None = None,
-                 call: str = "decision"):
+                 call: str = "decision", mask: Callable[[str], str] | None = None):
         if not PROVIDERS[spec.provider].decision_url:
             raise ModelSettingsError(f"{spec.provider} has no decision API: use fireworks or typesafe")
-        self.spec, self.route, self.call = spec, route, call
+        self.spec, self.route, self.call, self.mask = spec, route, call, mask
         own = PROVIDERS[spec.provider].decision_url
         self.url = url or (route.url(own) if route is not None else own)
         self._key = key or (lambda: os.environ.get(spec.variable, "").strip())
@@ -517,7 +520,7 @@ class HttpDecider(Decider):
         send = self._send if self._send is not _urllib_send else (
             lambda url, headers, body: _urllib_send(url, headers, body, timeout=seconds))
         return HttpDecider(replace(self.spec, retries=0), key=self._key, send=send, sleep=self._sleep, url=self.url,
-                           route=self.route, call=self.call)
+                           route=self.route, call=self.call, mask=self.mask)
 
     def body(self, state: Any, questions: Mapping[str, Question]) -> dict[str, Any]:
         """The request for one decision: identical questions are asked once, under one key."""
@@ -579,14 +582,16 @@ class HttpDecider(Decider):
             if 300 <= status < 400:
                 raise DecisionError(f"{self.spec.model} at {self.url} answered with a redirect (HTTP {status}), which "
                                     "is not followed so the key stays with its host: check the decision URL")
-            if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
+            if status >= 400:
+                text = self.mask(body.decode("utf-8", "replace")) if self.mask is not None else ""
+                said = f". The reply said: {shown(text, 300)}" if text.strip() else ""
                 if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
                     self.route.refused(status, self.call)
                     raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}: check providers in "
-                                        "settings.yaml")
+                                        f"settings.yaml{said}")
                 hint = (f"check the {self.spec.key_name} key" if status in (401, 403)
                         else "check the model id and the request")
-                raise DecisionError(f"{self.spec.model} answered HTTP {status}: {hint}")
+                raise DecisionError(f"{self.spec.model} answered HTTP {status}: {hint}{said}")
             try:
                 reply = json.loads(body)
             except ValueError:

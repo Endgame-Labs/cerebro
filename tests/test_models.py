@@ -160,7 +160,7 @@ class Network:
 
     def decider(self, model: str = "rune", provider: str = "fireworks") -> HttpDecider:
         return HttpDecider(ModelSpec(provider, model, job="decision"), key=lambda: "k-test", send=self.send,
-                           sleep=self.slept.append)
+                           sleep=self.slept.append, mask=lambda text: text)
 
 
 def test_the_decision_client_sends_the_systemone_request_and_reads_three_kinds_of_answer() -> None:
@@ -213,8 +213,9 @@ def test_a_rate_limit_is_tried_again_and_a_refused_key_is_not() -> None:
     assert net.decider().decide("text", {"a": YesNo("A?")}).answers["a"].yes == 0.9
     assert len(net.sent) == 3 and net.slept == [3.0, 2.0]
     refused = Network(401)
-    with pytest.raises(DecisionError, match="HTTP 401: check the fireworks key"):
+    with pytest.raises(DecisionError) as failed:
         refused.decider().decide("text", {"a": YesNo("A?")})
+    assert str(failed.value) == 'rune answered HTTP 401: check the fireworks key. The reply said: {"error": "no"}'
     assert len(refused.sent) == 1
     gone = Network(500, 500, 500, 500)
     with pytest.raises(DecisionError, match="HTTP 500"):
