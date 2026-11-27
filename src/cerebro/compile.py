@@ -867,8 +867,6 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
                             _land_own(c, article, [agent.id], agent, evidence, writes, run.ended_at) or stamp_)
 
     lands = _lands(run, bool(text))  # land what it handed in
-    if lands and text:
-        _scored(store, run, editor)
     if not lands or not text:
         read()  # what it set lands, whatever its text
         notes: list[str] = []
@@ -903,6 +901,7 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
         again, noted = _land(store, article, parts, finished, [agent.id, *orphans], after)
     except _LeftAlone as left:
         return Compiled(run, store.article(article), skipped=True, waiting=str(left), left_alone=str(left), runs=[run])
+    _scored(store, run, editor)
     short = [] if run.status == "done" else [f"its run {run.status} ({run.note})"]
     short += [line for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)] if run.status == "done" else []
     return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=[*short, *noted],
@@ -1484,7 +1483,6 @@ class _Composing:
             text, dropped = _landing(self.editor, composer, own.result.text)
             self.compiled.dropped += dropped
             if text:
-                _scored(self.c.store, own, self.editor)
                 self.plan = [_Part(composer.id, composer.id, text, self.everything, own.started_at, own.ended_at,
                                    whole=True)]
                 self.new = True
@@ -1613,10 +1611,6 @@ class _Composing:
             return compiled if not self.leave else _finish(store, article, c.root, compiled, c.grounding)
         if fixed(self.composer) and plan:
             birth(store, self.composer, article, min((p.started for p in plan if p.started), default=stamp(c.clock())))
-        for n, editor in self.editors.items():  # what each subagent's text that lands was scored, on its run's row
-            if self.subs[n].id in self.stood:
-                _scored(store, self.ran[n], editor)
-
         def after() -> None:
             self.land_sets()
             _keep_material(store, article, self.subs, self.held, landed=True)
@@ -1637,6 +1631,11 @@ class _Composing:
             compiled.notes += noted
         except _LeftAlone as left:
             return replace(compiled, article=store.article(article), skipped=True, waiting=str(left), left_alone=str(left))
+        for n, editor in self.editors.items():  # what each subagent's text that landed was scored, on its run's row
+            if self.subs[n].id in self.stood:
+                _scored(store, self.ran[n], editor)
+        if own is not None and self.composer.id in self.stood:
+            _scored(store, own, self.editor)
         if stood := [p.by for p in plan if p.by not in self.stood]:  # a part its writer left as it was, not text new
             compiled.dropped += _withdrawn(c.grounding, store, article, stood)  # to this run, which the editor scored
         return _finish(store, article, c.root, compiled, c.grounding)

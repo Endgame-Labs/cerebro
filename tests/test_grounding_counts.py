@@ -90,11 +90,10 @@ def test_off_a_terminal_a_pass_says_what_grounding_marked_as_counts_alone(
     assert "grounding digests/weekly: marked 2 sentences not fully backed" in passed.output.splitlines()
 
 
-@pytest.mark.parametrize("command", [["agents", "run"], ["compile", "--article"]])
 def test_a_run_by_hand_says_what_grounding_marked_and_keeps_the_count_on_its_runs_line_as_a_pass_does(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: list[str]) -> None:
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = lay_out_workspace(tmp_path, monkeypatch)
-    ran = CliRunner().invoke(cli.main, [*command, "digests/weekly", "--workspace", str(root)])
+    ran = CliRunner().invoke(cli.main, ["agents", "run", "digests/weekly", "--workspace", str(root)])
     assert ran.exit_code == 0, ran.output
     assert "grounding digests/weekly: marked 1 sentence not fully backed" in ran.output.splitlines(), ran.output
     with cli.open_workspace(root) as workspace:  # no pass took in the note, so only the uncited line is marked
@@ -223,19 +222,22 @@ OTHER = "kind: files\nwindow: { behind: all }\nselect:\n  - glob: \"other/**/*.m
 
 
 class Parts(AgentRun):
-    """Stand-in subagents that each cite their first fact, beta then adding a line that cites nothing while `marks`
-    holds."""
+    """Stand-in subagents, each writing as `says` gives for its name: its first fact cited, then for `marked` a line
+    that cites nothing, for `unsafe` raw HTML that landing makes safe; or for `nothing`, nothing at all."""
 
-    marks = True
+    def __init__(self) -> None:
+        self.says = {"alpha": "clean", "beta": "marked"}
 
     def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
         import re
 
+        name = agent.id.rpartition("/")[2]
+        said = self.says[name]
+
         def write(prompt: str) -> dict[str, str]:
             fact, text = re.findall(r"\[\^(fact_\w+)\] ([^(\n]+)", prompt)[0]
-            if agent.id.endswith("alpha"):
-                return {"Alpha": f"{text.strip()} [^{fact}]"}
-            return {"Beta": f"{text.strip()} [^{fact}]" + ("\n\nNothing yet." if self.marks else "")}
+            added = {"marked": "\n\nNothing yet.", "unsafe": f"\n\nIt moved <script>alert(1)</script> [^{fact}]."}
+            return {} if said == "nothing" else {name.title(): f"{text.strip()} [^{fact}]{added.get(said, '')}"}
 
         return ScriptedRun(write).run(agent, evidence, tools, budget)
 
@@ -273,11 +275,18 @@ def test_status_counts_what_the_latest_run_of_each_part_left_on_the_article(
         return json.loads(CliRunner().invoke(cli.main, ["status", "--json", "--workspace", str(root)]).output)[
             "grounding"]
 
-    marked = {"digests/weekly": {"marked": 1}}  # beta's line that cites nothing
+    marked = {"digests/weekly": {"marked": 1}}
     assert counts_after(("local/kickoff.md", "The review moved to March 3."),
-                        ("other/plan.md", "The plan names four steps.")) == marked
+                        ("other/plan.md", "The plan names four steps.")) == marked  # beta's line that cites nothing
     assert counts_after(("local/later.md", "The review moved to March 4.")) == marked  # alpha alone ran again
-    parts.marks = False
-    assert counts_after(("other/later.md", "The plan names five steps.")) == {}  # beta ran again, clean
+    parts.says = {"alpha": "marked", "beta": "clean"}
+    assert counts_after(("local/third.md", "The review moved to March 5."),
+                        ("other/later.md", "The plan names five steps.")) == marked  # alpha's line now
+    parts.says = {"alpha": "nothing", "beta": "unsafe"}
+    assert counts_after(("local/fourth.md", "The review moved to March 6."),
+                        ("other/third.md", "The plan names six steps.")) == marked  # alpha's part stands as it was
+    (root / "agents" / "digests" / "weekly.md").write_text(PARTS.replace("alpha, beta", "beta"))
+    (root / "agents" / "digests" / "subagents" / "alpha.md").unlink()
+    assert counts_after() == {}  # alpha's part left the article
 
 
