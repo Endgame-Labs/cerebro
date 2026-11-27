@@ -73,6 +73,39 @@ Each line under `evidence:` gathers one thing, in order. The agent cites what it
 | `- files: [workspace.md]` | Files from the workspace, whole |
 | `- sql: { source: warehouse, query: "select kind, count(*) as total from things group by kind" }` | Rows from a [database source](sources.md#query-a-database) |
 | `- script: { run: scripts/usage.py }` | What a script in the workspace prints, in at most 60 seconds. Give it a `#!` first line and run `chmod +x` on it. |
+| `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text |
+
+A record a source sends `into:` a collection waits, unread, until an article there takes it. Its curator is shown such records only through a `held` line, as `cerebro agents new` writes it:
+
+```yaml
+evidence:
+  - held: {}
+```
+
+An `articles` line can take these options, each on a line under it:
+
+| Option | What it does |
+|---|---|
+| `text_only: true` | Loads each article's front matter and text, without its facts |
+| `keep: "..."` | Loads only the passages of each article that hold what you ask for, as the decision model judges them. It reads text, so put `text_only: true` beside it. |
+| `top: 80` | Loads at most this many of the passages `keep` chose. It needs `keep`. |
+
+```yaml
+evidence:
+  - articles: [projects, teams]
+    text_only: true
+    keep: "What each article is: its name and the line that says what it is."
+    top: 80
+```
+
+`rendered:`, beside `evidence:`, has Cerebro write a part of the article itself, with no model call. It lists every collection that has articles, each linked, so under `Contents` the article reads `- [Projects](../projects/) (12 articles)`:
+
+```yaml
+rendered:
+  Contents: { kind: collections, show: [count] }
+```
+
+`style: headings` gives each collection a heading of its own, `show: [count, description]` adds the line `settings.yaml` gives a collection, and `place: after` puts the part after the agent's own text. It goes on a file that writes its article alone, not on one built from subagents.
 
 In a value, `this` means the article being written. So `articles: this` keeps the facts linked to it. `this.<field>` means the articles a field of it names, such as `this.linked`.
 
@@ -118,6 +151,7 @@ model: { provider: fireworks, model: glm-5p3, retries: 5 }   # in place of setti
 authority: { admit: false, archive: false, merge: false, split: false }   # what this curator does on its own; a kind set false, or left out, waits for you in cerebro review
 evidence:
   - query: { from: facts, window: last_90_days }   # what the sources say, to admit from
+  - held: {}   # the records your sources hold for projects, newest first
 heartbeat: [manual]   # try it with agents run, then set [change, daily] once it reads well
 ---
 
@@ -132,6 +166,7 @@ gives a clear winner, say so in your last line instead of guessing.
 - **Every curator** can add an article with `admit`, change its keys or links with `link`, give its writers a note with `instruct`, take one out with `archive`, join two with `merge`, and undo a merge with `split`. It asks a source a question with `fetch` where one answers. Each act can name another collection: it waits there as a proposal, for that collection's curator or for you. `cerebro review` counts these in one line instead of listing them, and you can still decide one by its id.
 - **`authority`** says what it may do on its own: `admit`, `archive`, `merge`, and `split`, which turns one article into two. Anything set to `false` waits for you in `cerebro review`.
 - A file with no `authority:` line does none of the four on its own, and a kind the line leaves out is `false`.
+- A curator's first list waits for you, even with `authority: { admit: true }`. Once you decide one of its admits, `authority` applies.
 - A curator never undoes your decision, yes or no, until a new fact or record about it arrives, whatever `authority` says.
 - A curator on `change` is not woken by its own acts, or by a decision you make on what it alone proposed: only by what else changes in what it reads. A record from a source, a tell, another agent's write, or a decision that covers other curators' proposals too, such as approving a first run's list, still wakes it, even while it runs.
 

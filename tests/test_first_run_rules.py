@@ -330,7 +330,7 @@ def test_a_held_record_sharing_a_header_value_with_a_proposed_one_is_still_on_a_
     def call(id: str, name: str) -> Record:
         return Record(id=id, source="src", revision="1", at="2026-11-10T09:00:00Z",
                       keys={"name": [name], "parent": ["Alder Works"]}, fields={"name": name}, body=f"{name}.",
-                      into="things")
+                      into="things", carried=["parent"])  # a header line, as a files source carries it
 
     records = [*RECORDS, call("C1", "Alder call one"), call("C2", "Alder call two")]
     script = Script({"things/curator": [by_record("C1")], "parts/curator": []})
@@ -342,8 +342,8 @@ def test_a_held_record_sharing_a_header_value_with_a_proposed_one_is_still_on_a_
         assert "Alder call two" in [row.name for row in things.left()]  # on a list, not hidden by the shared parent
 
 
-# -- a held record no row speaks for is listed under the reason an earlier run gave it, else `not weighed`; one person's
-#    records, one name and one address, as one row; each reason under a heading of its own,
+# -- a held record no row speaks for is listed under the reason an earlier run gave it, else `not weighed`; records no
+#    admit takes are a row each, whatever name and address they share; each reason under a heading of its own,
 #    `Left out: <reason> (n)`; and named by its record, never by its file path
 
 
@@ -372,7 +372,7 @@ def test_every_held_record_is_a_row_of_its_own_whatever_name_and_address_it_shar
     with open_it(lay_out_workspace(tmp_path), script, records) as workspace:
         run(workspace, choose=None, say=lambda line: None)
         parts = next(listed for listed in LocalApproval(workspace).pile().lists if listed.collection == "parts")
-        kims = [row for row in parts.left() if row.name == "Kim Vale"]  # the engine folds none into one (rule 1)
+        kims = [row for row in parts.left() if row.name == "Kim Vale"]  # no admit takes them, so each is a row
         assert sorted(row.record["id"] for row in kims) == ["P7", "P8", "P9"]
 
 
@@ -384,7 +384,8 @@ def test_left_out_rows_show_each_with_its_reason_and_a_file_record_by_its_name_n
     from cerebro.first_run import LocalApproval, lines
 
     note = Record(id="local/calls/2026-11-10-cedar-check-in.md", source="src", revision="1",
-                  at="2026-11-10T09:00:00Z", keys={"parent": ["Alder Works"]}, body="A check-in.", into="things")
+                  at="2026-11-10T09:00:00Z", keys={"parent": ["Alder Works"]}, body="A check-in.", into="things",
+                  carried=["parent"])  # a header line, as a files source carries it
     script = Script({"things/curator": [by_record("T1"), ("leave_out", {"record": {"source": "src", "id": "T2"},
                                                                        "reason": "Named once."})],
                      "parts/curator": []})

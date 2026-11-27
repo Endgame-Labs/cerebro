@@ -1210,9 +1210,12 @@ def _curate(workspace: Cerebro, result: PassResult) -> None:
         result.step("agents", "open", total=len(due))
     with _holding(workspace, [agent for agent, _ in due], result.token):
         _curate_due(workspace, due, result)
-    for agent, _ in due:
-        if ids := first_list(workspace, agent.id):
-            result.warnings.append(first_list_line(agent.id, len(ids)))
+    warned = [first_list_line(agent.id, len(ids)) for agent, _ in due if (ids := first_list(workspace, agent.id))]
+    if warned:  # the line names review --accept-from, which takes what was shown by now
+        from .first_run import stamp_shown  # imported here: the first run builds on this module
+
+        stamp_shown(workspace)
+    result.warnings += warned
 
 
 def run_curators(workspace: Cerebro, agents: list[Agent], result: PassResult) -> None:

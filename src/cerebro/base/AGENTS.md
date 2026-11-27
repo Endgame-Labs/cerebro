@@ -8,6 +8,7 @@ Run every command from this folder, or name it with `--workspace <folder>`. A co
 ## What is where
 
 | Path | What it is |
+|---|---|
 | `settings.yaml` | The models by job, the daily budget, the time zone. |
 | `workspace.md` | Who this workspace is for. Every run reads it. Its front matter lists your own email domains. |
 | `agents/<collection>/` | One markdown file per context agent. The file's name and folder give its role. |
