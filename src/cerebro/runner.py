@@ -198,7 +198,6 @@ class PassResult:
     tried: dict[str, list[str]] = field(default_factory=dict)  # each retry list the pass tried, as it began
     paused: set[str] = field(default_factory=set)  # each source a daily cap stopped reading, at its first model record
     grounding: dict[str, dict[str, int]] = field(default_factory=dict)  # what grounding did, by the run's key and kind
-    grounded: set[str] = field(default_factory=set)  # the lines of `warnings` that are grounding's own: none are
     cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens

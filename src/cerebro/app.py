@@ -702,7 +702,6 @@ class Cerebro:
         result.refused = [self.mask_every()(line) for line in result.refused]
         result.notices = [self.mask_every()(line) for line in result.notices]
         result.warnings = [self.mask_every()(line) for line in result.warnings]
-        result.grounded = {self.mask_every()(line) for line in result.grounded}
         for run in result.runs:
             self._mask_run(run)
         return result
