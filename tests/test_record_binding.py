@@ -24,10 +24,10 @@ from cerebro.article import Identity
 from cerebro.connector import Record, event_key
 from cerebro.connectors.files import FilesConnector
 from cerebro.curate import in_scope, run_curator
-from cerebro.facts import Fact
+from cerebro.facts import Fact, Mention
 from cerebro.fakes import FakeConnector, FakeDecider, FakeExtraction, MemoryStore, ScriptedRun
 from cerebro.held import held_for, waits_for_own
-from cerebro.identity import bound_to, link, reached, would_bind
+from cerebro.identity import bound_to, link, reached, ties, would_bind
 from cerebro.lookup import StoreLookup
 from cerebro.source import Select, SourceFile
 
@@ -111,6 +111,27 @@ def test_a_fact_whose_subject_is_its_records_own_name_ties_to_no_article_the_rec
     workspace.run_once(agents=False)
     assert [f.subject for f in workspace.extraction.facts(record="2")] == ["Ann Lee"]
     assert workspace.store.facts_of("things/ann-lee") == []
+
+
+@pytest.mark.parametrize("role, how", [("subject", "subject"), ("about", "mentions")])
+def test_a_mention_whose_own_key_names_an_article_ties_it_whatever_the_record_it_came_from(role: str, how: str) -> None:
+    store = MemoryStore()
+    store.create(Identity("things/ann-lee", "things", "Ann Lee", {"name": ["Ann Lee"], "email": ["ann@alder.example"]},
+                          "active"))
+    other = Record(id="2", source="src", revision="1", keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]})
+    said = Fact("f2", "Ann Lee moved to Birch.", "Ann Lee", "fact", "", "src", "2",
+                mentions=[Mention("Ann Lee", role, {"email": ["ann@alder.example"]})])  # what the fact says decides
+    assert ("things/ann-lee", how) in ties(store, said, other)
+
+
+def test_a_fact_that_mentions_its_records_own_name_ties_to_no_article_the_record_is_told_apart_from() -> None:
+    store = MemoryStore()
+    store.create(Identity("things/ann-lee", "things", "Ann Lee", {"name": ["Ann Lee"], "email": ["ann@alder.example"]},
+                          "active"))
+    other = Record(id="2", source="src", revision="1", keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]})
+    said = Fact("f3", "Birch thanked Ann Lee.", "Birch", "fact", "", "src", "2",
+                mentions=[Mention("Birch", "subject"), Mention("Ann Lee")])
+    assert ties(store, said, other) == []
 
 
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:

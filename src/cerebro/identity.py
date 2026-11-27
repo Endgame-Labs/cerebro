@@ -27,8 +27,9 @@ connector says it only carries (`Record.carried`), such as its parties' addresse
 it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does. A record that
 shares with an article only its title, or values of keys that name no one thing, as a name, binds it, and links its
 facts to it by steps 1 and 3, only while no key that names one thing tells the two apart, as `_apart` reads it, so
-two things of one name stay two. A fact whose subject is its record's own name is about that record's thing, so its
-subject links it by steps 1, 2 and 4 to no article the record is told apart from.
+two things of one name stay two. A fact that gives one of its record's own names, as its subject or a mention, speaks
+of that record's thing, so the name links it by steps 1, 2 and 4 to no article the record is told apart from. A
+mention's key that names one thing still links it.
 
 A record's fields land on its own articles alone, as `own_articles` gives them: those of its own collection, `into`,
 that it is bound to, so a part's stage lands on the part and never on its parent, while its facts link to both.
@@ -253,29 +254,33 @@ def link_ties(store: Store, fact_id: str, made: list[tuple[str, str]], at: str =
 def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | None = None, *,
          among: list[tuple[Identity, list[str]]] | None = None) -> list[tuple[str, str]]:
     """The articles a fact is tied to as the store stands, each with how, without linking. A judge, if given, is asked
-    about a near match of the subject among `near_pool`, or `among` read from it before. A fact whose subject is its
-    record's own name, as `record_name` reads it, is about that record's thing, so its subject ties it to no article
-    `_apart` tells the record from."""
+    about a near match of the subject among `near_pool`, or `among` read from it before. A tie by a name, the
+    subject's, a mention's or a judge's near match of the subject, is not made to an article `_apart` tells the
+    record from when that name is one of the record's own, as `_record_names` gives them: the fact speaks of the
+    record's thing. A mention's key that names one thing still ties."""
     made: list[tuple[str, str]] = []
-    own = record if record is not None and fact.subject and _tokens(fact.subject) == _tokens(record_name(record)) \
-        else None
+    mine = _record_names(record)
 
-    def tie(ids: list[str], how: str, by_subject: bool = False) -> None:
-        made.extend((id, how) for id in ids if (id, how) not in made
-                    and not (by_subject and own is not None and _apart(store, own, id)))
+    def tie(ids: list[str], how: str, name: str = "") -> None:
+        own = record if record is not None and name and _tokens(name) in mine else None
+        made.extend((id, how) for id in ids
+                    if (id, how) not in made and not (own is not None and _apart(store, own, id)))
 
     if record is not None:
         tie(_keyed(store, record, linked_keys(record)), RECORD)  # by every key, those it only carries too
         tie(admitted_from(store, record), RECORD)
     for mention in fact.mentions:
-        tie(_by_keys(store, mention.keys), SUBJECT if mention.role == SUBJECT else MENTIONS, mention.role == SUBJECT)
+        how = SUBJECT if mention.role == SUBJECT else MENTIONS
+        if record is not None:  # a key that names one thing ties it, as `_keyed` reads keys
+            tie(_keyed(store, record, mention.keys), how)
+        tie(_by_keys(store, mention.keys), how, mention.text)
     exact = False
     for name, how in _names(fact):
         named = store.named(name) if name else []
         named = [] if len(named) == 1 and _namesake(store, record, name, named[0]) else named
         exact = exact or (name == fact.subject and bool(named))
         if len(named) == 1:
-            tie(named, how, name == fact.subject or how == SUBJECT)
+            tie(named, how, name)
     listed = _listed_names(record)
     for name in _header_names(record):
         if name in listed and not _names_it(fact, name):
@@ -285,8 +290,16 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
             tie(named, RECORD if name not in listed else _subject_how(fact) if _tokens(name) == _tokens(fact.subject)
                 else MENTIONS)
     if judge is not None and fact.subject and not exact:
-        tie(_near(fact, judge, near_pool(store) if among is None else among), _subject_how(fact), True)
+        tie(_near(fact, judge, near_pool(store) if among is None else among), _subject_how(fact), fact.subject)
     return made
+
+
+def _record_names(record: Record | None) -> list[list[str]]:
+    """A record's own names, as words: its name as `record_name` reads it, and each value of a `name` key it does
+    not only carry."""
+    if record is None:
+        return []
+    return [_tokens(name) for name in [record_name(record), *naming_keys(record).get("name", [])] if _tokens(name)]
 
 
 def tied(store: Store, fact_id: str, articles: list[str]) -> str:
