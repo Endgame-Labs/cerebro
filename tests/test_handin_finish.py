@@ -24,6 +24,7 @@ from cerebro.runner import PassResult
 WEEKLY = "---\nevidence:\n  - query: { from: facts, source: notes }\nheartbeat: [change]\n---\n\n# Output\n\n## Summary\n"
 NOTES = [Record(id=f"n{n}", source="notes", revision="1", at="2026-11-10T09:00:00Z", body=f"Note {n}.")
          for n in range(2)]
+DECLINED = "it said there is nothing to write: nothing new"
 
 
 def _run(status: str, note: str = "", agent: str = "reports/weekly") -> Run:
@@ -35,11 +36,11 @@ def _run(status: str, note: str = "", agent: str = "reports/weekly") -> Run:
 
 def test_a_pass_names_each_run_that_wrote_nothing_and_its_closing_line_counts_them(
         capsys: pytest.CaptureFixture[str]) -> None:
-    result = PassResult(compiled=["things/first"], ran={"things/article on things/second": HANDED_NOTHING},
+    result = PassResult(compiled=["things/first"], ran={"things/article on things/second": DECLINED},
                         failed={"things/article on things/third": "run r3 wrote nothing: failed: a model error"})
     cli._print(result)
     out = capsys.readouterr().out.splitlines()
-    assert f"ran       things/article on things/second: wrote nothing: {HANDED_NOTHING}" in out
+    assert f"ran       things/article on things/second: wrote nothing: {DECLINED}" in out
     assert out[-1] == "Done: 1 written, 1 ran and wrote nothing, 1 failed."
 
 
@@ -50,7 +51,7 @@ def test_a_pass_with_no_run_that_wrote_nothing_keeps_its_closing_line_without_th
 
 
 def test_a_pass_whose_only_run_wrote_nothing_does_not_say_no_agent_ran(capsys: pytest.CaptureFixture[str]) -> None:
-    cli._print(PassResult(ran={"reports/weekly": HANDED_NOTHING}))
+    cli._print(PassResult(ran={"reports/weekly": DECLINED}))
     out = capsys.readouterr().out
     assert "agents    none" not in out and out.splitlines()[-1] == "Done: 1 ran and wrote nothing."
 
@@ -58,11 +59,11 @@ def test_a_pass_whose_only_run_wrote_nothing_does_not_say_no_agent_ran(capsys: p
 # -- 2. a run by hand
 
 def test_a_run_by_hand_that_wrote_nothing_is_no_failure_and_says_why(capsys: pytest.CaptureFixture[str]) -> None:
-    run = _run(WROTE_NOTHING, HANDED_NOTHING)
+    run = _run(WROTE_NOTHING, DECLINED)
     cli._print_compiled("reports/weekly", "reports/weekly", Compiled(run=run, article=None, runs=[run]))
-    assert capsys.readouterr().out == f"ran      reports/weekly: wrote nothing: {HANDED_NOTHING}\n"
+    assert capsys.readouterr().out == f"ran      reports/weekly: wrote nothing: {DECLINED}\n"
     cli._print_compiled("things/article", "things/first", Compiled(run=run, article=None, runs=[run]))
-    assert capsys.readouterr().out == f"ran      things/article on things/first: wrote nothing: {HANDED_NOTHING}\n"
+    assert capsys.readouterr().out == f"ran      things/article on things/first: wrote nothing: {DECLINED}\n"
 
 
 @pytest.mark.parametrize("failed", [_run("failed", "a model error"), _run("failed", SPENT_NOTHING),
@@ -200,7 +201,7 @@ def test_the_live_checks_flag_a_run_that_spent_its_room_or_was_cut_with_nothing(
 
     assert paths(_run("failed", SPENT_NOTHING)).endswith("spent its room or calls and handed in nothing")
     assert paths(_run("failed", CUT_NOTHING)).endswith("was cut at its output limit and handed in nothing")
-    assert paths(_run(WROTE_NOTHING, HANDED_NOTHING)).endswith(": handed in nothing")
+    assert paths(_run("failed", HANDED_NOTHING)).endswith(": handed in nothing")
 
 
 def test_every_live_check_that_prints_a_passs_failures_prints_what_ran_and_wrote_nothing_beside_them() -> None:

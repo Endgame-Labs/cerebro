@@ -129,6 +129,14 @@ After an agent writes an article, new evidence waits four hours before it rewrit
 heartbeat: { on: [change], cooldown: 30m }
 ```
 
+An agent with nothing new to write can say so, with a reason. Its run wrote nothing, and the article keeps the text it had. The pass prints the reason, and the agent runs again once its evidence moves:
+
+```text
+ran       projects/atlas: wrote nothing: it said there is nothing to write: Nothing new since the last article.
+```
+
+A model that hands in no text and gives no reason, even when asked again, fails its run. `cerebro status` lists it, and the next pass tries again.
+
 [Runs](runs.md) explains when things run, and how to cap what they spend.
 
 ## Budget and model

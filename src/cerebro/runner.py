@@ -2550,7 +2550,7 @@ def unmoved(workspace: Cerebro, agent: Agent, articles: list[str]) -> str:
     again = f"cerebro agents run {agent.id} runs it again now"
     if not any(written(workspace, agent, article) for article in articles):
         return f"nothing it reads has moved since its last run, which wrote nothing: {again}"
-    return f"nothing it reads has moved since its last write: {again}, whether or not anything moved"
+    return f"nothing it reads has moved since its last run: {again}, whether or not anything moved"
 
 
 def _render(workspace: Cerebro, result: PassResult) -> None:

@@ -194,8 +194,8 @@ def test_once_the_editor_spoke_a_reply_in_text_or_a_broken_hand_in_is_still_aske
     assert mended.result is not None and mended.result.text == "Cited [^f_1]."
 
 
-def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote_nothing_never_done() -> None:
-    """A normal end with nothing to take ran and wrote nothing: no failure. Its last reply holds
+def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_fails() -> None:
+    """A normal end with nothing to take fails, so it runs again. Its last reply holds
     no text to take. It is asked once, though an editor reads its hand-ins: the editor's retry is its own."""
     from cerebro.run import REVIEW
 
@@ -205,7 +205,7 @@ def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote
         run = PydanticRun(_talker([], seen, then="")).run(AGENT, EVIDENCE, [], Budget())
     finally:
         REVIEW.reset(reviewing)
-    assert run.status == "wrote nothing" and run.result is None and "handed in nothing" in run.note
+    assert run.status == "failed" and run.result is None and "handed in nothing" in run.note
     assert len(seen) == 2
 
 

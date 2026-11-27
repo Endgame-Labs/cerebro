@@ -19,7 +19,7 @@ from cerebro.compile import Compiled
 from cerebro.fakes import FakeConnector, FakeExtraction, ScriptedRun
 from cerebro.first_run import _merge
 from cerebro.records import proposals
-from cerebro.run import HANDED_NOTHING, WROTE_NOTHING, Run, Usage
+from cerebro.run import WROTE_NOTHING, Run, Usage
 from cerebro.runner import PassResult
 
 WRITER = ("---\nevidence:\n  - query: { from: facts, source: notes }\nheartbeat: [change]\n---\n\n"
@@ -187,7 +187,7 @@ def test_a_pass_that_ran_one_run_and_failed_another_writing_nothing_exits_0(
         def __exit__(self, *exc: object) -> None:
             return None
 
-    result = PassResult(ran={"reports/b": HANDED_NOTHING}, failed={"reports/c": "run r wrote nothing: failed: e"})
+    result = PassResult(ran={"reports/b": "it said there is nothing to write: nothing new"}, failed={"reports/c": "run r wrote nothing: failed: e"})
     monkeypatch.setattr(cli, "open_workspace", lambda folder: Opened(root=tmp_path, agents=[], files_read=lambda: None,
                                                                   mask_every=lambda: lambda text: text))
     monkeypatch.setattr(first_run, "run", lambda *args, **kwargs: None)

@@ -1,9 +1,11 @@
-"""How a run's ending decides what it hands in, what is recorded, and when it runs again. A normal end with nothing handed in and no reply that holds text under a heading the agent was given ran and
-wrote nothing: its inputs are recorded, so it costs no further model call until one moves, and it is no failure. A
-reply is taken for its parts under the headings the agent's `# Output` names, or for a subagent the text under its
-heading; the turn a spent or cut run ends on is read so: an agent of one heading, or a subagent, takes
-the text under its first heading or all of it, and one that names none takes all of it. After the run's room or calls
-were spent, or a turn cut at its output limit, with nothing to take the run fails and runs again. A composer that adds nothing leaves its subagents' content standing, whatever the ending."""
+"""How a run's ending decides what it hands in, what is recorded, and when it runs again. A run that says it has
+nothing to write ran and wrote nothing: its inputs are recorded, so it costs no further model call until one moves, and
+it is no failure. A reply is taken for its parts under the headings the agent's `# Output` names, or for a subagent
+the text under its heading; the turn a spent or cut run ends on is read so: an agent of one heading, or a subagent,
+takes the text under its first heading or all of it, and one that names none takes all of it. With nothing handed in
+and nothing to take, at a normal end, after the run's room or calls were spent, or at a turn cut at its output limit,
+the run fails and runs again. A composer that adds nothing leaves its subagents' content standing, whatever the
+ending."""
 
 from __future__ import annotations
 
@@ -52,6 +54,8 @@ SUB = replace(AGENT, id="things/subagents/risks", path=Path("agents/things/subag
 COMPOSER = replace(AGENT, id="things/article", path=Path("agents/things/article.md"), role="composer",
                    target="things", subagents=["risks"], output=[])
 SPENT = Budget(tool_calls=1)  # one call, then the run offers only the hand-in: its last turn, without tools
+DECLINES = [[("nothing_to_write", {"reason": "Nothing new."})]]
+DECLINED = "it said there is nothing to write: Nothing new."
 
 
 # -- a normal end
@@ -60,12 +64,12 @@ SPENT = Budget(tool_calls=1)  # one call, then the run offers only the hand-in: 
 def test_a_normal_end_with_no_part_under_a_named_heading_takes_nothing_and_says_so() -> None:
     said = "I looked and found the review moved [^f_1]."
     run = PydanticRun(_model([], said)).run(AGENT, EVIDENCE, [], Budget())
-    assert run.status == WROTE_NOTHING and run.result is None and run.note == f"{HANDED_NOTHING}, and {UNMARKED}"
+    assert run.status == "failed" and run.result is None and run.note == f"{HANDED_NOTHING}, and {UNMARKED}"
 
 
-def test_a_normal_end_with_an_empty_reply_ran_and_wrote_nothing() -> None:
+def test_a_normal_end_with_an_empty_reply_fails() -> None:
     run = PydanticRun(_model([], "")).run(AGENT, EVIDENCE, [], Budget())
-    assert run.status == WROTE_NOTHING and run.result is None and run.note == HANDED_NOTHING
+    assert run.status == "failed" and run.result is None and run.note == HANDED_NOTHING
 
 
 def test_a_normal_end_takes_only_the_parts_under_the_headings_its_output_names() -> None:
@@ -81,14 +85,14 @@ def test_a_normal_end_of_an_agent_whose_output_names_no_heading_takes_nothing_fr
     whole = replace(AGENT, output=[])  # a whole-body agent takes nothing from a reply on a normal end
     said = "## Summary\n\nThe review moved [^f_1]."
     run = PydanticRun(_model([], said)).run(whole, EVIDENCE, [], Budget())
-    assert run.status == WROTE_NOTHING and run.result is None
+    assert run.status == "failed" and run.result is None
 
 
 def test_a_subagent_on_a_normal_end_returns_the_text_under_its_heading_and_nothing_with_no_heading() -> None:
     run = PydanticRun(_model([], "Done.\n\n## Risks\n\nThe review moved [^f_1].\n")).run(SUB, EVIDENCE, [], Budget())
     assert run.status == "done" and run.result is not None and run.result.text == "The review moved [^f_1]."
     bare = PydanticRun(_model([], "The review moved [^f_1].")).run(SUB, EVIDENCE, [], Budget())
-    assert bare.status == WROTE_NOTHING and bare.result is None  # nothing under a named heading
+    assert bare.status == "failed" and bare.result is None  # nothing under a named heading
 
 
 def test_a_composer_that_ends_with_a_reply_and_no_hand_in_leaves_its_subagents_content_standing() -> None:
@@ -140,7 +144,9 @@ class _Hands:
         return self.at
 
 
-def _workspace(tmp_path: Path, said: list[str], budget: Budget | None = None) -> Any:
+def _workspace(tmp_path: Path, said: list[str | None]) -> Any:
+    """One writer of one article whose model replies `said[0]` in plain text, or says it has nothing to write when
+    that is None."""
     from cerebro import Cerebro, Record
     from cerebro.article import Identity
     from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore
@@ -154,9 +160,10 @@ def _workspace(tmp_path: Path, said: list[str], budget: Budget | None = None) ->
     calls: list[str] = []
 
     class Counting(PydanticRun):
-        def run(self, agent: Agent, evidence: Any, tools: Any, budget_: Budget) -> Any:
+        def run(self, agent: Agent, evidence: Any, tools: Any, budget: Budget) -> Any:
             calls.append(agent.id)
-            return PydanticRun(_model([], said[0])).run(agent, evidence, tools, budget or budget_)
+            return PydanticRun(_model([] if said[0] is not None else DECLINES, said[0] or "")).run(
+                agent, evidence, tools, budget)
 
     hands = _Hands()
     cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), clock=hands, connectors=[notes],
@@ -165,42 +172,36 @@ def _workspace(tmp_path: Path, said: list[str], budget: Budget | None = None) ->
     return cerebro, hands, calls, notes
 
 
-def test_a_pass_records_a_run_that_ran_and_wrote_nothing_as_no_failure_and_runs_it_no_more_on_the_same_inputs(
+def test_a_pass_fails_a_run_that_ignored_the_hand_in_and_runs_one_that_declined_no_more_on_the_same_inputs(
         tmp_path: Path) -> None:
     from cerebro import Record
 
-    said = [""]
+    said: list[str | None] = [""]
     cerebro, hands, calls, notes = _workspace(tmp_path, said)
     first = cerebro.run_once()
-    assert first.compiled == [] and first.failed == {}
-    assert first.ran == {"things/article on things/first": HANDED_NOTHING} and len(calls) == 1
+    assert first.compiled == [] and first.ran == {}
+    assert first.failed["things/article on things/first"].endswith(HANDED_NOTHING), first.failed
+    said[0] = None
+    hands.at += timedelta(minutes=1)  # past the wait after one failed run
+    declined = cerebro.run_once()
+    assert len(calls) == 2 and declined.failed == {} and declined.ran == {"things/article on things/first": DECLINED}
     hands.at += timedelta(hours=2)
     again = cerebro.run_once()
-    assert len(calls) == 1 and again.failed == {} and again.ran == {}  # the same inputs: no model call
+    assert len(calls) == 2 and again.failed == {} and again.ran == {}  # the same inputs: no model call
     notes.add(Record(id="n1", source="notes", revision="1", at="2026-11-17T10:00:00Z",
                                 body="The second note.", keys={"topic": ["first"]}))
     facts = cerebro.extraction.facts  # type: ignore[union-attr]
     hands.at += timedelta(minutes=1)
     said[0] = f"## Summary\n\nThe first note [^{facts()[0].id}]."
     moved = cerebro.run_once()
-    assert len(calls) == 2 and moved.compiled == ["things/first"]  # never written: at once, not after a cooldown
+    assert len(calls) == 3 and moved.compiled == ["things/first"]  # never written: at once, not after a cooldown
 
 
 def test_a_run_that_ran_and_wrote_nothing_moves_the_articles_clock(tmp_path: Path) -> None:
-    cerebro, _, _, _ = _workspace(tmp_path, ["Nothing to add."])
+    cerebro, _, _, _ = _workspace(tmp_path, [None])
     cerebro.run_once()
     beat = cerebro.store.state("heartbeat:things/article")
     assert (beat.get("articles") or {}).get("things/first", {}).get("ran") == "2026-11-17T09:00:00Z"
-
-
-def test_a_run_whose_calls_were_spent_and_wrote_nothing_fails_in_the_pass_and_runs_again(tmp_path: Path) -> None:
-    said = [""]
-    cerebro, hands, calls, _ = _workspace(tmp_path, said, Budget(tool_calls=0))  # no tools from its first turn
-    first = cerebro.run_once()
-    assert first.ran == {} and "things/article on things/first" in first.failed
-    hands.at += timedelta(minutes=1)  # past the wait after one failed run
-    cerebro.run_once()
-    assert len(calls) == 2
 
 
 def test_a_compile_that_ran_and_wrote_nothing_ends_its_step_as_ran_never_failed() -> None:
@@ -208,9 +209,9 @@ def test_a_compile_that_ran_and_wrote_nothing_ends_its_step_as_ran_never_failed(
 
     from cerebro.runner import _compiled_step
 
-    run = SimpleNamespace(status=WROTE_NOTHING, note=HANDED_NOTHING)
+    run = SimpleNamespace(status=WROTE_NOTHING, note=DECLINED)
     step = _compiled_step(AGENT, SimpleNamespace(skipped=False, article=None, run=run, runs=[run]))
-    assert step == {"mark": "ran", "text": f"ran and wrote nothing: {HANDED_NOTHING}"}
+    assert step == {"mark": "ran", "text": f"ran and wrote nothing: {DECLINED}"}
     failed = SimpleNamespace(status="failed", note="a model error", agent=AGENT.id)
     assert _compiled_step(AGENT, SimpleNamespace(skipped=False, article=None, run=failed, runs=[failed]))["mark"] == "failed"
 
@@ -223,9 +224,9 @@ def test_the_progress_screen_shows_a_run_that_wrote_nothing_quiet_never_as_done_
 
 
 def test_what_a_pass_says_of_a_run_that_ran_and_wrote_nothing_comes_masked(tmp_path: Path) -> None:
-    cerebro, _, _, _ = _workspace(tmp_path, [""])
-    cerebro.mask = lambda text: text.replace("handed in", "[masked]")
-    assert cerebro.run_once().ran == {"things/article on things/first": HANDED_NOTHING.replace("handed in", "[masked]")}
+    cerebro, _, _, _ = _workspace(tmp_path, [None])
+    cerebro.mask = lambda text: text.replace("Nothing new", "[masked]")
+    assert cerebro.run_once().ran == {"things/article on things/first": DECLINED.replace("Nothing new", "[masked]")}
 
 
 def test_a_reply_the_provider_refused_fails_never_ran_and_wrote_nothing() -> None:
@@ -286,7 +287,7 @@ def test_a_final_reply_made_while_tools_were_offered_is_a_normal_end_whatever_it
     big = int(Budget().tokens_per_run * 0.85)  # the reply's own tokens close the room after it
     run = PydanticRun(_each(lambda n: ModelResponse(parts=[], usage=RequestUsage(output_tokens=big)))).run(
         AGENT, EVIDENCE, [lookup], Budget())
-    assert run.status == WROTE_NOTHING and run.result is None and run.note == HANDED_NOTHING, run.note
+    assert run.status == "failed" and run.result is None and run.note == HANDED_NOTHING, run.note
     said = "## Summary\n\nStill no article, just prose."
     late = PydanticRun(_each(lambda n: ModelResponse(parts=[], usage=RequestUsage(output_tokens=big)) if n == 0
                              else ModelResponse(parts=[TextPart(said)]))).run(AGENT, EVIDENCE, [lookup], Budget())
@@ -375,7 +376,7 @@ def test_the_progress_screen_ends_a_row_that_ran_and_wrote_nothing_quiet_with_it
     screen.begin()
     screen(Progress("compile", "open", total=1))
     screen(Progress("compile", "start", "things/first"))
-    screen(Progress("compile", "end", "things/first", mark="ran", text=f"ran and wrote nothing: {HANDED_NOTHING}"))
+    screen(Progress("compile", "end", "things/first", mark="ran", text=f"ran and wrote nothing: {DECLINED}"))
     screen.finish()
     row = [line for line in out.getvalue().splitlines() if "things/first" in line][-1]  # the frame drawn last
-    assert row.lstrip().startswith("[-] first") and f"ran and wrote nothing: {HANDED_NOTHING}" in row, row
+    assert row.lstrip().startswith("[-] first") and f"ran and wrote nothing: {DECLINED}" in row, row

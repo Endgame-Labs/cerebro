@@ -567,9 +567,8 @@ class _Candidates:
 
     def ended(self, run: Run, mask: Callable[[str], str] | None, cut: bool = False, error: str = "") -> None:
         """End the run on its replies that handed in nothing: it lands its latest candidate that carries the mark,
-        else a hand-in it holds. With none, a reply cut at its output limit, or a first such reply whose request
-        offered no tools, fails, so it runs again, but a curator's ends with what it decided; any other ran and wrote
-        nothing."""
+        else a hand-in it holds. With none, a writer's run fails, so it runs again, but a curator's ends with what it
+        decided, and a composer's leaves its subagents' content standing."""
         cut = cut or any(reply.cut for reply in self.replies)
         last = CUT_NOTHING if cut else "" if not self.replies or self.replies[0].offered else SPENT_NOTHING
         if (got := self.latest()) is not None:
@@ -580,9 +579,9 @@ class _Candidates:
             run.status, run.note = WROTE_NOTHING, STANDS
         elif not self.writes and last:  # an empty verdict is no failure
             run.note = DECIDED_CUT if cut else DECIDED_SPENT
-        elif not last:  # no failure: its inputs are recorded, so it runs again only once one moves
+        elif not last:  # a writer that ignored the ask fails; only a decline is no failure
             said = self.writes and any(reply.text for reply in self.replies)
-            run.status = WROTE_NOTHING
+            run.status = "failed" if self.writes else WROTE_NOTHING
             run.note = f"{HANDED_NOTHING}, and {UNMARKED}" if said else HANDED_NOTHING if self.writes \
                 else DECIDED_EMPTY
             logging.getLogger(__name__).debug("%s handed in nothing, also after the turn that asked: %s",
