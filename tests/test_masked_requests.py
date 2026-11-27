@@ -79,7 +79,7 @@ def test_a_key_the_process_never_read_reaches_no_request_no_read_and_no_transcri
     assert KEY in (root / "workspace.md").read_text() and KEY in (root / "agents" / "briefs" / "article.md").read_text()
 
 
-def test_a_repair_request_is_masked_of_every_value_the_store_holds(monkeypatch: Any) -> None:
+def test_a_writing_models_one_request_is_masked_of_every_value_the_store_holds(monkeypatch: Any) -> None:
     import pydantic_ai.direct
     from pydantic_ai.messages import TextPart
     from pydantic_ai.usage import RequestUsage
@@ -94,7 +94,7 @@ def test_a_repair_request_is_masked_of_every_value_the_store_holds(monkeypatch: 
     secrets = FakeSecrets({"stripe": KEY})
     from cerebro.secrets import scrubber
 
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, key=lambda _: "test",
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, what="ask", key=lambda _: "test",
                                 masks=lambda: scrubber(secrets))
     rewriter.rewrite(f"rules, and {KEY}", f"the claim holds {KEY}")
     assert asked and KEY not in asked[0] and "[secret]" in asked[0]

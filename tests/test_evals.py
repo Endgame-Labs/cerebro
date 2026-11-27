@@ -162,7 +162,7 @@ def test_with_no_decision_model_a_judge_check_counts_for_nothing_and_says_why() 
     assert report.score == 1.0 and owner.score == 1.0 and report.calls == 0 and report.usd == 0
     assert owner.checks[-1].name == "judge" and owner.checks[-1].passed is None
     assert owner.checks[-1].why == "no decision model: run with one to judge"
-    assert report.judge == "none: rules and words alone"
+    assert report.judge == "none: rules alone"
 
 
 def test_the_evaluation_layer_stops_at_its_cap_and_the_rest_of_the_run_says_why() -> None:
@@ -225,8 +225,7 @@ class Labelled(FakeDecider):
     def decide(self, state: Any, questions: dict[str, Question]) -> Decision:
         supported = self.by_facts[frozenset(state["facts"])]
         with self.lock:
-            self.answers = {"s1": "grounded", "l1": "names"} if supported else {"s1": "unsupported",
-                                                                                "l1": "states_unheld"}
+            self.answers = {"s1": 4} if supported else {"s1": 0}  # the facts say it, or made up
             return replace(super().decide(state, questions), usage=TokenCount(500, 5))
 
 
@@ -235,7 +234,7 @@ SLICE = ["r01", "r02", "r05", "r09", "y01"]  # each cites facts of its own, so a
 
 def test_the_grounding_cases_run_through_the_same_entry_point_and_score_as_labelled() -> None:
     suite = load(GROUND)
-    assert suite.kind == "ground" and len(suite.cases) == 229
+    assert suite.kind == "ground" and len(suite.cases) == 258
     cases = corpus_ids()
     cited = {id: frozenset(re.findall(r"\[\^([^\]\s]+)\]", cases[id]["sentence"])) for id in SLICE}
     assert len(set(cited.values())) == len(SLICE)
@@ -245,33 +244,39 @@ def test_the_grounding_cases_run_through_the_same_entry_point_and_score_as_label
     kept = ledger()
     report = run(None, sliced, decider=judge, model=RUNE, ledger=kept, clock=lambda: NOW, workers=3)
     assert report.score == 1.0 and [s.id for s in report.scored] == [c.id for c in sliced.cases]
-    assert {s.outcome for s in report.scored if s.label == "supported-in-other-words"} == {"kept whole"}
+    assert {s.outcome for s in report.scored if s.label == "supported-in-other-words"} == {"1.00"}
     assert report.calls == len(kept.store.rows(LOG)) and report.tokens.input_tokens == 500 * report.calls
     assert {r.data["layer"] for r in kept.store.rows(LOG)} == {LAYER}
     all_ = report.groups["all"]
-    assert all_.supported + all_.unsupported == 5 and all_.kept_whole == all_.supported and \
-        all_.rejected == all_.unsupported
+    assert all_.supported + all_.unsupported == 5 and all_.held == all_.supported and \
+        all_.marked == all_.unsupported
 
 
-def test_a_grounding_case_against_its_label_lowers_the_score_and_says_how_it_landed() -> None:
+def test_a_grounding_case_against_its_label_lowers_the_score_and_says_how_it_scored() -> None:
     suite = load(GROUND)
     sliced = replace(suite, cases=[c for c in suite.cases if c.id in SLICE])
-    report = run(None, sliced, decider=FakeDecider({"s1": "unsupported", "l1": "states_unheld"}), model=RUNE,
-                 ledger=ledger(), clock=lambda: NOW)
+    report = run(None, sliced, decider=FakeDecider({"s1": 0}), model=RUNE, ledger=ledger(), clock=lambda: NOW)
     supported = [s for s in report.scored if s.label == "supported-in-other-words"]
-    assert supported and all(s.score == 0.0 and s.outcome != "kept whole" for s in supported)
-    assert all(s.step.startswith("verdict: unsupported") or s.step for s in supported)
+    assert supported and all(s.score == 0.0 and s.outcome == "0.00" for s in supported)
     miss = supported[0].misses[0]
-    assert miss.name == "lands as labelled" and miss.why.startswith("labelled supported-in-other-words, and it was ")
+    assert miss.name == "scores as labelled"
+    assert miss.why.startswith("labelled supported-in-other-words, and it scored 0.00: "), miss.why
     assert report.score is not None and report.score < 1.0
-    assert report.groups["all"].kept_whole == 0
+    assert report.groups["all"].held == 0
+
+
+def test_a_grounding_case_of_two_sentences_scores_as_its_weakest() -> None:
+    suite = load(GROUND)
+    sliced = replace(suite, cases=[c for c in suite.cases if c.id == "voice23"])  # its second sentence is made up
+    report = run(None, sliced, decider=FakeDecider({"s2": 0}), model=RUNE, ledger=ledger(), clock=lambda: NOW)
+    assert report.score == 1.0 and report.scored[0].outcome == "0.00"
 
 
 @pytest.fixture(scope="module")
 def corpus_run() -> Any:
-    """The whole grounding corpus run once on its words alone, with no decision model: the same for every test that
-    reads it, so the module runs it once and hands each test a deep copy of its own."""
-    return run(None, load(GROUND), clock=lambda: NOW)
+    """The whole grounding corpus run once on a stand-in judge that finds every case backed: the same for every test
+    that reads it, so the module runs it once and hands each test a deep copy of its own."""
+    return run(None, load(GROUND), decider=FakeDecider(), model=RUNE, ledger=ledger(), clock=lambda: NOW)
 
 
 @pytest.fixture
@@ -283,21 +288,23 @@ def test_what_a_test_does_to_its_corpus_report_leaves_the_run_the_next_test_is_h
         corpus_report: Any, corpus_run: Any) -> None:
     corpus_report.scored.clear()
     corpus_report.groups["all"].supported = -1
-    assert len(corpus_run.scored) == 229 and corpus_run.groups["all"].supported == 98
+    assert len(corpus_run.scored) == 258 and corpus_run.groups["all"].supported == 111
 
 
-def test_the_whole_corpus_runs_on_its_words_alone_with_no_decision_model(corpus_report: Any) -> None:
+def test_the_whole_corpus_runs_case_by_case_and_with_no_decision_model_each_case_is_unscored(
+        corpus_report: Any) -> None:
     report = corpus_report
-    assert len(report.scored) == 229 and not report.unscored and report.calls == 0
+    assert len(report.scored) == 258 and not report.unscored and report.calls == 258
     groups = report.groups
-    assert set(groups) == {"all", "rows", "sense", "claims", "held_out", "structure", "steering", "lead_value", "joins", "data", "saves", "expired", "planted",
-                           "roles"}
-    assert groups["all"].supported == 98 and groups["all"].unsupported == 131
+    assert set(groups) == {"all", "rows", "sense", "claims", "held_out", "structure", "steering", "lead_value", "joins",
+                           "saves", "expired", "roles", "data", "planted", "voice", "injection"}
+    assert groups["all"].supported == 111 and groups["all"].unsupported == 147
     assert groups["all"].scored == sum(g.scored for name, g in groups.items() if name != "all")
-    assert run(None, load(GROUND), group="steering").groups["all"].scored == 4
     printed = lines(report)
-    assert printed[0].startswith("corpus: ground, 229 cases, judge none: rules and words alone, score ")
-    assert printed[1].startswith("all: supported kept whole ")
+    assert printed[0].startswith("corpus: ground, 258 cases, judge ") and ", score " in printed[0]
+    assert printed[1].startswith("all: supported at or above 0.6 111 of 111 ")
+    quiet = run(None, load(GROUND), group="steering")
+    assert len(quiet.unscored) == 4 and quiet.score is None and quiet.calls == 0
 
 
 def test_a_grounding_case_past_the_cap_is_unscored_and_names_the_cap() -> None:
@@ -466,24 +473,16 @@ def test_a_grounding_case_reads_its_facts_its_day_and_its_context_and_says_what_
     sliced = replace(suite, cases=[c for c in suite.cases if c.id == "r01"])
     report = run(None, sliced, decider=decider, model=RUNE, ledger=ledger(), clock=lambda: NOW)
     state = decider.asked[0][0]
-    assert state["today"] == "2026-10-25" and state["operating_context"] == "Synthetic accounts, for an eval of grounding."
-    assert state["facts"]["f_9b21"]["text"] and state["article"] == {"path": "accounts/eval"}
+    assert state["today"] == "2026-10-25" and state["operating_context"] == "Synthetic records, for an eval of grounding."
+    assert state["facts"]["f_9b21"]["text"] and state["article"] == "eval/case"
     case = report.scored[0]
     assert case.calls == len(decider.asked) == report.calls and case.usd == pytest.approx(report.usd) and report.usd > 0
     assert (case.id, case.group, case.label) == ("r01", "rows", "truly-unsupported")
-    failed = run(None, sliced, decider=Raising(), model=RUNE, ledger=(kept := ledger()), clock=lambda: NOW)
-    assert failed.unscored[0].checks[0].why == "grounding failed: the decision model gave no answer: ask again"
+    failed = run(None, sliced, decider=Raising(), model=RUNE, ledger=ledger(), clock=lambda: NOW)
+    assert failed.unscored[0].checks[0].why == "the decision model gave no answer: ask again"
     assert (failed.unscored[0].id, failed.unscored[0].group, failed.unscored[0].label) == ("r01", "rows",
                                                                                          "truly-unsupported")
-    assert failed.calls == failed.unscored[0].calls == 1 and len(kept.store.rows(LOG)) == 1
-
-
-def test_a_grounding_case_that_lost_its_lead_says_so_with_the_lines_grounding_dropped(corpus_report: Any) -> None:
-    report = corpus_report
-    outcomes = {s.outcome for s in report.scored}
-    assert outcomes <= {"kept whole", "claim kept with the lead gone", "gone"} and "gone" in outcomes
-    miss = next(s for s in report.scored if s.misses and s.dropped)
-    assert miss.misses[0].why.endswith(": " + "; ".join(miss.dropped))
+    assert failed.calls == failed.unscored[0].calls == 1
 
 
 @pytest.mark.parametrize(("question", "line"), [
@@ -522,23 +521,16 @@ def test_a_question_reads_its_words_as_a_list_keeps_its_query_settings_and_refus
         load(path)
 
 
-def test_a_grounding_suite_keeps_the_corpus_day_labels_and_kinds_and_counts_each_lost_lead(corpus_report: Any) -> None:
+def test_a_grounding_suite_keeps_the_corpus_day_context_and_kinds() -> None:
     raw = json.loads(GROUND.read_text(encoding="utf-8"))
     suite = load(GROUND)
-    assert (suite.today, suite.labels, suite.context) == (raw["today"], raw["labels"],
-                                                          "Synthetic accounts, for an eval of grounding.")
+    assert (suite.today, suite.context) == (raw["today"], "Synthetic records, for an eval of grounding.")
     assert (suite.cases[0].kind, suite.cases[0].group) == ("paraphrase", "rows")
-    report = corpus_report  # the run of this same suite
-    good = [s for s in report.scored if s.label == "supported-in-other-words"]
-    bad = [s for s in report.scored if s.label != "supported-in-other-words"]
-    gone = "claim kept with the lead gone"
-    assert report.groups["all"].lead_gone == (sum(s.outcome == gone for s in good), sum(s.outcome == gone for s in bad))
-    assert report.groups["all"].lead_gone != (len(good), len(bad))
 
 
 def test_a_run_says_how_long_it_took_and_names_no_judge_and_no_stop_without_a_decider() -> None:
     report = run(stand_in(), load(DATA / "questions.yaml"), model=RUNE, clock=lambda: NOW, timer=ticks(100))
-    assert report.judge == "none: rules and words alone" and report.stopped == ""
+    assert report.judge == "none: rules alone" and report.stopped == ""
     assert report.seconds == 13.0  # the timer read once before the cases and once after: each case reads it twice
     assert all((s.calls, s.usd) == (0, 0.0) for s in report.scored)
 
@@ -668,8 +660,12 @@ def test_two_workers_recording_at_once_each_keep_their_calls_tokens_and_dollars(
 
     spend = evals._Spend(ledger(), RUNE, None, lambda: NOW)
     spend.usd = Meeting(0.0)
+    cases = [spend.held(FakeDecider(), f"eval {n}") for n in range(2)]
+    for case in cases:
+        case.spent(SPENT)
+        case.calls = Calls(1)
     monkeypatch.setattr(evals, "TokenCount", Tokens)
-    workers = [threading.Thread(target=spend.record, args=(SPENT, Calls(1), f"eval {n}")) for n in range(2)]
+    workers = [threading.Thread(target=spend.add, args=(case,)) for case in cases]
     for worker in workers:
         worker.start()
     for worker in workers:

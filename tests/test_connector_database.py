@@ -97,13 +97,25 @@ def test_an_agent_file_with_a_sql_line_gathers_its_rows_as_cited_data_and_the_fi
     with unchanged(root):
         # the app hands in its sources wrapped in its mask, which passes select through
         (entry,) = gather(writer, Lookup(), {}, root=root, sources={"warehouse": Masked(warehouse(root), lambda: str)})
+    rows = ['{"region": "East", "sum(amount)": 4000}', '{"region": "North", "sum(amount)": 3000}',
+            '{"region": "South", "sum(amount)": 3000}']
     assert entry.heading == f"Sql warehouse, the rows of {PIPELINE}"
-    assert entry.lines == ['- [^sql:warehouse:1] {"region": "East", "sum(amount)": 4000}',
-                           '- [^sql:warehouse:2] {"region": "North", "sum(amount)": 3000}',
-                           '- [^sql:warehouse:3] {"region": "South", "sum(amount)": 3000}']
-    assert [(c.kind, c.id, c.source) for c in entry.citations] == [
-        ("record", f"sql:warehouse:{i}", "sql:warehouse") for i in (1, 2, 3)]
+    assert entry.lines == [f"- [^sql:warehouse:e3d5d721:{i}] {row}" for i, row in enumerate(rows, 1)]
+    # each row is its citation's quote, so the article's footnote shows the row a sentence rests on
+    assert [(c.kind, c.id, c.source, c.quote) for c in entry.citations] == [
+        ("record", f"sql:warehouse:e3d5d721:{i}", "sql:warehouse", row) for i, row in enumerate(rows, 1)]
     assert "## Sql warehouse" in render([entry]) and writer.notice == ""
+    (wide,) = gather(pipeline(root, "select hex(zeroblob(200)) as pad"), Lookup(), {}, root=root,
+                     sources={"warehouse": warehouse(root)})
+    assert wide.lines[0].endswith("0" * 400 + '"}') and len(wide.citations[0].quote) <= 301  # cut as a fact's quote
+
+
+def test_two_sql_lines_on_one_source_each_give_their_rows(root: Path) -> None:
+    queries = [PIPELINE, "select 'one  two' as name", "select 'one two' as name"]  # the last two alike once spaces fold
+    writer = agent(root, "evidence:\n" + "".join(f'  - sql: {{ source: warehouse, query: "{q}" }}\n' for q in queries))
+    first, spaced, single = gather(writer, Lookup(), {}, root=root, sources={"warehouse": warehouse(root)})
+    assert len(first.lines) == 3 and [spaced.lines, single.lines] == [
+        ['- [^sql:warehouse:fd245967:1] {"name": "one  two"}'], ['- [^sql:warehouse:af3b59a1:1] {"name": "one two"}']]
 
 
 def test_a_changed_row_moves_the_digest_and_an_unchanged_database_does_not(root: Path) -> None:

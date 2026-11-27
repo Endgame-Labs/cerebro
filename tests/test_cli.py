@@ -222,12 +222,11 @@ def test_init_then_a_note_then_serve_once_then_status(tmp_path: Path, stand_ins:
         assert "Vega leads the review" in (workspace / "articles" / "accounts" / "acme-corp.md").read_text()
         # each fixed article that was due is born before its first run, and holds nothing until a run lands a part
         assert re.search(r"^ran       accounts/subagents/overview: done at \S+Z on ", status.output, re.MULTILINE), status.output
-        assert "agents    29 loaded" in status.output and "articles  accounts: 1, digests: 1\n" in status.output
-        # the report no run has written is not counted among the written or linked from Contents, as it has no copy,
-        # and status lists it, marked as waiting
-        assert "pending   1 article not yet written:\n          reports/pipeline\n" in status.output
+        # the report is written too: its stand-in writes a line though it has nothing to cite
+        assert "agents    29 loaded" in status.output and "articles  accounts: 1, digests: 1, reports: 1\n" in status.output
+        assert "pending" not in status.output and (workspace / "articles" / "reports" / "pipeline.md").exists()
         index = (workspace / "articles" / "digests" / "index.md").read_text()
-        assert "](../accounts/)" in index and "Reports" not in index and not (workspace / "articles" / "reports").exists()
+        assert "](../accounts/)" in index
         assert "working   3 articles in the working set" in status.output
 
 
@@ -263,9 +262,10 @@ def test_each_command_runs_on_a_new_workspace(tmp_path: Path, stand_ins: None) -
     assert distilled.exit_code == 0 and "agents    none" not in distilled.output  # it runs none, and has one
 
     ran = run("agents", "run", "reports/weekly", "--workspace", workspace)
-    assert ran.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md"], ran.output
+    unscored = "grounding reports/weekly: left 2 sentences unscored"  # it has no decision model
+    assert ran.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md", unscored], ran.output
     again = run("compile", "--article", "reports/weekly", "--workspace", workspace)  # a rebuild now runs whatever moved
-    assert again.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md"], again.output
+    assert again.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md", unscored], again.output
 
     read = json.loads(run("tools", "read", "--json", '{"ids": ["reports/weekly"]}', "--workspace", workspace).output)
     summary = read["articles"][0]["text"]
@@ -410,13 +410,14 @@ def test_connect_keeps_a_login_given_on_standard_input_and_off_a_terminal_asks_n
 
 
 def test_a_days_spend_reads_as_parts_that_add_up_to_its_total() -> None:
-    from cerebro.cli import _digits, _money
+    from cerebro.budget import spend_digits
+    from cerebro.cli import _money
 
     for extraction, compilation in ((0.0047, 0.0056), (0.005, 0.005), (1.234, 2.345), (0.0, 0.0), (0.00004, 0.0)):
-        digits = _digits(extraction + compilation, [extraction, compilation])
+        digits = spend_digits(extraction + compilation, [extraction, compilation])
         parts = [float(_money(v, digits)[1:]) for v in (extraction, compilation)]
         assert round(sum(parts), digits) == float(_money(extraction + compilation, digits)[1:]), (extraction, digits)
-    assert _digits(0.0047 + 0.0056, [0.0047, 0.0056]) == 4 and _digits(1.25, [1.0, 0.25]) == 2
+    assert spend_digits(0.0047 + 0.0056, [0.0047, 0.0056]) == 4 and spend_digits(1.25, [1.0, 0.25]) == 2
 
 
 def test_eval_runs_a_suite_on_the_workspace_and_prints_its_scores(tmp_path: Path) -> None:

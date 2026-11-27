@@ -6,11 +6,11 @@ Not part of the test suite: it calls real models and costs a few cents.
 The workspace is a temporary folder made as `cerebro init`
 makes one, with its config folder beside it, so nothing is left behind and no call is replayed. It runs three passes:
 the first on the new notes, a second with nothing changed, and a third after one note is edited. It prints what each
-pass did, the facts and the article, what the workspace spent, then PASS, or FAIL with every reason. It never prints a
-key. It passes only when:
+pass did, the facts and the article with how many sentences grounding marked, what the workspace spent, then PASS,
+or FAIL with every reason. It never prints a key. It passes only when:
 - each note gave more than one fact, and no fact quotes a header line;
 - no fact's text holds `cerebro:`;
-- the article has a part, every sentence in it cites, and every citation is a fact the workspace holds;
+- the article has a part, and every citation in it is a fact the workspace holds;
 - the second pass runs nothing;
 - after the edit, the third pass rewrites the article.
 """
@@ -28,9 +28,9 @@ from spend import spent_line, table
 
 from cerebro import scaffold
 from cerebro.app import Cerebro
-from cerebro.article import cut, passages
+from cerebro.article import MARK, cut, passages
 from cerebro.evidence import CITE
-from cerebro.ground import split_sentences
+from cerebro.ground import unmarked
 from cerebro.runner import PassResult
 
 NOTES = {
@@ -92,19 +92,6 @@ def show(n: int, result: PassResult) -> None:
         print(f"  warning {line}")
 
 
-def sentences(text: str) -> list[str]:
-    """The sentences of a part's prose, each with the citations that close it."""
-    out = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith(("#", "|", ">", "```")):
-            continue
-        line = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", line)
-        line = re.sub(r"([.!?])((?:\s*\[\^[^\]\s]+\])+)", r"\2\1", line)  # a citation after the stop is the sentence's
-        out += [s.text for s in split_sentences(line)]
-    return out
-
-
 def main() -> int:
     if not os.environ.get("FIREWORKS_API_KEY") or not os.environ.get("TYPESAFE_API_KEY"):
         print("skip: set FIREWORKS_API_KEY and TYPESAFE_API_KEY")
@@ -146,13 +133,9 @@ def main() -> int:
                 reasons.append(f"{ARTICLE} has no part")
             for part in (passages(article) if article else []):
                 print(f"## {part.heading}\n{part.text}\n")
-                for sentence in sentences(part.text):
-                    cited = CITE.findall(sentence)
-                    if not cited:
-                        reasons.append(f"{part.heading}: a sentence cites nothing: {sentence!r}")
-                    for id in cited:
-                        if id not in held:
-                            reasons.append(f"{part.heading}: [^{id}] is no fact the wiki holds")
+                reasons += [f"{part.heading}: [^{id}] is no fact the wiki holds"
+                            for id in CITE.findall(unmarked(part.text)) if id not in held]
+            print(f"grounding marked {sum(s.text.count(MARK) for s in passages(article)) if article else 0} sentences")
             before = [(s.heading, s.text) for s in passages(article)] if article else []
             second = workspace.run_once()
             show(2, second)
@@ -174,11 +157,9 @@ def main() -> int:
                 print(f"## {part.heading}\n{part.text}\n")
             held = {f.id for f in workspace.extraction.facts()}
             for part in (passages(after) if after else []):
-                for sentence in sentences(part.text):
-                    if not CITE.findall(sentence):
-                        reasons.append(f"after the edit, {part.heading}: a sentence cites nothing: {sentence!r}")
-                    reasons += [f"after the edit, {part.heading}: [^{id}] is no fact the wiki holds"
-                                for id in CITE.findall(sentence) if id not in held]
+                reasons += [f"after the edit, {part.heading}: [^{id}] is no fact the wiki holds"
+                            for id in CITE.findall(unmarked(part.text)) if id not in held]
+            print(f"grounding marked {sum(s.text.count(MARK) for s in passages(after)) if after else 0} sentences")
             print("\n" + table({a.id: a.role for a in workspace.agents}, first.runs + second.runs + third.runs))
             now = workspace.clock()
             print(f"spent: ${workspace.ledger.spent(now):.4f} (extraction ${workspace.ledger.spent(now, 'extraction'):.4f}, "

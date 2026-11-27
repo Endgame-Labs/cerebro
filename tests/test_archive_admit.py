@@ -49,8 +49,9 @@ def _curate(w: Workspace, calls: list[tuple[str, dict]], collection: str = "thin
         return done, [e.text for e in done.run.transcript if e.role == "tool"]  # type: ignore[union-attr]
 
 
-def _runs(workspace: Any, agent: str) -> list[Any]:
-    return [r for r in workspace.store.rows("agent-runs") if r.data["agent"] == agent]
+def _runs(workspace: Any, agent: str) -> list[str]:
+    """The runs of `agent`, each once: a run's row is written again as what grounding said of it is kept."""
+    return list(dict.fromkeys(r.data["run"] for r in workspace.store.rows("agent-runs") if r.data["agent"] == agent))
 
 
 def _articles(w: Workspace, collection: str = "things") -> dict[str, str]:

@@ -190,16 +190,15 @@ def test_each_call_is_recorded_under_rerank_and_past_its_cap_a_search_keeps_its_
     ledger = Ledger(store, Caps())
     assert ledger.caps.rerank == RERANK_DAILY_USD == 0.5
     decider = ByWord(BACKWARDS)
-    lookup, word, reranker = reranked(store, decider, ledger=ledger, decision=JEV)
+    lookup, word, _ = reranked(store, decider, ledger=ledger, decision=JEV)
     assert ids(lookup.query(YOU, "", matching="budget"), word) == FUSED[::-1]
     (row,) = store.rows("spend")
     assert (row.data["layer"], row.data["run"], row.data["model"]) == ("rerank", "rerank", JEV.model)
-    assert reranker.calls == 1
     ledger.record("rerank", NOW, JEV, TokenCount(input_tokens=20_000_000))  # $0.84 of a $0.50 cap
     result = lookup.query(YOU, "", matching="launch budget")  # other words, so nothing is cached
     assert ids(result, word) == ids(StoreLookup(store, lookup.extraction).query(YOU, "", matching="launch budget"),
                                     word)
-    assert len(decider.asked) == 1 and reranker.calls == 1  # checked before: no call was made
+    assert len(decider.asked) == 1  # checked before: no call was made
     assert result.warnings == [("the best matches are in search order, not re-ranked: rerank spent $0.84 of its $0.5 "
                                "cap on 2026-11-17 (UTC): its model calls wait for 00:00 UTC, or raise "
                                "budget.rerank_daily_usd")]
@@ -298,9 +297,9 @@ def test_a_decision_too_large_is_split_in_halves_and_each_half_is_recorded() -> 
     ledger = Ledger(store, Caps())
     decider = Small(BACKWARDS)
     decider.most = 1
-    lookup, word, reranker = reranked(store, decider, ledger=ledger, decision=JEV)
+    lookup, word, _ = reranked(store, decider, ledger=ledger, decision=JEV)
     assert ids(lookup.query(YOU, "", matching="budget"), word) == FUSED[::-1]
-    assert [len(q) for _, q in decider.asked] == [4, 2, 1, 1, 2, 1, 1] and reranker.calls == 4
+    assert [len(q) for _, q in decider.asked] == [4, 2, 1, 1, 2, 1, 1]
     assert len(store.rows("spend")) == 4
     assert {state["contract"] for state, _ in decider.asked} == {decider.asked[0][0]["contract"]}
     assert decider.asked[0][0]["contract"].startswith("Someone searched")
@@ -433,7 +432,7 @@ def test_a_score_from_zero_to_one_stands_and_one_past_it_is_left_unscored_while_
     assert len(reranker._cache) == 3  # the scores it gave are kept
 
 
-def test_what_each_call_spent_is_totalled_and_each_question_names_its_passage() -> None:
+def test_what_each_call_spent_is_recorded_and_each_question_names_its_passage() -> None:
     class Strict(ByWord):
         def __init__(self) -> None:
             super().__init__(BACKWARDS)
@@ -441,17 +440,14 @@ def test_what_each_call_spent_is_totalled_and_each_question_names_its_passage() 
 
     store = fill(MemoryStore())
     decider = Strict()
-    lookup, _, reranker = reranked(store, decider, ledger=Ledger(store, Caps()), decision=JEV)
+    lookup, _, _ = reranked(store, decider, ledger=Ledger(store, Caps()), decision=JEV)
     lookup.query(YOU, "", matching="budget")
     state, questions = decider.asked[0]
     assert [q.instructions for q in questions.values()] == [f"Does passage p{n} answer the search?" for n in (1, 2, 3, 4)]
     assert state["passages"][0] == {"id": "p1", "kind": "article part", "article": "Alder", "heading": "Overview",
                                     "text": "The launch moved to March. The budget is short."}
-    sent = reranker.usage
-    assert sent.input_tokens > 0 and sent.output_tokens == 4 and (sent.cache_read_tokens, sent.cache_write_tokens) == (0, 0)
     lookup.query(YOU, "", matching="launch budget")
-    assert reranker.usage.output_tokens == 8 and reranker.usage.input_tokens > sent.input_tokens
-    assert store.rows("spend")[0].data["usd"] > 0
+    assert [row.data["usd"] > 0 for row in store.rows("spend")] == [True, True]
 
 
 def test_the_bound_is_waited_out_exactly_and_no_longer() -> None:

@@ -39,8 +39,8 @@ from cerebro.store import SQLiteStore
 class ScriptedModels:
     """Stands in for Factoid's model client. The extractor makes one fact of each passage it is shown, citing it,
     with the capitalised names in it as mentions, the first one as the subject. The decision model keeps every fact
-    and finds every pair of facts unrelated. It embeds nothing, so Factoid's search is its BM25 half alone. Each
-    call is metered as Factoid's client meters it."""
+    and finds every pair of facts as `pairs` says, unrelated unless a test says otherwise. It embeds nothing, so
+    Factoid's search is its BM25 half alone. Each call is metered as Factoid's client meters it."""
 
     def __init__(self) -> None:
         from factoid.models import Meter
@@ -48,6 +48,7 @@ class ScriptedModels:
         self.models = {"choose": "scripted", "generate": "scripted", "embed": "scripted"}
         self.meter = Meter()
         self.fail: Exception | None = None
+        self.pairs = "unrelated"
         self.seen: list[str] = []  # every prompt and state this client was shown
 
     def generate(self, prompt: str, **_: Any) -> str:
@@ -76,7 +77,7 @@ class ScriptedModels:
             elif isinstance(question, Choice):
                 options = [key for key, _ in question.options]
                 pick = {"expires": "estimated", "lifetime": "a few years"}.get(name) or (
-                    "unrelated" if re.fullmatch(r"F\d+", name) else options[0])
+                    self.pairs if re.fullmatch(r"F\d+", name) else options[0])
                 out[name] = {key: float(key == pick) for key in options}
             else:
                 out[name] = ScoreAnswer(1.0, {0: 0.0, 1: 1.0})
@@ -125,7 +126,7 @@ def test_a_factoid_fact_comes_back_with_its_record_subject_quote_and_time(tmp_pa
     assert (fact.text, fact.subject, fact.kind, fact.at) == ("Vega leads the review.", "Vega", "fact",
                                                               "2026-11-01T09:00:00Z")
     assert (fact.source, fact.record, fact.status) == ("notes", "memo-1", "current")
-    assert fact.quotes == [Quote("Vega leads the review.", "", "2026-11-01T09:00:00Z", "", passage=2)]  # its second
+    assert fact.quotes == [Quote("Vega leads the review.", "", "2026-11-01T09:00:00Z", "", 2, "memo-1")]  # its second
     assert fact.mentions == [Mention("Vega", "subject")]
     assert handler.facts(ids=[fact.id]) == [fact]
     handler.close()

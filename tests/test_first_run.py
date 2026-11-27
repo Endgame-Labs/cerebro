@@ -559,8 +559,9 @@ def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: P
         script.crm = workspace.connectors["crm"]
         out = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
         assert out is not None and out.late is not None and "topics/renewals" in articles(workspace)
-        runs = [row.data["target"] for row in workspace.store.rows("agent-runs") if row.data["agent"] == "things/article"]
-        assert runs.count("things/alder-works") == 1  # built once: its new record waits for a later pass
+        runs = {row.data["run"] for row in workspace.store.rows("agent-runs")
+                if row.data["agent"] == "things/article" and row.data["target"] == "things/alder-works"}
+        assert len(runs) == 1  # built once: its new record waits for a later pass
 
 
 def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_however_late_and_serve_reads_the_rest(
@@ -822,6 +823,28 @@ def test_review_accept_from_accepts_what_the_list_showed_and_says_how_many_newer
                        "list was shown: run cerebro serve --once to see the list as it stands, or cerebro review")
     with open_it(root, script) as workspace:
         assert [p.id for p in proposals(workspace.store, "waiting")] == ["p_newer000001"]
+
+
+def test_review_accept_from_takes_a_first_list_a_later_pass_filed_as_its_line_says(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root, script, clock = lay_out_workspace(tmp_path, knowledge=True), Script({"things/curator": list(ADMITS)}), [NOW]
+
+    def opened(root: Path) -> Cerebro:
+        workspace = Cerebro(root, agent_run=script, extraction=FakeExtraction(), clock=lambda: clock[0],
+                            connectors=[FakeConnector("crm", list(RECORDS))])
+        script.store = workspace.store
+        return workspace
+
+    with opened(root) as workspace:
+        run(workspace, choose=Choices.starter)  # the topics curator, asked late, proposes nothing
+        script.calls["topics/curator"] = list(TOPIC)
+        clock[0] = NOW + timedelta(days=1, hours=1)
+        warned = workspace.run_once(scheduled=True).warnings  # its daily run files its first list
+    assert any("review --accept-from agents/topics/curator.md" in line for line in warned), warned
+    monkeypatch.setattr(cli, "open_workspace", opened)
+    decided = CliRunner().invoke(main, ["review", "--accept-from", "agents/topics/curator.md", "--workspace",
+                                        str(root)])
+    assert decided.exit_code == 0 and decided.output.startswith("Accepted p_"), decided.output
 
 
 NEWER = ("p_newer000001", "p_newer000002", "p_newarch0001")

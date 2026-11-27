@@ -31,7 +31,6 @@ from cerebro.evidence import (
     render,
 )
 from cerebro.fakes import FakeDecider, MemoryStore, ScriptedRun
-from cerebro.ground import Grounded
 from cerebro.lookup import StoreLookup
 from cerebro.models import DEFAULTS, ModelSpec
 from cerebro.records import Proposal
@@ -40,10 +39,6 @@ TEMPLATE = Path(rendered.__file__).parent / "templates" / "gtm" / "agents"
 CURATOR = Caller("things/curator", "agent")
 
 RUNE = ModelSpec("fireworks", "rune", "", "decision")
-
-
-def keep_all(agent: object, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-    return Grounded(dict(parts))
 
 
 class Clock:
@@ -63,7 +58,7 @@ def workspace(tmp_path: Path, written: bool = False) -> tuple[MemoryStore, dict]
     for id, title in (("accounts/alpha-co", "Alpha Co"), ("accounts/beta-co", "Beta Co"), ("people/dana-lee", "Dana Lee")):
         (made if written else MemoryStore.create)(store, Identity(id, id.split("/")[0], title, status="active"))
     common = {"lookup": StoreLookup(store), "store": store, "root": tmp_path, "functions": {}, "agent_tools": {},
-              "grounder": keep_all, "clock": Clock()}
+              "clock": Clock()}
     return store, common
 
 
@@ -166,6 +161,7 @@ def test_a_rendered_part_is_written_with_no_model_call_even_when_the_rest_of_the
     run = ScriptedRun(lambda p: calls.append(p) or {"Notes": "n"})
     compile_article(article, agent_run=run, decider=decider, **common)
     assert len(calls) == 1
+    decider.asked.clear()  # what grounding asked of the run's text
     admit(store, "accounts/gamma-co")
     skipped = compile_article(article, agent_run=run, decider=decider, **common)
     # Nothing the model reads moved, so no run and no decision; the compilation still follows what it lists.
@@ -362,7 +358,7 @@ def test_the_decision_judge_asks_once_per_passage_and_keeps_its_scores() -> None
     assert len(decider.asked) == 1 and [p["text"] for p in decider.asked[0][0]["passages"]] == ["first", "second"]
     assert judge.score("the status", two[:2]).cached == 2 and len(decider.asked) == 1
     judge.score("another instruction", two[:1])
-    assert len(decider.asked) == 2 and judge.calls == 2
+    assert len(decider.asked) == 2
     clock.now += timedelta(days=31)
     judge.score("the status", [Passage("c", "s", "third")])  # a score is dropped 30 days after it was scored
     assert judge.score("the status", two[:1]).cached == 0 and len(decider.asked) == 4
@@ -455,7 +451,7 @@ def test_with_the_compilation_cap_spent_the_judge_asks_nothing_and_the_entry_loa
     decider = FakeDecider()
     judge = DecisionKeepJudge(decider, store, Clock(), Ledger(store, Caps(compilation=0.0)), DEFAULTS["decision"])
     text = render([gather(reader(), StoreLookup(store), {}, judge=judge)[0]])
-    assert decider.asked == [] and judge.calls == 0
+    assert decider.asked == []
     assert "PR 412" in text and "Refactor" in text and "so this entry loaded as it would without keep: compilation " \
         "spent $0.00 of its $0 cap" in text
 
@@ -526,7 +522,7 @@ class ByArticle(FakeDecider):
         self.scores = {article: list(v) if isinstance(v, list) else v for article, v in scores.items()}
 
     def decide(self, state: Any, questions: dict) -> Any:
-        for passage in state["passages"]:
+        for passage in state.get("passages", []):  # the keep judge's; grounding asks of no article
             score = self.scores.get(passage["article"], 1.0)
             self.answers[passage["id"]] = score.pop(0) if isinstance(score, list) else score
         return super().decide(state, questions)
@@ -540,7 +536,7 @@ def test_a_compile_with_a_decision_model_cuts_a_keep_line_by_its_judge(tmp_path:
     run = ScriptedRun(lambda p: prompts.append(p) or {"Accounts": "- Alpha Co"})
     decider = ByArticle({"accounts/beta-co": 0.05})  # beta-co scores below the bar, then again when asked once more
     compile_article(agent, agent_run=run, decider=decider, **common)
-    assert len(decider.asked) == 2 and "kept 2 of 3 passages" in prompts[0]
+    assert len([s for s, _ in decider.asked if "passages" in s]) == 2 and "kept 2 of 3 passages" in prompts[0]
     assert "articles/accounts/alpha-co.md, 1 of its 1 passages" in prompts[0]
     assert "articles/accounts/beta-co.md" not in prompts[0]
 
@@ -577,7 +573,7 @@ def test_settings_give_a_collection_its_line_and_a_compile_renders_it(tmp_path: 
 @pytest.mark.parametrize("settings, says", [
     ({"collections": ["accounts"]}, "settings.yaml collections is not a map"),
     ({"collections": {"accounts": "Who we work with."}}, "collections.accounts takes description alone"),
-    ({"collections": {"accounts": {"description": "x", "title": "y"}}}, 'settings.yaml: unknown key "title"'),
+    ({"collections": {"accounts": {"description": "x", "title": "y"}}}, 'settings.yaml: unknown key "title": delete it, or fix its spelling'),
     ({"collections": {"accounts": {"description": 3}}}, "collections.accounts takes description alone"),
 ])
 def test_a_collections_setting_that_does_not_read_stops_the_workspace_with_one_line(settings: dict, says: str) -> None:
@@ -623,11 +619,11 @@ def test_a_passage_scored_under_the_bar_is_asked_once_more_alone_and_keeps_the_h
     judge = DecisionKeepJudge(decider, store)
     passages = [Passage("a", "s", "one"), Passage("b", "s", "two"), Passage("c", "s", "three")]
     got = judge.score("the status", passages)
-    assert got.scores == [0.83, 0.04, 0.9] and judge.calls == 2
+    assert got.scores == [0.83, 0.04, 0.9] and len(decider.asked) == 2
     assert [p["article"] for p in decider.asked[1][0]["passages"]] == ["b", "a"]  # the low ones alone, the other order
-    assert judge.score("the status", passages).cached == 3 and judge.calls == 2  # a cached score is not asked again
-    once = DecisionKeepJudge(ByArticle({"a": [0.02, 0.83]}), again=False)
-    assert once.score("the status", passages[:1]).scores == [0.02] and once.calls == 1
+    assert judge.score("the status", passages).cached == 3 and len(decider.asked) == 2  # a cached score is not asked again
+    once = DecisionKeepJudge(alone := ByArticle({"a": [0.02, 0.83]}), again=False)
+    assert once.score("the status", passages[:1]).scores == [0.02] and len(alone.asked) == 1
     high = DecisionKeepJudge(ByArticle({"a": [0.3, 0.9]}))
     assert high.score("the status", passages[:1], bar=0.5).scores == [0.9]  # under a line's own bar, asked again
 

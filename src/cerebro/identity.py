@@ -32,8 +32,8 @@ that it is bound to, so a part's stage lands on the part and never on its parent
 An article merged into another is followed to its survivor, as the latest `redirect` row of the `merges` log says.
 A link is its own row, so links can be added later without extracting again. Linking never creates an article.
 
-`DecisionJudge` is the judge on a decision model: one request a fact, one yes or no a candidate. It says what each
-call cost, so the caller can keep it in the spend ledger.
+`DecisionJudge` is the judge on a decision model: one request a fact, one yes or no a candidate. A caller holds its
+decider to a cap, and a call refused or failed links nothing by a near match.
 """
 
 from __future__ import annotations
@@ -41,15 +41,15 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
 
 from .article import Identity, fields
+from .budget import BudgetSpent
 from .connector import Ours, Record
 from .facts import Fact
-from .models import Decider, DecisionError, TokenCount, YesNo
+from .models import Decider, DecisionError, YesNo
 from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
-__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "Judged", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
+__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
            "linked_keys", "naming_keys", "own_articles", "reached", "redirects", "tied", "working", "would_bind"]
 
 THRESHOLD = 0.7  # the probability a judge must give a candidate
@@ -59,19 +59,10 @@ JUDGE_QUESTION = ("Does `fact` state something about the entity `candidates[{id}
 EDGE = re.compile(r"^[^\w]+|[^\w]+$")
 
 
-@dataclass
-class Judged:
-    """What a judge said: the candidates that passed, by id, and what asking cost, with the model that answered."""
-
-    ids: list[str] = field(default_factory=list)
-    usage: TokenCount = field(default_factory=TokenCount)
-    model: str = ""
-
-
 class Judge:
-    """The seam for a near match: which of the candidate articles, if any, a fact's subject names."""
+    """The seam for a near match: which of the candidate articles, if any, a fact's subject names, by id."""
 
-    def judge(self, fact: Fact, candidates: list[Identity]) -> Judged:
+    def judge(self, fact: Fact, candidates: list[Identity]) -> list[str]:
         raise NotImplementedError
 
 
@@ -83,14 +74,13 @@ class DecisionJudge(Judge):
         self.decider = decider
         self.threshold = threshold
 
-    def judge(self, fact: Fact, candidates: list[Identity]) -> Judged:
+    def judge(self, fact: Fact, candidates: list[Identity]) -> list[str]:
         state = {"fact": fact.text, "subject": fact.subject,
                  "candidates": {c.id: {"name": c.title, "collection": c.collection} for c in candidates}}
         questions = {c.id: YesNo(JUDGE_QUESTION.format(id=c.id)) for c in candidates}
         decision = self.decider.decide(state, questions)
-        passed = [c.id for c in candidates if (answer := decision.answers.get(c.id)) is not None
-                  and answer.yes is not None and answer.yes >= self.threshold]
-        return Judged(passed, decision.usage, decision.model)
+        return [c.id for c in candidates if (answer := decision.answers.get(c.id)) is not None
+                and answer.yes is not None and answer.yes >= self.threshold]
 
 
 def in_working_set(who: Identity) -> bool:
@@ -218,11 +208,9 @@ def link_ties(store: Store, fact_id: str, made: list[tuple[str, str]], at: str =
 
 
 def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | None = None, *,
-         spent: list[Judged] | None = None, among: list[tuple[Identity, list[str]]] | None = None,
-         ) -> list[tuple[str, str]]:
+         among: list[tuple[Identity, list[str]]] | None = None) -> list[tuple[str, str]]:
     """The articles a fact is tied to as the store stands, each with how, without linking. A judge, if given, is asked
-    about a near match of the subject among `near_pool`, or `among` read from it before, and each answer, with what it
-    cost, is added to `spent`."""
+    about a near match of the subject among `near_pool`, or `among` read from it before."""
     made: list[tuple[str, str]] = []
 
     def tie(ids: list[str], how: str) -> None:
@@ -249,7 +237,7 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
             tie(named, RECORD if name not in listed else _subject_how(fact) if _tokens(name) == _tokens(fact.subject)
                 else MENTIONS)
     if judge is not None and fact.subject and not exact:
-        tie(_near(fact, judge, near_pool(store) if among is None else among, spent), _subject_how(fact))
+        tie(_near(fact, judge, near_pool(store) if among is None else among), _subject_how(fact))
     return made
 
 
@@ -342,7 +330,7 @@ def near_pool(store: Store) -> list[tuple[Identity, list[str]]]:
             for article in store.query(collection) if in_working_set(article.identity)]
 
 
-def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]], spent: list[Judged] | None) -> list[str]:
+def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]]) -> list[str]:
     """The one article a near match of the subject names, as the judge settles it, or none."""
     subject = _tokens(fact.subject)
     candidates = [who for who, title in among if _holds(subject, title) or _holds(title, subject)]
@@ -350,11 +338,9 @@ def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]], spe
         return []
     try:
         judged = judge.judge(fact, candidates)
-    except DecisionError:
-        return []  # a judge that fails links nothing by a near match; the fact's other links stand
-    if spent is not None:
-        spent.append(judged)
-    passed = [id for id in judged.ids if id in {c.id for c in candidates}]
+    except (BudgetSpent, DecisionError):
+        return []  # a judge refused at the cap or failed links nothing by a near match; the fact's other links stand
+    passed = [id for id in judged if id in {c.id for c in candidates}]
     return passed if len(passed) == 1 else []
 
 

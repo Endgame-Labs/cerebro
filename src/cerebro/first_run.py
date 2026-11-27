@@ -77,7 +77,7 @@ from .held import (
     passed_first_run,
     same_name,
 )
-from .identity import redirects, working
+from .identity import naming_keys, redirects, working, would_bind
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
 from .records import _slug as record_slug
 from .review import held_lines
@@ -90,6 +90,8 @@ from .tree import Group, Row, arrange, plain, tree
 if TYPE_CHECKING:
     from .agent import Agent
     from .app import Cerebro
+    from .connector import Record
+    from .store import Store
 
 __all__ = [
     "KEY",
@@ -111,6 +113,7 @@ __all__ = [
     "run",
     "served",
     "shown_at",
+    "stamp_shown",
     "waiting_line",
 ]
 
@@ -407,22 +410,29 @@ class LocalApproval(Approval):
     def _unweighed(self, agent: Agent, rows: list[Row], declined: list[Admit]) -> list[Row]:
         """The records held for the curator's collection that it neither proposed nor left out, each a left-out row,
         so no record it holds is on no list: under the reason an earlier run of the curator gave
-        it, else `not weighed`, or `OLDER` when the first run's held list did not show it. A row or a declined admit that names a record speaks for that record; one by name alone
-        speaks for one held record of that name: the one a value of its keys names, or an address at a domain it gives,
-        and none when its keys name none, or with no keys the first nothing spoke for yet. Every held record is a row of its own, none folded or
-        hidden, since the engine cannot tell one thing's records from another's. A row is named by its record's name,
-        else by its file's name with no folder and no extension, never by its path."""
+        it, else `not weighed`, or `OLDER` when the first run's held list did not show it. A proposed row speaks for
+        each held record its admit binds alone, as `_bound_alone` gives it, and counts them under it. A row or a
+        declined admit that names a record speaks for that record; one by name alone speaks for one held record of
+        that name: the one a value of its keys names, or an address at a domain it gives, and none when its keys name
+        none, or with no keys the first nothing spoke for yet. Every held record no admit takes is a row of its own,
+        whatever name or address it shares, since past what an admit binds the engine cannot tell one thing's records
+        from another's. A row is named by its record's name, else by its file's name with no folder and no extension,
+        never by its path."""
         prior: dict[tuple[str, str], str] = {}
         for item in self._query({"from": LEFT_OUT, "agent": agent.id})[::-1]:  # oldest first: the latest stands
             if item.get("source") and item.get("id") and str(item.get("reason") or "").strip():
                 prior[(str(item["source"]), str(item["id"]))] = str(item["reason"])
         own = f"agents/{agent.id}.md"  # a proposal of this curator's is a row here, and its rows say what it is for
-        held = [h for h in held_for(self.workspace.store, agent.target, sorted(self.workspace.connectors), limit=10**6,
-                                    ours=self.workspace.ours).items if not h.proposed or h.proposed.get("by") == own]
+        every = held_for(self.workspace.store, agent.target, sorted(self.workspace.connectors), limit=10**6,
+                         ours=self.workspace.ours).items
+        held = [h for h in every if not h.proposed or h.proposed.get("by") == own]
         mine = [row for row in rows if row.collection == agent.target]
         theirs = [d for d in declined if d.collection == agent.target]
         taken = {(str(row.record["source"]), str(row.record["id"])) for row in mine if row.record}
         taken |= {d.record for d in theirs if d.record}
+        seen: dict[str, dict[str, Any]] = {}
+        taken |= _bound_alone(self.workspace.store, [r for r in mine if not r.left_out],
+                              [record_from(_held_row(self.workspace, h.source, h.id, seen)) for h in every])
 
         def fold(name: str) -> str:
             return " ".join(name.split()).casefold()
@@ -632,6 +642,22 @@ def _held_keys(workspace: Cerebro, source: str, id: str, seen: dict[str, dict[st
     return {str(k): [str(v) for v in vs] for k, vs in (row.get("keys") or {}).items()}
 
 
+def _bound_alone(store: Store, rows: list[Row], held: list[Record]) -> set[tuple[str, str]]:
+    """Give each proposed row, as `binds`, the held records its admit binds if it lands alone, and return all they
+    bind. Each is counted alone, since what lands first is the person's to choose, so two admits may count one record."""
+    near: dict[str, set[int]] = {}  # each value a record is named by, and each part of it between commas
+    for n, record in enumerate(held):
+        for value in (str(v) for vs in naming_keys(record).values() for v in vs):
+            for word in {value, *value.split(",")}:
+                near.setdefault(word.strip().lower(), set()).add(n)
+    for row in rows:
+        found = set().union(near.get(row.name.strip().lower(), set()),
+                            *(near.get(str(v).strip().lower(), set()) for vs in row.keys.values() for v in vs))
+        row.binds = [(held[n].source, held[n].id) for n in sorted(found)
+                     if would_bind(store, row.keys, row.name, held[n])]
+    return {bound for row in rows for bound in row.binds}
+
+
 # -- the plain list ---------------------------------------------------------------------------------------------------
 
 
@@ -829,7 +855,7 @@ def _stop_line(collections: list[str]) -> str:
             "settings.yaml, or narrow what your source files under sources/ read, and run again.")
 
 
-def _shown(workspace: Cerebro) -> None:
+def stamp_shown(workspace: Cerebro) -> None:
     """Keep when the list was last given out, for `review --accept-from`."""
     session = _state(workspace)
     if session is not None:
@@ -1229,7 +1255,7 @@ def _run(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | None, sa
     out = Outcome(pile)
     rest: list[str] = []
     if pile.waiting() or pile.stopped:
-        _shown(workspace)
+        stamp_shown(workspace)
         if choose is None:  # off a terminal: nothing is decided, and a stop at the cap is said first
             said = [pile.stopped] if pile.stopped else []
             return replace(out, waits=True, lines=[*said, *held_lines(workspace), waiting_line(pile)]
@@ -1358,7 +1384,6 @@ def _masked(workspace: Cerebro, result: PassResult) -> PassResult:
     result.refused = [workspace.mask_every()(line) for line in result.refused]
     result.notices = [workspace.mask_every()(line) for line in result.notices]
     result.warnings = [workspace.mask_every()(line) for line in result.warnings]
-    result.grounded = {workspace.mask_every()(line) for line in result.grounded}
     return result
 
 
@@ -1398,7 +1423,6 @@ def _merge(into: PassResult, more: PassResult) -> None:
     into.tried = more.tried | into.tried  # each retry list as it stood when the first pass began
     into.paused |= more.paused
     into.grounding |= more.grounding
-    into.grounded |= more.grounded
     into.cleaned |= more.cleaned
 
 
@@ -1468,7 +1492,7 @@ def _decide_late(workspace: Cerebro, out: Outcome, late: Pile, result: PassResul
                  choose: Callable[[Pile], Choices | None] | None, say: Callable[[str], None] | None) -> None:
     """Show the late list that opened after the build to `choose`, apply what it gives, and build what it admitted
     in one more pass, joined to `result`; off a terminal, say that it waits."""
-    _shown(workspace)
+    stamp_shown(workspace)
     if choose is None:
         out.lines += [first_list_line(listed.agent, len(listed.proposed())) for listed in late.lists]
         return
@@ -1505,7 +1529,7 @@ def _late_waits(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | N
     pile = LocalApproval(workspace, agents=agents, late=True).pile()
     if not pile.waiting():
         return None
-    _shown(workspace)
+    stamp_shown(workspace)
     out = Outcome(pile)
     choices = choose(arranged(workspace, pile))
     if choices is None:

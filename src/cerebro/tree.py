@@ -56,6 +56,7 @@ class Row:
     own: bool = False  # of the workspace's own side, which the row says
     kind: str = "article.admit"
     unweighed: bool = False  # Cerebro's own row for a held record its curator never weighed
+    binds: list[tuple[str, str]] = field(default_factory=list)  # the held records its admit binds alone, by source and id
 
 
 @dataclass
