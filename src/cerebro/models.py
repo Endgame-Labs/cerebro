@@ -582,8 +582,8 @@ class HttpDecider(Decider):
             if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
                 if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
                     self.route.refused(status, self.call)
-                    raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}: check providers in "
-                                        "settings.yaml")
+                    keyed = ": check providers in settings.yaml" if status in (401, 403) else ""
+                    raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}{keyed}")
                 hint = (f"check the {self.spec.key_name} key" if status in (401, 403)
                         else "check the model id and the request")
                 raise DecisionError(f"{self.spec.model} answered HTTP {status}: {hint}")

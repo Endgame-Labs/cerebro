@@ -904,9 +904,18 @@ def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_stat
     from test_facts import on_factoid
 
     from cerebro.facts import ExtractionFailed
+    from cerebro.gateway import Route
+    from cerebro.models import DecisionError, HttpDecider, ModelSpec, YesNo
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     seen: list[str] = []
+    for status in (401, 429):  # through a gateway
+        decider = HttpDecider(ModelSpec("typesafe", "jev-1.13.0", job="decision", retries=0), key=lambda: "k",
+                              send=lambda url, headers, data, status=status: (status, {}, b""),
+                              route=Route("typesafe", "http://gateway.example.internal:8769"))
+        with pytest.raises(DecisionError) as refused:
+            decider.decide("The sky is blue.", {"q": YesNo("Is the sky blue?")})
+        seen.append(str(refused.value))
     handler, models = on_factoid(tmp_path)
     for status in (401, 400):
         models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
