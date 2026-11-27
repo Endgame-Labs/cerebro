@@ -1301,6 +1301,8 @@ def _run(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | None, sa
     if out.late is not None:
         _decide_late(workspace, out, out.late, out.result, choose, say)
         rest += [row.id for row in out.late.rows() if not row.left_out and row.id not in rest]  # it waits too
+    out.result.older &= {f"{name}/{row['id']}" for name in workspace.connectors  # a late build reads some held before
+                         for row in workspace.store.state(f"held:{name}") or []}
     if (older := len(out.result.older)) and out.result.compiled:
         out.result.notices.append(f"The wiki starts from the last {RECENT_DAYS} days. cerebro serve reads "
                                   f"{_n(older, 'older record')} on its next {'pass' if older == 1 else 'passes'} "
