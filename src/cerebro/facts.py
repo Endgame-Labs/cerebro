@@ -1107,7 +1107,10 @@ class FactoidExtraction(Extraction):
         def failed(error: Exception) -> str:
             said = f"record {record.id} of {record.source}: factoid failed: {error}"
             if _factoids_own(error):
-                return f"{said}: check the extraction model and its key; the record is tried again next pass"
+                # Factoid's error carries its status only in its words, ahead of the reply's: `<model>: HTTP <status>:`
+                refused = re.match(r"\S+: HTTP 40[13]:", str(error)) is not None
+                return (f"{said}: check the extraction model{' and its key' if refused else ''}; the record is tried "
+                        "again next pass")
             return said
 
         with _active(self.app) as app:

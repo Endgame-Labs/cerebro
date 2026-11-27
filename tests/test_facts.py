@@ -224,7 +224,8 @@ def test_a_failed_model_call_fails_the_record_with_a_line_that_names_it(tmp_path
 
     handler, models = on_factoid(tmp_path)
     models.fail = ModelError("fireworks/glm-5p3-flash: HTTP 401: unauthorized")
-    with pytest.raises(ExtractionFailed, match="record memo-1 of notes: factoid failed: .*HTTP 401"):
+    with pytest.raises(ExtractionFailed, match="record memo-1 of notes: factoid failed: .*HTTP 401: unauthorized: "
+                                               "check the extraction model and its key; the record is tried again"):
         handler.extract(MEMO)
     handler.close()
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+import pytest
 from click.testing import CliRunner
 from conftest import GTM
 from mcp import Client
@@ -894,6 +895,26 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     lines = [busy_line(Path(".cerebro/cerebro.sqlite")), busy_line(None), SEARCH_BEHIND]
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
+
+
+def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_status_say_no_section_brain_or_page(
+        tmp_path: Path) -> None:
+    from factoid.models import ModelError
+    from suites.extraction import MEMO
+    from test_facts import on_factoid
+
+    from cerebro.facts import ExtractionFailed
+
+    words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
+    seen: list[str] = []
+    handler, models = on_factoid(tmp_path)
+    for status in (401, 400):
+        models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
+        with pytest.raises(ExtractionFailed) as failed:
+            handler.extract(MEMO)
+        seen.append(str(failed.value))
+    handler.close()
+    assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
 
 def test_what_a_find_or_a_query_that_matched_nothing_or_left_some_out_says_has_no_section_brain_or_page() -> None:

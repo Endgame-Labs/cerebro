@@ -188,18 +188,20 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
 
 @pytest.mark.parametrize(("road", "said"), [
     ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check providers in settings.yaml"),
-    ("facts layer", "HTTP 400"),
+    ("facts layer", ": check the extraction model; the record is tried again next pass"),
 ])
 def test_a_400_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(
         tmp_path: Path, gateway: Gateway, road: str, said: str) -> None:
-    """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, and a
-    decision's failure on one that does not name the gateway and its settings."""
+    """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, a
+    decision's failure on one that does not name the gateway and its settings, and a facts layer's that sends the
+    person to the key."""
     call, _, _ = ROADS[road]
     gateway.status = 400
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
         with pytest.raises(CerebroError) as failed:
             call(workspace)
-        assert len(gateway.sent) == 1 and said in str(failed.value), str(failed.value)
+        line = str(failed.value)
+        assert len(gateway.sent) == 1 and "HTTP 400" in line and line.endswith(said), line
         gateway.status = 0
         workspace.ledger.check("compilation", NOW)
         call(workspace)
