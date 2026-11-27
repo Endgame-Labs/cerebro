@@ -5,7 +5,8 @@ such as its parties' addresses and their domains, or the header lines of a note 
 key never binds the record, an admit of the record does not take it, and the record's facts still link by it. A
 record is matched within its own collection, so it stays held for that
 collection's curator while another collection's article holds a key it carries. The article an admit makes of a
-record binds that record, whatever keys it holds.
+record binds that record, whatever keys it holds. A name binds a record of that name only while no key that names one
+thing holds other values on the two.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from cerebro.curate import in_scope, run_curator
 from cerebro.facts import Fact
 from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore, ScriptedRun
 from cerebro.held import held_for, waits_for_own
-from cerebro.identity import bound_to, link, reached
+from cerebro.identity import bound_to, link, reached, would_bind
 from cerebro.lookup import StoreLookup
 from cerebro.source import Select, SourceFile
 
@@ -36,15 +37,16 @@ def _hold(store: MemoryStore, source: str, *records: Record) -> None:
     store.set_state(f"held:{source}", [asdict(r) | {"body": None, "by": None} for r in records])
 
 
-def _admit(store: MemoryStore, root: Path, record: Record, **more: Any) -> str:
+def _admit(store: MemoryStore, root: Path, record: Record | None, **more: Any) -> str:
     (root / "agents" / "parts").mkdir(parents=True, exist_ok=True)
     (root / "agents" / "parts" / "curator.md").write_text(CURATOR)
-    run = ScriptedRun(lambda p: {}, [("admit", {"record": {"source": record.source, "id": record.id},
-                                                "reason": "a part we keep", **more})])
+    ref = {"record": {"source": record.source, "id": record.id}} if record else {}
+    run = ScriptedRun(lambda p: {}, [("admit", {**ref, "reason": "a part we keep", **more})])
+    source = record.source if record else "src"
     done = run_curator(load_agent(root / "agents" / "parts" / "curator.md", root / "agents"),
                        lookup=StoreLookup(store, FakeExtraction(), clock=lambda: NOW), store=store, agent_run=run,
                        root=root, functions={}, agent_tools={}, clock=lambda: NOW,
-                       sources={record.source: FakeConnector(record.source, [])})
+                       sources={source: FakeConnector(source, [])})
     return str(next(e.text for e in done.run.transcript if e.role == "tool"))
 
 
@@ -66,6 +68,20 @@ def test_an_admit_by_record_takes_the_keys_that_name_it_and_a_later_record_of_th
     assert {h.id for h in held_for(store, "parts", ["src"]).items} == {"2", "3"}
     fact = Fact("f3", "Ann said the order ships Friday.", "Ann", "fact", "", "src", same.id)
     assert link(store, fact, same) == []  # a fact of a later record is not the first one's
+
+
+def test_an_admit_by_name_binds_a_record_of_that_name_only_when_no_key_that_names_one_thing_differs(
+        tmp_path: Path) -> None:
+    store = MemoryStore()
+    store.weights = {"code": 100, "serial": 100}  # declared by a source to name one thing: never `tag`
+    one, other, bare = (Record(id=id, source="src", revision="1", keys={"name": ["Unit 7"], **keys}, into="parts")
+                        for id, keys in (("1", {"code": ["A1"]}), ("2", {"code": ["A2"]}),
+                                         ("3", {"serial": ["S9"], "tag": ["blue"]})))
+    _hold(store, "src", one, other, bare)
+    keys = {"code": ["A1"], "tag": ["red"]}
+    assert [r.id for r in (one, other, bare) if would_bind(store, keys, "Unit 7", r)] == ["1", "3"]  # a first run's count
+    assert "'admitted': 'parts/unit-7'" in _admit(store, tmp_path, None, name="Unit 7", keys=keys)
+    assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["2"]
 
 
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:

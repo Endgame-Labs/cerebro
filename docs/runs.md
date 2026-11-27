@@ -90,7 +90,7 @@ by agents/projects/curator.md, agents/notes/curator.md
 
 Each line is one article. What an article links to sits under it, by collection. Proposals of the same thing under two names are one line.
 
-When an article would take more than one record, a line under its name counts them, as `4 records`. The count is what that article binds when it lands. Two articles that share a key or a name may count the same records.
+When an article would take more than one record, a line under its name counts them, as `4 records`. The count is what that article binds when it lands. Two articles that share a key or a name may count the same records. A record that shares only its name with the article is not counted when its `email` or `domain` differs from the article's.
 
 One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
 

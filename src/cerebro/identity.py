@@ -24,7 +24,9 @@ the closest tie of a fact to an article, and `held_by` the articles of a collect
 
 A record binds the articles that hold a key that names it, and the article an admit made of it. A key its
 connector says it only carries (`Record.carried`), such as its parties' addresses, binds nothing: `bound_to` skips
-it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does.
+it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does. A value that
+is an article's title binds no record that a key naming one thing tells apart from it, as `_apart` reads it, so two
+things of one name stay two.
 
 A record's fields land on its own articles alone, as `own_articles` gives them: those of its own collection, `into`,
 that it is bound to, so a part's stage lands on the part and never on its parent, while its facts link to both.
@@ -147,8 +149,8 @@ def naming_keys(record: Record) -> dict[str, list[str]]:
 
 def bound_to(store: Store, record: Record) -> list[str]:
     """The articles a record is bound to: by the keys that name it, then by a value one of them holds that is one
-    article's title. A key the record only carries binds it to nothing, though its facts link
-    by it. Merged articles are followed to their survivors."""
+    article's title, unless `_apart` tells the two apart. A key the record only carries binds it to nothing, though
+    its facts link by it. Merged articles are followed to their survivors."""
     return _bound(store, record, naming_keys(record))
 
 
@@ -175,22 +177,38 @@ def _bound(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str
     found += [id for id in admitted_from(store, record) if id not in found]
     for name in _header_names(record, keys):
         named = store.named(name)
-        if len(named) == 1 and named[0] not in found and not _namesake(store, record, name, named[0]):
+        if len(named) == 1 and named[0] not in found and not _namesake(store, record, name, named[0]) \
+                and not _apart(store, record, named[0]):
             found.append(named[0])
     moved = redirects(store) if found else {}
     return list(dict.fromkeys(follow(id, moved) for id in found))
 
 
+def _apart(store: Store, record: Record, article: str | Mapping[str, Iterable[object]]) -> bool:
+    """Whether `record` and `article`, an id or the keys of one, are two things whatever name they share: a key that
+    names one thing, one the workspace's weights put above 0, holds values on both, among those that name the record,
+    and none of them is on both. A key the record only carries, or one no source declares, tells nothing apart."""
+    from .curate import key_weights  # curate reads this module
+
+    weights = store.weights if store.weights is not None else key_weights()
+    mine = {k: {str(v).strip().lower() for v in vs} for k, vs in naming_keys(record).items()
+            if vs and weights.get(k, 0) > 0}
+    theirs = _keys_of(store, article) if mine else {}
+    return any(k in mine and (held := {str(v).strip().lower() for v in vs}) and not held & mine[k]
+               for k, vs in theirs.items())
+
+
 def would_bind(store: Store, keys: dict[str, list[object]], title: str, record: Record) -> bool:
     """Whether an article with these keys and this title, once admitted, binds `record`, by the rules `bound_to` reads
     the store by: a key value the record carries, matched without regard to case, or a name it carries that is the
-    title."""
+    title, unless a key that names one thing tells the two apart."""
     want = {(k, str(v).lower()) for k, values in keys.items() for v in values}
     naming = naming_keys(record)
     if want & {(k, str(v).lower()) for k, values in naming.items() for v in values}:
         return True
-    return bool(title) and any(name.lower() == title.strip().lower() and not _namesake(store, record, name, keys)
-                               for name in _header_names(record, naming))
+    return bool(title) and not _apart(store, record, keys) and any(
+        name.lower() == title.strip().lower() and not _namesake(store, record, name, keys)
+        for name in _header_names(record, naming))
 
 
 def link(store: Store, fact: Fact, record: Record | None = None, at: str = "") -> list[str]:
@@ -380,12 +398,19 @@ def _namesake(store: Store, record: Record | None, name: str, article: str | Map
     given = _own_names(record).get(_fold(name))
     if record is None or given is None:
         return False
-    keys: Mapping[str, Iterable[object]] = article if not isinstance(article, str) else (
-        found.identity.keys if (found := store.article(follow(article, redirects(store)))) is not None else {})
+    keys = _keys_of(store, article)
     side = store.state(f"{OWN_WEIGHED}:{record.source}") or {}
     ours = Ours(tuple(side.get("addresses") or ()), tuple(side.get("domains") or ()))
     held = {str(v).strip().lower() for values in keys.values() for v in values if "@" in str(v)}
     return not any(a in given if given else ours.holds(a) for a in held)
+
+
+def _keys_of(store: Store, article: str | Mapping[str, Iterable[object]]) -> Mapping[str, Iterable[object]]:
+    """The keys of `article` as given, or by its id, those of the article a merge led it to."""
+    if not isinstance(article, str):
+        return article
+    found = store.article(follow(article, redirects(store)))
+    return found.identity.keys if found is not None else {}
 
 
 def _header_names(record: Record | None, keys: dict[str, list[str]] | None = None) -> list[str]:
