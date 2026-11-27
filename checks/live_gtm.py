@@ -37,6 +37,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from _first_run import FIRST, placed, taken_whole
@@ -61,6 +62,25 @@ ABSENCE = re.compile(
     r"(?:no|none|nothing)|nothing in (?:the|this run's|the run's) (?:evidence|facts))\b", re.IGNORECASE)
 
 MAX_PASSES = 8
+SHIFT = datetime.now(UTC).date() - date(2026, 11, 17)  # the notes are written as of 17 November 2026
+DAYS = {"10 November": date(2026, 11, 10), "12 November": date(2026, 11, 12), "21 November": date(2026, 11, 21),
+        "25 November": date(2026, 11, 25), "1 December": date(2026, 12, 1), "2 December": date(2026, 12, 2),
+        "15 December": date(2026, 12, 15), "January": date(2027, 1, 15)}
+
+
+def moved(text: str) -> str:
+    """`text` with each date, day and month the notes name moved by `SHIFT`, so the newest note is dated today and a
+    first run's last 14 days hold them all."""
+
+    def day(found: re.Match[str]) -> str:
+        if found[0] not in DAYS:
+            return (date.fromisoformat(found[0]) + SHIFT).isoformat()
+        at = DAYS[found[0]] + SHIFT
+        return f"{at:%B}" if found[0] == "January" else f"{at.day} {at:%B}"
+
+    return re.sub(r"\b(?:\d{4}-\d{2}-\d{2}|" + "|".join(sorted(DAYS, key=len, reverse=True)) + r")\b", day, text)
+
+
 LOCAL = """kind: files
 window: { behind: all }
 select:
@@ -74,17 +94,17 @@ select:
   - glob: "local/email/**/*.md"
     extract: facts
 """
-LATE = ("local/calls/2026-11-18-tidewater-intro.md", """Account: Tidewater Freight
+LATE = (moved("local/calls/2026-11-17-tidewater-intro.md"), moved("""Account: Tidewater Freight
 Attendees: Lina Brooks <lina@ourco.example>
-Date: 2026-11-18
+Date: 2026-11-17
 
 Ravi Menon, head of finance operations at Tidewater Freight, took an intro call with Lina Brooks from our side.
 Ravi said Tidewater matches about 4,000 carrier invoices a month by hand.
 Lina Brooks will send Ravi a demo recording by 25 November.
-""")
+"""))
 MIN_SCORE = 0.85  # the question score a healthy run clears with room
 QUESTIONS = Path(__file__).resolve().parent / "gtm_questions.yaml"
-NOTES = {
+NOTES = {moved(path): moved(text) for path, text in {
     "local/calls/2026-11-03-brightwater-discovery.md": """Account: Brightwater Logistics
 Attendees: Nessa Torvik <nessa@brightwater.example>, Sam Okoye <sam@ourco.example>
 Date: 2026-11-03
@@ -140,7 +160,7 @@ Date: 2026-11-17
 Grace Liu said the Tacoma clinic's staff training is done.
 Grace Liu raised that the second clinic's network upgrade slips to January, which moves its go-live.
 """,
-}
+}.items()}
 
 
 def show(n: int | str, result: PassResult, seconds: float, reasons: list[str]) -> None:
@@ -467,7 +487,9 @@ def main() -> int:
                     reasons.append(f"no {collection} article was written")
             print("\n" + table({a.id: a.role for a in workspace.agents}, runs))
             judge = ModelSpec("fireworks", "rune", job="decision")  # one judge of the questions, whatever the workspace decides on
-            report = evals.run(workspace, evals.load(QUESTIONS), decider=HttpDecider(judge, key=workspace.model_key(judge)),
+            asked = root / QUESTIONS.name  # the questions with their days moved as the notes' are
+            asked.write_text(moved(QUESTIONS.read_text(encoding="utf-8")), encoding="utf-8")
+            report = evals.run(workspace, evals.load(asked), decider=HttpDecider(judge, key=workspace.model_key(judge)),
                                model=judge, ledger=workspace.ledger, cap_usd=workspace.ledger.caps.evaluation, clock=workspace.clock)
             print()
             for line in evals.lines(report):

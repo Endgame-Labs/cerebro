@@ -101,14 +101,20 @@ def test_a_list_declined_whole_builds_nothing_and_the_next_run_asks_the_curators
         assert not in_first_run(workspace)
 
 
-def test_a_first_run_that_proposes_nothing_says_so_and_names_the_hand_admit(tmp_path: Path) -> None:
+def test_a_first_run_that_proposes_nothing_says_so_names_the_hand_admit_and_no_older_records(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from test_first_run_structure import RECORDS, thing
+
     root = lay_out_workspace(tmp_path)
     script = Script({"things/curator": [], "parts/curator": []})
-    with open_it(root, script) as workspace:
+    older = replace(thing("N1", "Old Note", "t-old"), at="2026-10-01T09:00:00Z", into="")  # bound to no collection
+    with open_it(root, script, [*RECORDS, older]) as workspace:
         out = run(workspace, choose=Choices.starter, say=lambda line: None)
     assert out is not None
     assert "Nothing to propose: the wiki starts empty; add with cerebro admit parts/<name>." in out.lines
     assert not any(line.startswith("Nothing approved") for line in out.lines)
+    assert out.result.older and not any("older record" in line for line in out.result.notices)  # no article to rewrite
 
 
 # -- the curators of a round are asked side by side

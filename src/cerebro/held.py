@@ -31,11 +31,12 @@ import re
 import unicodedata
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timedelta
 from typing import Any
 
 from .agent import Agent, EvidenceLine
 from .connector import NOBODY, Ours, Record, outside_domain, registrable
-from .evidence import Evidence, EvidenceError, Item
+from .evidence import RECENT_DAYS, Evidence, EvidenceError, Item
 from .identity import OWN_WEIGHED, bound_to, reached, working, would_bind
 from .records import Proposal, proposals
 from .store import Store, own_key, record_from, update_state
@@ -49,9 +50,11 @@ __all__ = [
     "Held",
     "HeldList",
     "StandIn",
+    "before_cut",
     "check_line",
     "entry",
     "first_run_open",
+    "first_run_since",
     "held_for",
     "keep_own",
     "one_of_ours",
@@ -147,6 +150,20 @@ def first_run_open(store: Store) -> bool:
     """Whether the workspace's first run has begun and is not decided yet."""
     session = store.state(FIRST_RUN_KEY)
     return isinstance(session, dict) and session.get("status") != "done"
+
+
+def first_run_since(store: Store) -> str:
+    """The first day the workspace's first run and its build read: `RECENT_DAYS` days before its session began, or ""
+    with no session."""
+    session = store.state(FIRST_RUN_KEY)
+    began = session.get("at") if isinstance(session, dict) else None
+    return (datetime.fromisoformat(began) - timedelta(days=RECENT_DAYS)).date().isoformat() if began else ""
+
+
+def before_cut(at: str, since: str) -> bool:
+    """Whether a record dated `at` is older than `since`, the first day a first run reads. An undated record never
+    is, and with no `since` none is."""
+    return bool(since and at and at[:10] < since)
 
 
 def pinned(store: Store) -> set[str] | None:

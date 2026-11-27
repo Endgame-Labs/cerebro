@@ -502,8 +502,11 @@ def test_in_a_first_run_not_begun_the_check_says_serve_once_takes_records_in_onl
     read = {fact.record for fact in extraction.facts()} & {"notes/kickoff.md", "notes/sub/old.md"}
     if proposes:  # the list waits for a person, and serve --once took in neither
         assert once.exit_code == 2 and not read, once.output
-    else:  # a list with nothing to decide is decided at once, and serve --once took both in
-        assert once.exit_code == 0 and len(read) == 2, once.output
+    else:  # a list with nothing to decide is decided at once, and its build reads the last 14 days: the next pass
+        # takes in the older two
+        again = CliRunner().invoke(main, ["serve", "--once", "--workspace", str(root)])
+        read = {fact.record for fact in extraction.facts()} & {"notes/kickoff.md", "notes/sub/old.md"}
+        assert once.exit_code == again.exit_code == 0 and len(read) == 2, once.output + again.output
 
 
 def test_the_window_of_a_source_whose_file_names_none_is_the_one_the_source_says_it_reads(

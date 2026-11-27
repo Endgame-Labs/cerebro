@@ -1,7 +1,8 @@
 # Questions for the wiki checks/live_gtm.py builds from its seven notes, in the form `cerebro eval` reads. Each
 # answer is in the notes. The joins group needs two facts put together, and the unknown group asks what the notes do
-# not say, where the right answer is that the wiki does not know. Run by live_gtm.py at its end, or by hand:
-#   cerebro eval checks/gtm_questions.yaml --workspace <the workspace live_gtm.py --keep made>
+# not say, where the right answer is that the wiki does not know. Run by live_gtm.py at its end, with each day moved
+# as it moves the notes' days, or by hand on the copy it leaves in the workspace it keeps with --keep <folder>:
+#   cerebro eval <folder>/gtm_questions.yaml --workspace <folder>
 context: A sales team's wiki built from call notes and emails about three invented companies, Brightwater Logistics, Kestrel Foods and Novaline Health, read by an outside agent.
 questions:
   - id: pilot-price
