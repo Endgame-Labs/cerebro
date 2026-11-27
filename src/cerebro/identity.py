@@ -33,7 +33,8 @@ An article merged into another is followed to its survivor, as the latest `redir
 A link is its own row, so links can be added later without extracting again. Linking never creates an article.
 
 `DecisionJudge` is the judge on a decision model: one request a fact, one yes or no a candidate. A caller holds its
-decider to a cap, and a call refused or failed links nothing by a near match.
+decider to a cap, and a call refused there links nothing by a near match. A call that fails raises its
+`DecisionError`.
 """
 
 from __future__ import annotations
@@ -46,7 +47,7 @@ from .article import Identity, fields
 from .budget import BudgetSpent
 from .connector import Ours, Record
 from .facts import Fact
-from .models import Decider, DecisionError, YesNo
+from .models import Decider, YesNo
 from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
 __all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
@@ -338,8 +339,8 @@ def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]]) -> 
         return []
     try:
         judged = judge.judge(fact, candidates)
-    except (BudgetSpent, DecisionError):
-        return []  # a judge refused at the cap or failed links nothing by a near match; the fact's other links stand
+    except BudgetSpent:
+        return []  # a judge refused at the cap links nothing by a near match; the fact's other links stand
     passed = [id for id in judged if id in {c.id for c in candidates}]
     return passed if len(passed) == 1 else []
 
