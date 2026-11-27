@@ -11,7 +11,7 @@ thing holds other values on the two.
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -80,9 +80,10 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
     one, other, bare = (Record(id=id, source="src", revision="1", keys={"name": ["Unit 7"], **keys}, into="parts")
                         for id, keys in (("1", {"code": ["A1"]}), ("2", {"code": ["A2"]}),
                                          ("3", {"serial": ["S9"], "tag": ["blue"]})))
-    _hold(store, "src", one, other, bare)
+    carrier = replace(bare, id="4", keys={"name": ["Unit 7"], "serial": ["S4"], "code": ["A9"]}, carried=["code"])
+    _hold(store, "src", one, other, bare, carrier)  # a key the record only carries tells nothing apart
     keys = one.keys if by_record else {"code": ["A1"], "tag": ["red"]}
-    assert [r.id for r in (one, other, bare) if would_bind(store, keys, "Unit 7", r)] == ["1", "3"]  # a first run's count
+    assert [r.id for r in (one, other, bare, carrier) if would_bind(store, keys, "Unit 7", r)] == ["1", "3", "4"]
     admitted = _admit(store, tmp_path, one) if by_record else _admit(store, tmp_path, None, name="Unit 7", keys=keys)
     assert "'admitted': 'parts/unit-7'" in admitted
     assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["2"]
