@@ -88,8 +88,8 @@ NOTES = {
 def test_a_curator_asks_the_salesforce_stand_in_admits_two_accounts_and_their_records_are_then_in_scope(
         tmp_path: Path) -> None:
     org, store = FakeOrg(seed()), MemoryStore()
-    crm = make(org, accounts=[])
-    crm.accounts = lambda: [v for who in working_set(store) for v in who.keys.get("salesforce_id", [])]
+    crm = make(org)
+    crm.admitted = lambda: [v for who in working_set(store) for v in who.keys.get("salesforce_id", [])]
     acme, globex, task = crm.get(ACME), crm.get(GLOBEX), crm.get(sf_id("00T", 1))
     assert not in_scope(store, acme, curated={"accounts"}) and bound_to(store, task) == []
     asked: list[dict[str, Any]] = []

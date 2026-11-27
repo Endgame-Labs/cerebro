@@ -90,6 +90,21 @@ def _chat(body: dict[str, Any]) -> dict[str, Any]:
             "usage": {"prompt_tokens": len(said) // 4, "completion_tokens": 20, "total_tokens": len(said) // 4 + 20}}
 
 
+def _sent(status: int, reply: dict[str, Any], body: dict[str, Any]) -> tuple[bytes, str]:
+    """A reply as the stand-in sends it, with its content type: a chat completion its request asked to stream as
+    server-sent events, its message in one delta and then its usage, and any other reply as JSON."""
+    if status != 200 or not body.get("stream"):
+        return json.dumps(reply).encode(), "application/json"
+    choice = reply["choices"][0]
+    calls = [{**call, "index": n} for n, call in enumerate(choice["message"].get("tool_calls") or [])]
+    delta = {**choice["message"], **({"tool_calls": calls} if calls else {})}
+    head = {"id": reply["id"], "object": "chat.completion.chunk", "created": 0, "model": reply["model"]}
+    chunks = [{**head, "choices": [{"index": 0, "delta": delta, "finish_reason": choice["finish_reason"]}]},
+              {**head, "choices": [], "usage": reply["usage"]}]
+    events = b"".join(f"data: {json.dumps(chunk)}\n\n".encode() for chunk in chunks)
+    return events + b"data: [DONE]\n\n", "text/event-stream"
+
+
 def _decide(body: dict[str, Any]) -> dict[str, Any]:
     answers: dict[str, Any] = {}
     for key, question in body["questions"].items():
@@ -128,9 +143,9 @@ class StandIn:
                     (200, {"data": [{"index": i, "embedding": _vector(t)} for i, t in enumerate(body["input"])],
                            "usage": {"prompt_tokens": 10}}) if self.path.endswith("/embeddings") else
                     (200, _decide(body)) if self.path.endswith("/systemone") else (404, {"error": self.path}))
-                data = json.dumps(reply).encode()
+                data, kind = _sent(status, reply, body)
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", kind)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)

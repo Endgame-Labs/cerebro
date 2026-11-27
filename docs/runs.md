@@ -90,7 +90,7 @@ Each line is one article. What an article links to sits under it, by collection.
 
 If a curator fails, the run ends with a line that says so, and that curator runs again on a later pass.
 
-Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. Tick one under "Left out" to admit what a curator left out.
+Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. A line you tick again on its own lands on its own, even when what it sits under stays unticked. Tick one under "Left out" to admit what a curator left out.
 
 Change what is ticked, then approve, or quit to keep nothing. What you leave unticked waits for you. `--yes` takes what the tree ticks, and the run ends by saying what waits:
 

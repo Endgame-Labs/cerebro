@@ -221,8 +221,7 @@ def arrange(workspace: Cerebro, rows: list[Row], line: str = "",
 def tree(groups: list[Group], articles: dict[str, str], moved: dict[str, str]) -> list[Group]:
     """The top-level groups in the order given, each with what sits under it: a group sits under the group or the
     article of `articles`, id to title, that its `linked` names, or a merge in `moved`, as `redirects` gives it, leads
-    it to, the first one when it names several, and under what that one sits under. A group is ticked only with every
-    group it sits under, however deep."""
+    it to, the first one when it names several, and under what that one sits under."""
     at: dict[str, Group] = {}
     for g in groups:
         for row in g.rows:
@@ -256,11 +255,4 @@ def tree(groups: list[Group], articles: dict[str, str], moved: dict[str, str]) -
                 tops.append(t)
             t.under.append(g)
             g.over = up(g)
-    ticked = {id(g): g.tick for g in groups}
-
-    def on(g: Group | None) -> bool:
-        return g is None or not g.rows or ticked[id(g)] and on(g.over)
-
-    for g in groups:
-        g.tick = on(g)
     return sorted(tops, key=lambda g: not g.under)  # what has nothing under it comes last, as not grouped

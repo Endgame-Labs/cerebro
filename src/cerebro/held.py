@@ -449,10 +449,9 @@ def _by_pair(standing: list[StandIn]) -> dict[tuple[str, str], set[int]]:
 
 def _first_run_marks(store: Store, record: Record, standing: list[StandIn], ours: Ours,
                      bound: list[str], by_pair: dict[tuple[str, str], set[int]] | None = None) \
-        -> tuple[list[dict[str, str]], dict[str, str]] | None:
+        -> tuple[list[dict[str, str]], dict[str, str]]:
     """On a first run, the articles a held record would sit under, from the working set and from the stand-ins, each
-    proposed one with its proposer, and the stand-in of the record itself; None when it links only to articles
-    neither in the working set nor proposed, so it waits. `by_pair` is
+    proposed one with its proposer, and the stand-in of the record itself. `by_pair` is
     `_by_pair(standing)`, made once for a list of many records."""
     pairs = linked(record, ours)
     by_pair = _by_pair(standing) if by_pair is None else by_pair
@@ -469,8 +468,6 @@ def _first_run_marks(store: Store, record: Record, standing: list[StandIn], ours
         if s is not itself and s.article not in seen and (n in met or s in binds):
             found.append({"id": s.article, "proposed_by": f"agents/{s.by}.md"})
             seen.add(s.article)
-    if record.links and not found:
-        return None
     return found, ({"id": itself.article, "by": f"agents/{itself.by}.md"} if itself is not None else {})
 
 
@@ -493,13 +490,8 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
         name = _name(keys, record.fields)
         # what it sits under in the working set, as its keys reach them, those it only carries too: the parent a
         # curator admits a held record of, after the first run as on it
-        marks: tuple[list[dict[str, str]], dict[str, str]] | None = (
-            [{"id": id} for id in reached(store, record) if id not in bound and working(store, id)], {})
-        if standing is not None:
-            marks = _first_run_marks(store, record, standing, ours, bound, by_pair)
-            if marks is None:
-                continue  # it links only to articles nobody has made or proposed: it waits for one
-        links, itself = marks
+        links, itself = (_first_run_marks(store, record, standing, ours, bound, by_pair) if standing is not None else
+                         ([{"id": id} for id in reached(store, record) if id not in bound and working(store, id)], {}))
         found.append(Held(record.source, record.id, name, keys, record.at, record.revision,
                           str(row.get("listed_at") or ""), links, itself, parties_outside(record, ours),
                           [str(n) for n in record.fields.get("ours") or [] if str(n).strip()],
@@ -595,8 +587,7 @@ def entry(agent: Agent, store: Store | None, sources: Iterable[str], n: int, lin
     if first_run_open(store):
         out.notes.append("This is the workspace's first run: links_to names the articles a record would sit under, and "
                          "one with proposed_by is only proposed so far, by that curator, since nothing is made until "
-                         "the person approves the list. proposed says the record itself is on the list already. A "
-                         "record that links only to articles nobody made or proposed waits until one is.")
+                         "the person approves the list. proposed says the record itself is on the list already.")
     if found.total > len(found.items):
         out.notes.append(f"{found.total - len(found.items)} more held records are not listed here, the oldest: "
                          "admit or leave out these, and a later run lists the rest")

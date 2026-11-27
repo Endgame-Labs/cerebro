@@ -155,7 +155,7 @@ def test_a_held_line_names_the_articles_it_would_hang_off_marks_the_proposed_one
         assert parts["P3"]["links_to"] == [{"id": "things/birch-hall"}]  # in the working set: no proposer
         assert parts["P4"]["links_to"] == [  # an outside party's address meets the domain the proposal holds
             {"id": "things/alder-works", "proposed_by": "agents/things/curator.md"}]
-        assert "P2" not in parts  # it links only to an article nobody made or proposed: it waits
+        assert "links_to" not in parts["P2"]  # it links only to an article nobody made or proposed: shown all the same
         things = held_lines(workspace, "things")
         assert things["T1"]["proposed"] == {"id": "things/alder-works", "by": "agents/things/curator.md"}
         assert "T2" not in things  # things/birch-hall, in the working set, binds it: in scope, so not held
@@ -240,10 +240,10 @@ def test_a_curator_does_not_weigh_what_another_proposes_beside_it(tmp_path: Path
     with open_it(lay_out_workspace(tmp_path), script, loose_and_its_holder()) as workspace:
         run(workspace, choose=None)
         # parts proposes parts/free-bolt; things reads the queue as discovery began, so the thing that links to it
-        # is not shown
+        # is shown linked to nothing
         assert sorted(script.ran) == ["parts/curator", "things/curator"]
         [first] = script.read["things/curator"]
-        assert "parts/free-bolt" not in first and "Cedar Rack" not in first
+        assert "Cedar Rack" in first and "parts/free-bolt" not in first
         assert sorted(p.by.name for p in proposals(workspace.store, "waiting")) == ["parts/curator", "things/curator"]
         assert workspace.store.state(KEY)["pinned"] is None
 
@@ -327,14 +327,12 @@ class Fails(Script):
         return super().run(agent, evidence, tools, budget)
 
 
-def test_after_the_build_a_curator_whose_records_waited_for_their_parent_runs_late(tmp_path: Path) -> None:
-    script = Script({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]})
+def test_after_the_build_a_curator_that_took_part_in_discovery_is_not_asked_late(tmp_path: Path) -> None:
+    script = Script({"things/curator": [by_record("T1")], "parts/curator": []})
     with open_it(lay_out_workspace(tmp_path), script) as workspace:
         out = run(workspace, choose=Choices.starter)
-        assert workspace.store.state(KEY)["lists"]["parts/curator"]["state"] == "empty"  # P1 waited for its parent
-        # one late, and the one that makes what was accepted of its late list
-        assert script.ran.count("parts/curator") == 2 and out is not None and out.late is not None
-        assert [row.name for listed in out.late.lists for row in listed.proposed()] == ["Alder Gear"]
+        assert workspace.store.state(KEY)["lists"]["parts/curator"]["state"] == "nothing"  # it read held parts
+        assert script.ran.count("parts/curator") == 1 and out is not None and out.late is None
 
 
 # -- a query of a collection on a first run gives its proposed articles, marked -------------------------------------

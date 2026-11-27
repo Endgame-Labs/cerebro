@@ -17,7 +17,10 @@ The file follows the parts of a run:
   reply that hands in nothing is asked once to hand in. With nothing to land, a normal end wrote nothing, which is no
   failure, and a run whose room or calls were spent, or whose reply was cut at its output limit, fails, so it runs
   again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
-  content standing. An error on any request fails the run.
+  content standing. An error on any request fails the run, once its tries are spent: a request to a provider is
+  streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with
+  nothing new, and a timeout, a rate limit or a server error is tried again up to the model's `retries`, each try
+  again checked first against the cap of the run's meter, and each failed try counted in what the run spent.
 - The room. A run holds against its token budget, each once, its opening, each reply of the model and each tool
   reply. One tool reply holds at most a quarter of the budget, and a fifth is kept to write with. A reply too large is
   cut, its largest lists first, then its longest texts, with a line first that says how to ask for less. Once tool
@@ -51,13 +54,13 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from . import prompts
 from .agent import Agent, Budget
 from .apps import ToolError
-from .budget import METER, RoundCut, Stopped, cancelling
+from .budget import METER, MeterTurn, RoundCut, Stopped, cancelling
 from .clock import Clock, stamp, system_clock
 from .errors import ArgumentsRefused
 from .evidence import CITE, Evidence
 from .file import File
 from .ground import RewriteFailed, Rewriter
-from .models import ModelSpec, cost, wire_id
+from .models import RETRIES, WAIT_MOST, ModelSpec, cost, wire_id
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import BinaryContent, ModelMessage, ModelResponse
@@ -145,7 +148,8 @@ class AgentRun:
 
 # -- the model a run is on
 
-MODEL_TIMEOUT = 120.0  # seconds one model request of a run may take
+FIRST_BYTE = 600.0  # seconds a request may wait for its reply to start, as a model that reasons unseen may take
+STALL = 60.0  # seconds a reply under way may go with nothing new before its request counts as failed
 REFUSALS = (401, 402, 403)  # a provider's answer that refuses the key itself, which no retry helps
 AGENT_CALL = "agent_run"  # what `{call}` holds in a header of an agent run's model calls
 
@@ -168,22 +172,28 @@ def model_name(block: dict[str, Any]) -> str:
 
 def model_settings(block: dict[str, Any]) -> dict[str, Any]:
     """The Pydantic AI model settings a `models:` block asks for: its `effort`, sent as `reasoning_effort` to an
-    OpenAI-compatible provider such as Fireworks, and `max_tokens`."""
+    OpenAI-compatible provider such as Fireworks, `max_tokens`, and its `retries` as `max_retries`, which the model
+    `_provided` gives counts itself."""
     settings: dict[str, Any] = {}
     if block.get("effort") and block["provider"] not in ("anthropic", "google"):
         settings["openai_reasoning_effort"] = block["effort"]
     if block.get("max_tokens"):
         settings["max_tokens"] = int(block["max_tokens"])
+    if block.get("retries") is not None:
+        settings["max_retries"] = int(block["retries"])
     return settings
 
 
-def _provided(model: Any, key: Callable[[str], str] | None, route: Any) -> Any:
-    """`model`, an id such as `fireworks:glm-5p3`, on the provider's key that `key` reads and on `route`'s host, or
-    as it is when it is no id or no key is read."""
-    if not isinstance(model, str) or key is None or not (secret := key(model.partition(":")[0])):
+def _provided(model: Any, key: Callable[[str], str] | None, route: Any, tries: _Tries | None = None) -> Any:
+    """`model`, an id such as `fireworks:glm-5p3`, as a model that streams each request (see `_streamed`), on the
+    provider's key that `key` reads and on `route`'s host, or on Pydantic AI's own lookup of its key when none is read,
+    its tries held to `tries`. A model that is no id is as it is."""
+    if not isinstance(model, str):
         return model
     from pydantic_ai.models import infer_model
     from pydantic_ai.providers import infer_provider_class
+
+    secret = key(model.partition(":")[0]) if key is not None else ""
 
     def make(provider: str) -> Any:
         made = infer_provider_class(provider)(api_key=secret)
@@ -191,7 +201,78 @@ def _provided(model: Any, key: Callable[[str], str] | None, route: Any) -> Any:
             return made
         return infer_provider_class(provider)(api_key=secret, base_url=route.url(made.base_url))
 
-    return infer_model(model, provider_factory=make)
+    return _streamed()(infer_model(model, provider_factory=make) if secret else model, tries)
+
+
+@functools.cache
+def _streamed() -> type:
+    """The class of a provider's model as a run calls it: each request is streamed and read whole, so a reply takes as
+    long as it keeps coming. A try fails when its reply has not started in `FIRST_BYTE` seconds, once started goes
+    `STALL` seconds with nothing new, or ends with no finish reason. A timeout, a rate limit or a server error is tried
+    again, up to the request's `max_retries` times, and the provider's own client tries none, so each try is counted
+    once, in the run's `_Tries`. A refused key or a refused request is not tried again. Made when a run first needs
+    Pydantic AI."""
+    import anyio
+    from pydantic_ai.exceptions import (
+        ModelAPIError,
+        ModelConnectionError,
+        ModelRateLimitError,
+        ModelServerError,
+        ModelTimeoutError,
+        ModelUnavailableError,
+    )
+    from pydantic_ai.models.wrapper import WrapperModel
+
+    passing = (ModelConnectionError, ModelRateLimitError, ModelServerError, ModelUnavailableError)
+
+    class Streamed(WrapperModel):
+        def __init__(self, wrapped: Any, tries: _Tries | None):
+            super().__init__(wrapped)
+            self.tries = tries
+
+        async def request(self, messages: Any, model_settings: Any, model_request_parameters: Any) -> Any:
+            settings = dict(model_settings or {})
+            retries = int(settings.pop("max_retries", RETRIES))
+            settings |= {"max_retries": 0, "timeout": FIRST_BYTE}
+            attempt = 0
+            while True:
+                try:
+                    return await self._try(messages, settings, model_request_parameters)
+                except ModelAPIError as error:
+                    again = isinstance(error, passing) or getattr(error, "status_code", 0) == 408  # a timeout's status
+                    if attempt >= retries or not again:
+                        raise
+                    wait = 2.0 ** attempt if error.retry_after is None else error.retry_after
+                    await anyio.sleep(min(wait, WAIT_MOST))
+                    if self.tries is not None:
+                        self.tries.before()
+                    attempt += 1
+
+        async def _try(self, messages: Any, settings: Any, model_request_parameters: Any) -> Any:
+            """One try, its reply read whole: a try that fails is held as spent, at what its stream counted."""
+            stream, started = None, False
+            try:
+                with anyio.fail_after(FIRST_BYTE) as deadline:
+                    async with self.wrapped.request_stream(messages, settings, model_request_parameters) as stream:
+                        async for _ in stream:
+                            started = True
+                            deadline.deadline = anyio.current_time() + STALL
+            except TimeoutError:
+                said = f"nothing new came for {STALL:g} seconds" if started else \
+                    f"no reply came in {FIRST_BYTE:g} seconds"
+                failure: ModelAPIError = ModelTimeoutError(self.model_name, said)
+            except ModelAPIError as error:
+                failure = error
+            else:
+                reply = stream.get()  # a provider's own finish reason, or a refusal, says the reply ended
+                if reply.finish_reason == "content_filter" or (reply.provider_details or {}).get("finish_reason"):
+                    return reply
+                failure = ModelConnectionError(self.model_name, "the reply stopped before it ended")
+            if self.tries is not None:
+                self.tries.spent(stream.usage if stream is not None else None)
+            raise failure
+
+    return Streamed
 
 
 _MODELS = "pydantic_ai.models"
@@ -863,15 +944,16 @@ def _in_call_order(finished: list[str], messages: list[ModelMessage]) -> list[st
     return out + left
 
 
-def _spent(model: str, messages: list[ModelMessage]) -> Usage:
-    """What a run spent, summed from the replies it got, so a run that failed or ran out of budget counts too."""
+def _spent(model: str, messages: list[ModelMessage], failed: list[Any]) -> Usage:
+    """What a run spent, summed from the replies it got and its tries that `failed`, so a run that failed or ran out
+    of budget counts too."""
     from pydantic_ai.messages import ModelResponse, ToolCallPart
 
     replies = [m for m in messages if isinstance(m, ModelResponse)]
     calls = sum(1 for m in replies for p in m.parts if isinstance(p, ToolCallPart))
-    return Usage(model, len(replies), sum(m.usage.input_tokens for m in replies),
-                 sum(m.usage.output_tokens for m in replies), sum(m.usage.cache_read_tokens for m in replies),
-                 sum(m.usage.cache_write_tokens for m in replies), calls)
+    used = [m.usage for m in replies] + failed
+    return Usage(model, len(used), sum(u.input_tokens for u in used), sum(u.output_tokens for u in used),
+                 sum(u.cache_read_tokens for u in used), sum(u.cache_write_tokens for u in used), calls)
 
 
 # -- masking: no stored value reaches a model, a record or a log
@@ -1102,6 +1184,29 @@ class _Cut(Exception):
         self.response = response
 
 
+class _Tries:
+    """A run's tries of its requests to a provider: each try again is checked against its meter's cap before it
+    starts, and each try that failed is held as spent, at what its stream counted, or with no count, at what the run
+    holds, as the provider bills what it read."""
+
+    def __init__(self, metered: MeterTurn | None, name: str, room: _Room):
+        self.metered, self.name, self.room = metered, name, room
+        self.failed: list[Any] = []
+
+    def before(self) -> None:
+        if self.metered is not None:
+            self.metered.before()
+
+    def spent(self, usage: Any) -> None:
+        from pydantic_ai.usage import RequestUsage
+
+        usage = usage or RequestUsage()
+        self.failed.append(usage if usage.input_tokens else replace(usage, input_tokens=self.room.held))
+        if self.metered is not None:
+            provider, _, wire = self.name.partition(":")
+            self.metered.add(cost(provider, wire, self.failed[-1]))
+
+
 @dataclass
 class _Asked:
     """The loop's own count of its requests, which only its hooks change, one request at a time."""
@@ -1228,11 +1333,12 @@ class PydanticRun(AgentRun):
 
     def _model(self, agent: Agent, run_id: str) -> tuple[Any, str, dict[str, Any], Route | None]:
         """The model a run of `agent` is on, its name, the settings its requests carry, and its gateway's route. An
-        agent file's `model:` replaces the settings' model, unless the run was built on a model object."""
+        agent file's `model:` replaces the settings' model, keeping its retries unless it names its own, unless the
+        run was built on a model object."""
         own = agent.model is not None and isinstance(self.model, str)
         model = model_name(agent.model) if own else self.model
-        settings = model_settings(agent.model) if own else self.settings
-        settings = {"timeout": MODEL_TIMEOUT, **settings}  # one model call's limit; the client tries it twice more at most
+        job = {k: v for k, v in self.settings.items() if k == "max_retries"}
+        settings = {**job, **model_settings(agent.model)} if own else self.settings
         name = model if isinstance(model, str) else getattr(model, "model_name", "")
         if name.startswith("fireworks:"):  # runs of one agent share their instructions: one replica keeps their cache
             settings = {**settings, "extra_headers": {**settings.get("extra_headers", {}), "x-session-affinity": agent.id}}
@@ -1240,7 +1346,7 @@ class PydanticRun(AgentRun):
         if route is not None and route.headers:
             settings = {**settings, "extra_headers": {**settings.get("extra_headers", {}),
                                                       **route.sent(AGENT_CALL, agent.id, run_id)}}
-        return _provided(model, self.key, route), name, settings, route
+        return model, name, settings, route
 
     def _failed(self, run: Run, error: BaseException) -> None:
         """Fail `run` with `error`, its type and its text in the note, masked, then cut."""
@@ -1272,7 +1378,7 @@ class PydanticRun(AgentRun):
         room = _Room(budget.tokens_per_run, told + text, budget.tool_calls, deciding=not writes,
                      decisions=[getattr(t, "__name__", "") for t in tools if getattr(t, "decides", False)])
 
-        asked = _Asked()
+        asked, tries = _Asked(), _Tries(METER.get(), name, room)
 
         def nothing(reason: str) -> _Nothing:  # not `_Nothing` itself: its name and docstring would reach the model
             return _Nothing(reason)
@@ -1284,8 +1390,9 @@ class PydanticRun(AgentRun):
         outputs: list[Any] = [ToolOutput(takes.handed, name=hand_in(agent), description=said[hand_in(agent)],
                                          max_retries=1),
                               ToolOutput(nothing, name=NOTHING, description=said[NOTHING]), TextOutput(spoke)]
-        loop = pydantic_ai.Agent(model, instructions=told, output_type=outputs if writes else str,
-                                 capabilities=[_guarded(room, takes, asked, self.masks, name)], end_strategy="exhaustive",
+        loop = pydantic_ai.Agent(_provided(model, self.key, route, tries), instructions=told,
+                                 output_type=outputs if writes else str, end_strategy="exhaustive",
+                                 capabilities=[_guarded(room, takes, asked, self.masks, name)],
                                  tools=[_bounded(tool, room, self.masks) for tool in tools])
         files = [_binary(file) for entry in evidence for file in entry.files]
         limits = UsageLimits(tool_calls_limit=2 * budget.tool_calls + 10)  # `room` refuses calls past the budget
@@ -1334,12 +1441,12 @@ class PydanticRun(AgentRun):
                     result.status = "refused"
             except BaseException as error:  # an interrupt: what the turns made spent counts, then it goes on up
                 result.status, result.note = "stopped", f"stopped by {type(error).__name__}"
-                result.usage = _spent(result.usage.model, list(messages))
+                result.usage = _spent(result.usage.model, list(messages), tries.failed)
                 result.ended_at = stamp(self.clock())
                 error.partial_run = result  # type: ignore[attr-defined]
                 raise
         kept = history if history is not None and len(history) >= len(messages) else messages
-        result.usage = _spent(result.usage.model, kept)
+        result.usage = _spent(result.usage.model, kept, tries.failed)
         if result.status == STOPPED and asked.asking > 0:  # no count came back: what it read is held as spent
             result.usage.requests += asked.asking
             result.usage.input_tokens += room.held

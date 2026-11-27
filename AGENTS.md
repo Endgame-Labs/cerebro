@@ -17,6 +17,7 @@ Cerebro is a framework. Sales (the `gtm` template) is one use of it. Nothing in 
 - **The test:** would this code path work unchanged for a research lab, a law practice or a codebase?
 - **Where a domain rule goes:** a template (`src/cerebro/templates/`), the connector that issues a source's own key, or the workspace's files. Never the engine.
 - **No collection is first or main.** Order comes from the data, such as what hangs off what, never from a name.
+- **No collection gates another.** What an article gets depends only on its own keys. Whether another collection holds an article never changes what a source lists for it, what binds to it, what it is shown, or whether it is built. A curator may make one collection wait on another, in its prompt, where a person can change it. The engine and the connectors never do.
 - **This covers comments, docstrings, examples and engine tests.** Use neutral names there (`things`, `parts`, a `parent:` header). Sales words belong in template tests.
 
 ### 2. A model decides. Code guards.
@@ -28,7 +29,6 @@ The usual way to handle a judgment is a few hundred lines of deterministic code:
 - **Do not build schemas over free text.** Prompting changes the shape of content, and a rigid structure breaks.
 - **Do not guard what cannot happen, and do not guard what is not ours to guard.**
 - **When a model decides, measure it.** A prompt line is not a control until a run on real models shows the difference. Keep a labelled set and run it again when wording changes.
-- **A caller's yes is carried out by its curator, in a model run, never by code.** Code never makes or changes an article because a proposal was accepted.
 
 **What code must always enforce.** These are the things that must never happen whatever a model says. Keep them in code, tested, and do not soften them:
 
@@ -62,6 +62,8 @@ Notes is an app. It lives under `apps/notes/` and uses the framework like any ap
 ### 5. Cerebro mints no facts
 
 Every fact comes out of Factoid, from a record. A tell is a record that triage turns into facts and proposals, or neither, each citing it. It writes no field. Front matter has two writers: a curator when it admits an article, and the article's agents. No code decides what a field says.
+
+A person's yes goes to its curator, which carries it out in a run. Code never creates or changes an article from a yes.
 
 ## Words
 

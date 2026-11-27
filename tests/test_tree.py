@@ -84,19 +84,15 @@ def test_a_group_kept_apart_is_said_once_however_often_the_reply_names_it() -> N
     assert checked(json.dumps(reply), items(rows))[1] == KEPT_TWO.format(a="Alder", b="Birch")
 
 
-def test_a_group_sits_under_the_first_group_or_article_its_linked_names_and_is_ticked_only_with_it() -> None:
+def test_a_group_sits_under_the_first_group_or_article_its_linked_names_and_keeps_its_own_tick() -> None:
     alder_works, alder, birch, gear = (plain([row])[0] for row in rows())
-    alder.tick = gear.tick = True
     note = Row("p_5", "parts/curator", "parts", "Shelf note", path="parts/shelf-note", linked=["things/cedar"])
     shelf = plain([note])[0]
-    shelf.tick = True
+    alder.tick, gear.tick = False, True
     tops = tree([alder_works, alder, birch, gear, shelf], {"things/cedar": "Cedar"}, {})
     assert [(t.name, [u.name for u in t.under]) for t in tops] == [
         ("Alder", ["Alder gear"]), ("Cedar", ["Shelf note"]), ("Alder Works", []), ("Birch Hall", [])]
-    assert gear.tick and shelf.tick  # under a ticked group, and under an article of the working set
-    alder.tick, gear.tick = False, True
-    tree([alder, gear], {}, {})
-    assert not gear.tick
+    assert gear.tick  # under a group left unticked
     ring = plain([Row("p_6", "things/curator", "things", "Elm", path="things/elm", linked=["things/oak"]),
                   Row("p_7", "things/curator", "things", "Oak", path="things/oak", linked=["things/elm"])])
     assert [(t.name, [u.name for u in t.under]) for t in tree(ring, {}, {})] == [("Elm", ["Oak"])]  # each once
@@ -128,23 +124,7 @@ def test_with_no_model_to_arrange_it_the_list_is_the_plain_tree_in_the_order_fil
     assert [item["name"] for item in asked[0]["items"]] == ["Alder Works", "Birch Yard"]  # every proposal, once
 
 
-def test_ticking_a_line_ticks_what_sits_under_it_and_unticking_it_unticks_all_of_it() -> None:
-    from cerebro.checklist import Model
-    from cerebro.first_run_list import checklist
-
-    found = rows()
-    alder, gear = plain([found[1]])[0], plain([found[3]])[0]
-    pile = Pile([Listed("things/curator", "things", [found[1], found[3]])], groups=tree([alder, gear], {}, {}))
-    lst, of = checklist(pile)
-    model = Model(lst)
-    top, under = of.index(alder), of.index(gear)
-    model._set([under], True)
-    assert model.checked[top] and model.checked[under]
-    model._set([top], False)
-    assert not model.checked[top] and not model.checked[under]
-
-
-def test_a_group_two_deep_is_ticked_only_with_the_group_it_sits_under_and_follows_it_on_the_screen() -> None:
+def test_a_row_ticked_on_its_own_stays_alone_and_unticking_a_row_unticks_what_sits_under_it_however_deep() -> None:
     from cerebro.checklist import Model
     from cerebro.first_run_list import checklist
 
@@ -152,12 +132,11 @@ def test_a_group_two_deep_is_ticked_only_with_the_group_it_sits_under_and_follow
              Row("p_2", "parts/curator", "parts", "Beam", path="parts/beam", linked=["things/cedar"]),
              Row("p_3", "parts/curator", "bits", "Peg", path="bits/peg", linked=["parts/beam"])]
     cedar, beam, peg = (plain([row])[0] for row in chain)
-    cedar.tick, beam.tick, peg.tick = True, False, True
     pile = Pile([Listed("things/curator", "things", chain)], groups=tree([cedar, beam, peg], {}, {}))
-    assert not peg.tick  # its own parent is not ticked
     lst, of = checklist(pile)
     model = Model(lst)
     model._set([of.index(peg)], True)
-    assert all(model.checked)
-    model._set([of.index(beam)], False)
-    assert [model.checked[of.index(g)] for g in (cedar, beam, peg)] == [True, False, False]
+    assert [model.checked[of.index(g)] for g in (cedar, beam, peg)] == [False, False, True]
+    model._set([of.index(cedar)], True)
+    model._set([of.index(cedar)], False)
+    assert not any(model.checked)

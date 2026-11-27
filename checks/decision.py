@@ -28,9 +28,9 @@ def main() -> int:
         print("skip: FIREWORKS_API_KEY is not set")
         return 0
     for model in ("rune", "accounts/fireworks/models/rune"):
-        spec = ModelSpec("fireworks", model, job="decision")
+        spec = ModelSpec("fireworks", model, job="decision", retries=0)
         try:
-            decision = HttpDecider(spec, attempts=1).decide(STATE, QUESTIONS)
+            decision = HttpDecider(spec).decide(STATE, QUESTIONS)
         except DecisionError as error:
             print(f"fail: {spec.wire_id}: {error}")
             continue

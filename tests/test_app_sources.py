@@ -174,7 +174,7 @@ def test_salesforce_logs_in_through_the_sf_cli_and_reads_the_accounts_the_store_
         workspace.store.create(Identity("accounts/gone", "accounts", "Gone", {"salesforce_id": ["001Hs00000GONE01AAA"]},
                                     status="archived"))
         workspace.store.create(Identity("people/wile", "people", "Wile", {"salesforce_id": ["003Hs00000WILE01AAA"]}))
-        assert crm.accounts() == ["001Hs00000ACME01AAA"]
+        assert crm.admitted() == ["001Hs00000ACME01AAA", "003Hs00000WILE01AAA"]  # every collection's
         fake_sf.write(cli, "nologin")
         with pytest.raises(NotLoggedIn, match="no login for work: run sf org login web --alias work"):
             crm.login()
