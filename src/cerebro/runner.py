@@ -135,7 +135,17 @@ from .identity import (
 from .models import ModelSpec, cost
 from .private import make_file, make_folder
 from .project import read_ours, read_schedule, zone_of
-from .records import ACCEPTED, RETRY, TOLD, Claimed, extract_told, instructions_on, proposals, settle_told
+from .records import (
+    ACCEPTED,
+    RETRY,
+    TOLD,
+    Claimed,
+    extract_told,
+    instructions_on,
+    proposals,
+    retracted_records,
+    settle_told,
+)
 from .rendered import descriptions
 from .run import WROTE_NOTHING, Run
 from .source import read_source, span
@@ -1687,7 +1697,8 @@ KEPT_CURSOR, KEPT_FAILED = own_key("cursor", "kept"), own_key("failed", "kept") 
 def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Record]]:
     """Extract each record an app kept or revised since the last pass, and each that failed before, as a source's
     records are: held to the extraction cap, and tried again next pass when it fails. A revised record is handed over
-    whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded."""
+    whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded. A record a
+    caller retracted is never extracted again, whatever revision its app keeps after."""
     landed: list[tuple[Fact, Record]] = []
     kinds = {kind for app in workspace.apps for kind in app.kinds}
     if not kinds or workspace.extraction is None:
@@ -1696,10 +1707,11 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
     waiting, handled = [], set()
     fresh = [id for kind, id in changed if kind == "record"]
     result.tried[KEPT_FAILED] = list(workspace.store.state(KEPT_FAILED) or [])
+    taken = retracted_records(workspace.store)
     for id in dict.fromkeys([*result.tried[KEPT_FAILED], *fresh]):
         handled.add(id)
         record = workspace.store.record(id)
-        if record is None or record.source not in kinds:
+        if record is None or record.source not in kinds or id in taken:
             continue
         if record.extract not in ("records", "none") and "extraction" in result.stopped:  # it checks the ledger
             _waits(result, KEPT_FAILED, id)

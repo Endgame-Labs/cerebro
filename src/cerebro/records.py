@@ -80,6 +80,7 @@ __all__ = [
     "proposals",
     "propose",
     "retract",
+    "retracted_records",
     "review",
     "sentences",
     "settle_told",
@@ -419,6 +420,11 @@ UNDO = {"article.admit": "archive it to take it out of the working set again",
         "article.archive": "admit it to bring it back",
         "article.merge": "split the article merged away to bring it back",
         "article.split": "merge the two articles again"}
+
+
+def retracted_records(store: Store) -> set[str]:
+    """The ids of the records an accepted `record.retract` took back. No pass reads one into facts again."""
+    return {p.target for p in proposals(store, ACCEPTED) if p.kind == "record.retract"}
 
 
 def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str, Caller | None]:

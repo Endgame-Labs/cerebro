@@ -844,6 +844,21 @@ def test_a_kept_record_whose_extraction_failed_is_extracted_on_the_next_pass(tmp
     assert second.failed == {} and tries == [kept.id, kept.id] and second.extracted > 0
 
 
+def test_a_kept_record_a_caller_retracted_gives_no_facts_and_its_listing_says_it_was_retracted(tmp_path: Path) -> None:
+    from cerebro.caller import Caller
+    from cerebro.fakes import notes_app
+
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    extraction, you = FakeExtraction(), Caller("you", "person")
+    cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=extraction, apps=[notes_app()],
+                      agent_run=ScriptedRun(lambda prompt: {}))
+    kept = cerebro.handle.keep(you, "note", "The east gate opens at nine.", {"collection": "notes"})
+    assert kept.id in cerebro.retract(you, kept.id, "reworded").withdrew
+    assert cerebro.run_once().extracted == 0 and extraction.facts(record=kept.id, latest=False) == []
+    listed = cerebro.lookup.query(you, "note")
+    assert [r.id for r in listed.items] == [kept.id] and f"record {kept.id} was retracted" in " ".join(listed.warnings)
+
+
 def test_status_gives_todays_spend_alone_and_counts_what_waits(tmp_path: Path) -> None:
     from cerebro.budget import LOG
     from cerebro.caller import Caller
