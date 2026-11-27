@@ -111,7 +111,7 @@ def test_a_curators_instruction_is_context_for_the_writers_and_never_cited_even_
                             at=at, payload={"text": "Lead with the review."}, cites=["notes:n1"], status="accepted",
                             decided_by=curator, decided_at=at))
     [entry] = _inbox(store, load_agent(GTM / "risk-radar" / "article.md", GTM), "risk-radar/acme-risk-brief")
-    assert entry.citations == [] and entry.lines[0].startswith("- [p_note] the curator's instruction")
+    assert entry.citations == [] and entry.lines[0].startswith("- [p_note]") and "Lead with the review." in entry.lines[0]
 
 
 def test_a_curators_note_stands_for_the_writers_until_it_gives_other_words_with_instruct_or_a_person_gives_theirs(
