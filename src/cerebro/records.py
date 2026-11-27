@@ -1431,9 +1431,9 @@ class _HeldFacts:
 
 
 def _landing(extraction: Any, row: Proposal) -> Proposal:
-    """`row` as a write files it: a retract whose facts are held goes in without `applied`, which `_release` files
-    once they are withdrawn, so a pass finishes one that stops between the two."""
-    if isinstance(extraction, _HeldFacts) and row.kind in RETRACTS:
+    """`row` as a write files it: an accepted retract whose facts are held goes in without `applied`, which `_release`
+    files once they are withdrawn, so a pass finishes one that stops between the two."""
+    if isinstance(extraction, _HeldFacts) and row.kind in RETRACTS and row.status == ACCEPTED:
         extraction.rows.append(row)
         return replace(row, applied={})
     return row

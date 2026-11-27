@@ -954,6 +954,7 @@ def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Pat
     target = kept.id if kind == "record" else extraction.facts(record=kept.id)[0].id
     if path == "decide":
         asked = cerebro.tell(app, "take it back", target=target, as_="proposal", kind=f"{kind}.retract").proposals
+        assert len(cerebro.store.rows("proposals", {"id": asked[0]})) == 1  # an app's ask is filed once
         cerebro.decide(you, accept=asked)  # the store keeps it, and the facts layer then keeps the fact
     else:
         with pytest.raises(CerebroError, match="stopped partway"):
