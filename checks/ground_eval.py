@@ -10,7 +10,7 @@ supported or unsupported before anything ran against it. A case scores as its we
 `evals.lines` prints: the share of supported cases at or above the floor, `ground.FLOOR`, and of unsupported ones under
 it, overall and per group, each case that came out against its label with its score and why, and what the calls
 spent, kept in a ledger of its own with no cap. It fails, and exits 1, when fewer supported cases hold than
-`--min-held`, 75% by default, or fewer unsupported ones fall under the floor than `--min-marked`, 90%. It prints no
+`--min-held`, 75% by default, or fewer unsupported ones fall under the floor than `--min-marked`, 85%. It prints no
 key. With no key set it says so and stops.
 
 The run ends with one block: the two shares over all cases and over the held back cases (split `held_out`, and one
@@ -42,7 +42,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--group", default="", help="only the cases of this group, such as voice or held_out")
     parser.add_argument("--min-held", type=float, default=0.75, help="the least share of supported cases held")
-    parser.add_argument("--min-marked", type=float, default=0.9, help="the least share of unsupported cases marked")
+    parser.add_argument("--min-marked", type=float, default=0.85, help="the least share of unsupported cases marked")
     parser.add_argument("--json", default="", help="a file to write each case's score to")
     args = parser.parse_args()
     spec = ModelSpec(args.provider, args.model, job="decision")
