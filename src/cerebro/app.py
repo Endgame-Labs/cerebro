@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import threading
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import fields, is_dataclass, replace
 from pathlib import Path
@@ -61,6 +62,7 @@ from .evidence import BUILTIN, STDERR_BYTES, Finished, Launch, start
 from .facts import STATE as FACTS_STATE
 from .facts import Extraction, FactoidExtraction, Revisions, kind_notices, revisions_kept
 from .gateway import NO_KEY, Gateway, read_providers
+from .ground import TALLY
 from .lookup import (
     DecideResult,
     Decision,
@@ -722,20 +724,26 @@ class Cerebro:
         `compile.targets` lists the articles an agent writes. Its runs' transcripts and its lines come masked. With
         no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, as
         `compile_article` takes it. A run that lands, or that ran and wrote nothing, moves the article's clock, by hand
-        or in a pass; one that fails does not."""
+        or in a pass; one that fails does not. What grounding did on it is counted in its `grounding`."""
         self.files_read()
         self.need_key(agent)
         self.refresh_mask()
         began = self.clock()
-        with masking(self.mask_every()):  # what a source gives a compile is masked before a line that says it is cut
-            compiled = compile_article(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run,
-                                       root=self.root, functions=self.exposed.evidence,
-                                       agent_tools=self.exposed.agent_tools, workspace=self.handle, ledger=self.ledger,
-                                       model=self.model_of(agent), clock=self.clock, this=this, subagents=self.agents,
-                                       scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
-                                       zone=self.zone, starter=self.start_script, sources=self.connectors,
-                                       descriptions=descriptions(self.settings), only=only, hold=hold,
-                                       by_hand=by_hand, min_grounding=min_grounding(self.settings))
+        tally: Counter[str] = Counter()  # what grounding does while it compiles
+        counting = TALLY.set(tally)
+        try:
+            with masking(self.mask_every()):  # what a source gives a compile is masked before a line that says it is cut
+                compiled = compile_article(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run,
+                                           root=self.root, functions=self.exposed.evidence,
+                                           agent_tools=self.exposed.agent_tools, workspace=self.handle, ledger=self.ledger,
+                                           model=self.model_of(agent), clock=self.clock, this=this, subagents=self.agents,
+                                           scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
+                                           zone=self.zone, starter=self.start_script, sources=self.connectors,
+                                           descriptions=descriptions(self.settings), only=only, hold=hold,
+                                           by_hand=by_hand, min_grounding=min_grounding(self.settings))
+        finally:
+            TALLY.reset(counting)
+        compiled.grounding = dict(tally)
         if compiled.article is not None:
             if not compiled.skipped and (compiled.run is not None or compiled.runs):
                 runner.ran_on(self, agent, compiled.article.identity.id, began)

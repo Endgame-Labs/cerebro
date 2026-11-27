@@ -327,6 +327,7 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
     and one a person took out while its run was under way says what of it landed: nothing, with what it cost when
     `workspace` is given."""
     from .budget import spent_by_runs
+    from .ground import counted
 
     key = agent if article_id == agent else f"{agent} on {article_id}"
     runs = compiled.runs or ([compiled.run] if compiled.run is not None else [])
@@ -356,6 +357,8 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
         _echo(f"wrote    {article}  articles/{article}.md")
     for line in [*compiled.dropped, *compiled.notes]:
         _echo(f"warning  {key}: {line}")
+    if did := counted(compiled.grounding):  # each score is kept on its run's line, as a pass keeps it
+        _echo(f"grounding {key}: {did}")
     if compiled.cleaned:  # each line of it is kept on its run's line, as a pass keeps it
         _echo(f"cleaned  {key}: {made_safe(len(compiled.cleaned))}")
     if compiled.warning:

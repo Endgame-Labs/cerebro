@@ -48,7 +48,7 @@ import posixpath
 import threading
 import uuid
 import weakref
-from collections import Counter, deque
+from collections import deque
 from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
@@ -106,7 +106,7 @@ from .curate import (
 )
 from .errors import CerebroError
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
-from .ground import TALLY, counted
+from .ground import counted
 from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
 from .identity import (
     DecisionJudge,
@@ -2201,8 +2201,6 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
     the cooldown, and one owed only its `parts` runs only the part marked."""
     key = _key(agent, article)
     result.step("compile", "start", article)
-    tally: Counter[str] = Counter()  # what grounding does while this article compiles
-    counting = TALLY.set(tally)
     try:
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
                                  hold=_hold(workspace, agent, article, served) if change else None,
@@ -2220,14 +2218,11 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         result.tell(f"ran       {key}: failed, {type(error).__name__}: {error}")
         result.step("compile", "end", article, mark="failed", why=f"{agent.id}: {type(error).__name__}: {error}")
         raise
-    finally:
-        TALLY.reset(counting)
-    compiled.grounding = dict(tally)
     result.tell(_compiled_line(workspace, key, compiled))
     result.step("compile", "end", article, **_compiled_step(agent, compiled))
     # what grounding did and what landing made safe, as counts, under the article's row
     safe = made_safe(len(compiled.cleaned)) if compiled.cleaned else ""
-    if said := ", ".join(n for n in (counted(tally), safe) if n):
+    if said := ", ".join(n for n in (counted(compiled.grounding), safe) if n):
         result.step("compile", "note", article, text=said)
     return compiled
 
@@ -2567,7 +2562,7 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
     `held` line says it once, with when it runs. Each line of what landing made safe is kept on its run's line."""
-    keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+    keep_grounding(workspace.store, compiled.run, compiled.grounding, compiled.cleaned)
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]

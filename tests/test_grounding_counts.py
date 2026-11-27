@@ -90,6 +90,17 @@ def test_off_a_terminal_a_pass_says_what_grounding_marked_as_counts_alone(
     assert "grounding digests/weekly: marked 2 sentences not fully backed" in passed.output.splitlines()
 
 
+def test_a_run_by_hand_says_what_grounding_marked_and_keeps_the_count_on_its_runs_line_as_a_pass_does(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = lay_out_workspace(tmp_path, monkeypatch)
+    ran = CliRunner().invoke(cli.main, ["agents", "run", "digests/weekly", "--workspace", str(root)])
+    assert ran.exit_code == 0, ran.output
+    assert "grounding digests/weekly: marked 1 sentence not fully backed" in ran.output.splitlines(), ran.output
+    with cli.open_workspace(root) as workspace:  # no pass took in the note, so only the uncited line is marked
+        rows = [row.data for row in workspace.store.rows("agent-runs", {"agent": "digests/weekly"})]
+    assert rows[-1]["grounding"] == {"marked": 1}
+
+
 def test_a_tally_is_kept_only_while_a_compile_sets_one() -> None:
     from cerebro.ground import tallied
 
