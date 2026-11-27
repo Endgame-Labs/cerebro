@@ -41,7 +41,7 @@ from .evidence import CITE
 from .facts import Fact
 from .models import Answer, Decider, DecisionError, DecisionTooLarge, Score
 
-__all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "bounded",
+__all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "bounded_quote",
            "citation_of", "counted", "fields_of", "own_sides", "quote_for", "quote_line", "quote_named",
            "split_sentences", "tallied", "unmarked"]
 
@@ -197,8 +197,8 @@ LEVELS = [said for _, said in SCALE]
 QUOTE_BOUND = 300  # the most of a fact's quotes a citation shows
 
 
-def bounded(text: str, bound: int = QUOTE_BOUND) -> str:
-    """`text` cut at a word to at most `bound` characters, an ellipsis after the cut."""
+def bounded_quote(text: str, bound: int = QUOTE_BOUND) -> str:
+    """`text` as a citation quotes it: cut at a word to at most `bound` characters, an ellipsis after the cut."""
     if len(text) <= bound:
         return text
     cut = text[:bound].rsplit(" ", 1)[0] or text[:bound]
@@ -221,7 +221,7 @@ def _quoted(fact: Fact) -> list[tuple[str, str]]:
         for (_, m), (text, n) in pairwise(quotes):
             words += (" " if m > 0 and n == m + 1 else " … ") + text
         if words and (record == fact.record or len(words.split(" ", 1)[0]) < room):
-            out.append((record, bounded(words, room)))
+            out.append((record, bounded_quote(words, room)))
             room -= len(out[-1][1])
     return out
 
