@@ -129,7 +129,7 @@ The words stay kept, marked as taken back. The article's agents drop the fact on
 | Who | How they reach the wiki | Facts | Proposals | Takes back |
 |---|---|---|---|---|
 | A caller: you, or any MCP client | `cerebro tools`, `cerebro mcp`, or a token | Yes | Any kind, accepted as sent | Anything |
-| An app | Its own code, through the `Workspace` handle | Yes | Any kind but `instruct`, waiting for a caller | Only what it told |
+| An app | Its own code, through the `Workspace` handle | Yes | Any kind but `instruct`, waiting for a caller | Anything but what a caller said |
 
 An app that tries something it may not do gets one line that says why, and nothing is kept.
 

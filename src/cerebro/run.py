@@ -423,6 +423,10 @@ STANDS = "it added nothing, so its subagents' content stands"
 DECIDED_SPENT = "its room or tool calls were spent, so the run ended with what it had decided by then"
 DECIDED_CUT = "its reply reached its output limit and was cut, so the run ended with what it had decided by then"
 DECIDED_EMPTY = "it ended with an empty reply"  # a curator's, which hands in nothing: what it decided has landed
+FAILED_AFTER = "it failed after its first hand-in"  # then why, in brackets, and what of it lands
+OUTPUT_RETRIES = "Exceeded maximum output retries"  # the library's words, and the gate's, for hand-ins asked for again
+MALFORMED = "its hand-in was malformed, also after the turn that asked for it again"  # those words, plain
+REFUSED_CALL = "the provider refused the call, for its key or for payment due"
 
 
 def _marked(agent: Agent, text: str, last: bool = False) -> str:
@@ -1246,15 +1250,17 @@ def _guarded(room: _Room, takes: _Candidates, asked: _Asked, masks: Masks | None
 
     @hooks.on.before_model_request
     async def hold_room(ctx: Any, request: Any) -> Any:
-        """End the run in place of a request past its budget, one its meter's cap refuses, or a second ask to hand
-        in when the editor never spoke, tell a curator ahead of its turn, once, that its room is short while it
-        still has its tools, offer only the hand-in once no tool may run, and mask what the request holds, as it
-        leaves for the model."""
-        again = sum(isinstance(m, ModelResponse) and all(p.tool_name in own for p in m.parts
-                                                         if isinstance(p, ToolCallPart)) for m in request.messages)
+        """End the run in place of a request past its budget, one its meter's cap refuses, or, when the editor never
+        spoke, a second ask to hand in: after a second reply in text, or a second reply that calls only the hand-in,
+        each counted on its own. Tell a curator ahead of its turn, once, that its room is short while it still has
+        its tools, offer only the hand-in once no tool may run, and mask what the request holds, as it leaves for the
+        model."""
+        called = [{p.tool_name for p in m.parts if isinstance(p, ToolCallPart)} for m in request.messages
+                  if isinstance(m, ModelResponse)]
+        again = max(called.count(set()), sum(bool(names) and names <= own for names in called))
         if takes.writes and takes.held is None and again > 1:  # the editor's retry is its own, taken when it spoke
             ctx.messages.pop()  # never sent: the run ends on the reply before it, as at the loop's own limit
-            raise UnexpectedModelBehavior("Exceeded maximum output retries (1)")
+            raise UnexpectedModelBehavior(f"{OUTPUT_RETRIES} (1)")
         if metered is not None:
             metered.before()  # past the cap the round set: the run stops here, and keeps what its turns spent
         if any(isinstance(m, ModelResponse) for m in request.messages) and room.spent():
@@ -1477,7 +1483,12 @@ class PydanticRun(AgentRun):
         if result.status == STOPPED and asked.asking > 0:  # no count came back: what it read is held as spent
             result.usage.requests += asked.asking
             result.usage.input_tokens += room.held
+        if result.status == "failed" and OUTPUT_RETRIES in result.note:  # the library's words, in plain ones
+            result.note = MALFORMED
         if result.status not in ("done", WROTE_NOTHING, "budget spent") and takes.held is not None:
+            if result.status in ("failed", "refused"):  # why it failed stays
+                why = f"{REFUSED_CALL}: {result.note}" if result.status == "refused" else result.note
+                result.note = f"{FAILED_AFTER} ({why})"
             result.note += takes.kept(result)  # a hand-in is never lost, however the run ends after it
             result.status = "done"
         result.transcript = _entries(kept)

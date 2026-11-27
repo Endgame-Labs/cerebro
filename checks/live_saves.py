@@ -12,6 +12,7 @@ passes only when:
 - after the first pass a knowledge article states the 10% limit, citing a fact of the policy;
 - after the edit, a facts query with `latest: false` gives the first save's facts marked superseded with their
   revision, and one without it gives the new save's alone;
+- the fact of the sentence the edit left alone, that discounts are for annual plans only, is still current by its id;
 - the text under the rewritten article's Current heading states 15%, and grounding marked each sentence of it that
   cites no current fact, or gives 10% without citing the first save beside the new one;
 - somewhere in the article the old 10% limit is given citing a superseded fact of the first save beside a fact of the
@@ -155,6 +156,9 @@ def main() -> int:
                 reasons.append("no superseded fact holds the old 10% limit")
             if {f.id for f in latest} & set(old) or not any(NEW.search(f.text) for f in latest):
                 reasons.append("a query without latest: false did not give the new save's facts alone")
+            if not {f.id for f in first if "monthly" in f.text} & {f.id for f in latest}:
+                reasons.append("no fact the first pass gave of the sentence the edit left alone, on monthly plans, "
+                               "is still current")
 
             article_id, parts = article(workspace)
             print(f"\n# {article_id or 'no knowledge article cites the policy'}")

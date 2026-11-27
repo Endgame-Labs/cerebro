@@ -28,6 +28,24 @@ def citing_nothing(text: str) -> str:
     return "" if "[^" in text else "An editor scored your text: no sentence of it cites the evidence."
 
 
+def held_then_refused(text: str) -> AgentRun:
+    """A run on a model that hands in `text`, and has its key refused with HTTP 401 on the turn after the editor
+    speaks."""
+    from pydantic_ai.exceptions import ModelHTTPError
+    from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+    from cerebro.run import PydanticRun
+
+    def reply(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if any(isinstance(m, ModelResponse) for m in messages):
+            raise ModelHTTPError(401, "held", {"message": "invalid key"})
+        hand_in = next(t.name for t in info.output_tools if t.name != "nothing_to_write")
+        return ModelResponse(parts=[ToolCallPart(hand_in, {"text": text})])
+
+    return PydanticRun(FunctionModel(reply))
+
+
 def lookup_tool(id: str) -> str:
     """Look one thing up."""
     return f"looked up {id} in the notes"
