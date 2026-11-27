@@ -70,7 +70,7 @@ def _row(record: Record, store: Store | None) -> dict[str, Any] | None:
     out = {"id": record.id, **({"name": row["name"]} if row["name"] else {}),
            "keys": {k: list(vs) for k, vs in record.keys.items()}, "into": row["into"], "fields": row["fields"]}
     if store is not None and record.keys:
-        binds = bound_to(store, Record(id=record.id, source=record.source, revision="", keys=record.keys))
+        binds = bound_to(store, record)
         bound = [id for id in binds if working(store, id)]
         if bound:
             out["bound"] = bound
