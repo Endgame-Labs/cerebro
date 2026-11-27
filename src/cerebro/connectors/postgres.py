@@ -241,6 +241,8 @@ class PostgresEngine(Engine):
     as `item`; `ticks` is how the time limit reads elapsed seconds; `connect` stands in for psycopg's, imported when
     a query runs if none is given."""
 
+    dialect = "postgres"
+
     def __init__(self, login: Callable[[], str], label: str, *, item: str = "",
                  ticks: Callable[[], float] = seconds, connect: Callable[..., Any] | None = None):
         self.login, self.label, self.item, self.ticks, self.connect = login, label, item, ticks, connect

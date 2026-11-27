@@ -383,12 +383,11 @@ TITLE_CAP = 120  # the characters of a title a fact's label shows
 
 def _item(thing: Any) -> Item:
     if isinstance(thing, Fact):
-        from .ground import quote_for, quote_line  # grounding imports this module, so its helpers load at the call
-        quote, text = quote_for(thing), f"- [^{thing.id}] {thing.text}" + quote_line(thing)
+        from .ground import citation_of, quote_line  # grounding imports this module, so its helpers load at the call
+        text = f"- [^{thing.id}] {thing.text}" + quote_line(thing)
         if thing.status == "superseded":  # history only, which the judge holds to what was
             text += f" [{superseded(thing)}]"
-        return Item(f"fact:{thing.id}", text, [Citation("fact", thing.id, thing.record, quote)], thing.at,
-                    thing.record)
+        return Item(f"fact:{thing.id}", text, [citation_of(thing)], thing.at, thing.record)
     if isinstance(thing, Article):
         id = thing.identity.id
         text = f"- [^{id}] {thing.identity.title}: {json.dumps(_front(thing), sort_keys=True, default=str)}"
@@ -1623,15 +1622,15 @@ class _Gatherer:
             rows: Rows = select(query)
         except CerebroError as error:
             raise SqlError(f"{self.name}: evidence {n}, sql {name}: {error}") from None
-        from .ground import _bounded  # grounding imports this module, so its helper loads at the call
+        from .ground import bounded_quote  # grounding imports this module, so its helper loads at the call
 
-        key = hashlib.sha256(query.encode()).hexdigest()[:8]  # the query as it ran: another query's rows get other ids
+        key = hashlib.sha256(source.folded(query).encode()).hexdigest()[:8]
         query = " ".join(query.split())
         entry = Evidence(f"Sql {name}, the rows of {query}", spelled=f"sql {name}: {query}")
         for i, row in enumerate(rows.rows, 1):
             cid, text = f"sql:{name}:{key}:{i}", row_text(rows.columns, row)
             entry.items.append(Item(cid, f"- [^{cid}] {text}",
-                                    [Citation("record", cid, f"sql:{name}", _bounded(text))]))
+                                    [Citation("record", cid, f"sql:{name}", bounded_quote(text))]))
         if rows.more:
             entry.notes.append(f"it gave more than {len(rows.rows)} rows, so the rest were not read: aggregate or "
                                "filter in the query")
