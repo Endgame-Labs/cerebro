@@ -1,0 +1,33 @@
+context: An editor reads a fictional ferry reporting file closed on 20 November 2026.
+questions:
+  - id: attribution
+    group: attribution
+    ask: Whose counts are these, and are Dana and Tomas the same source?
+    read: [stories/who-would-the-night-ferry-serve]
+    expect:
+      judge: Distinguishes planning director Dana Vale from union steward Tomas Vale and attributes 1,240 boardings and 860 cargo-gate crossings separately.
+  - id: retraction-scope
+    group: correction
+    ask: What did Imani retract, and what did she keep standing?
+    read: [claims/the-tenant-fare-promise]
+    expect:
+      judge: Says Imani Reed retracted the signed free-fare agreement claim but retained her observation of 17 broken lamps.
+  - id: incompatible-counts
+    group: disagreement
+    ask: What unique-worker count has been established?
+    read: [claims/the-disputed-passenger-count]
+    expect:
+      judge: Does not establish a unique-worker count or average the figures. Distinguishes boardings from cargo-gate crossings and says repeat trips are not deduplicated.
+  - id: missing-cost
+    group: missing-evidence
+    ask: What is the complete project cost including dredging?
+    read: [claims/the-cost-and-launch-conditions]
+    expect:
+      fields: { verification_state: unresolved }
+      judge: Leaves the complete cost unknown because dredging is excluded and no quote or amount is available. Does not invent a dredging cost or treat it as zero.
+  - id: conditional-date
+    group: correction
+    ask: Is the November 16 start still the plan, and is December 7 guaranteed?
+    read: [stories/who-would-the-night-ferry-serve]
+    expect:
+      judge: Says December 7 replaced November 16 as a conditional target dependent on inspection or permit, not a guaranteed or completed launch.
