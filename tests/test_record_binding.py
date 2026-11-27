@@ -134,6 +134,24 @@ def test_a_fact_that_mentions_its_records_own_name_ties_to_no_article_the_record
     assert ties(store, said, other) == []
 
 
+def test_a_fact_tied_by_its_records_own_name_comes_off_an_article_once_a_key_tells_the_two_apart(
+        tmp_path: Path) -> None:
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    other = Record(id="2", source="src", revision="1", at="2026-11-10", body="Ann Lee moved to Birch.",
+                   keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]})
+    workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=["Ann Lee"]),
+                        connectors=[FakeConnector("src", [other])])
+    workspace.store.create(Identity("things/ann-lee", "things", "Ann Lee", {"name": ["Ann Lee"]}, "active"))
+    workspace.run_once(agents=False)  # nothing tells the two apart yet: the record binds it by its name
+    facts = [f.id for f in workspace.extraction.facts(record="2")]
+    assert facts and workspace.store.facts_of("things/ann-lee") == facts
+    ann = workspace.store.article("things/ann-lee").identity
+    ann.keys = {**ann.keys, "email": ["ann@alder.example"]}  # as a link adds a key: now they are two things
+    workspace.store.set_identity(ann)
+    workspace.run_once(agents=False)
+    assert workspace.store.facts_of("things/ann-lee") == []
+
+
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:
     store = MemoryStore()
     record = _part("4", "ann@alder.example")

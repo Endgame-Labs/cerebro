@@ -54,7 +54,7 @@ from .facts import Fact, record_name
 from .models import Decider, DecisionError, YesNo
 from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
-__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
+__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "apart_by_name", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
            "linked_keys", "naming_keys", "own_articles", "reached", "redirects", "tied", "working", "would_bind"]
 
 THRESHOLD = 0.7  # the probability a judge must give a candidate
@@ -292,6 +292,15 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
     if judge is not None and fact.subject and not exact:
         tie(_near(fact, judge, near_pool(store) if among is None else among), _subject_how(fact), fact.subject)
     return made
+
+
+def apart_by_name(store: Store, fact: Fact, record: Record | None, articles: Iterable[str]) -> list[str]:
+    """Those of `articles` no tie by a name holds `fact` to when it gives one of its record's own names, by its
+    subject or a mention: each `_apart` tells the record from, as `ties` makes no such tie."""
+    mine = _record_names(record)
+    if record is None or not any(_tokens(name) in mine for name in [fact.subject, *(m.text for m in fact.mentions)]):
+        return []
+    return [id for id in articles if _apart(store, record, id)]
 
 
 def _record_names(record: Record | None) -> list[list[str]]:
