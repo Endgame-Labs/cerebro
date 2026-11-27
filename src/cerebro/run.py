@@ -17,13 +17,14 @@ The file follows the parts of a run:
   with the mark. The first hand-in is held while the model is told, once, what `REVIEW` says of it, when it says
   anything: grounding's scores of each sentence under its floor, and each number in brackets that cites nothing,
   which takes one retry of its own. A reply that hands in nothing is asked once to hand in. With nothing to land, a
-  decline, or a subagent's normal end, wrote nothing, which is no failure, and any other end fails, so it runs again.
-  A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents' content
-  standing. An error on any request fails the run, once its tries are spent: a held hand-in lands however the run
-  ends after it. A request to a provider is
-  streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with
-  nothing new, and a timeout, a rate limit or a server error is tried again up to the model's `retries`, each try
-  again checked first against the cap of the run's meter, and each failed try counted in what the run spent.
+  run that declined wrote nothing, which is no failure, as did a subagent's that ended normally or that its budget
+  stopped after a reply in plain text, and any other fails, so it runs again. A curator decides with its tools and
+  hands in nothing. A composer that adds nothing leaves its subagents' content standing. An error on any request
+  fails the run, once its tries are spent: a held hand-in lands however the run ends after it. A request to a
+  provider is streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes
+  `STALL` seconds with nothing new, and a timeout, a rate limit or a server error is tried again up to the model's
+  `retries`, each try again checked first against the cap of the run's meter, and each failed try counted in what
+  the run spent.
 - The room. A run holds against its token budget, each once, its opening, each reply of the model and each tool
   reply. One tool reply holds at most a quarter of the budget, and a fifth is kept to write with. A reply too large is
   cut, its largest lists first, then its longest texts, with a line first that says how to ask for less. Once tool
@@ -570,8 +571,8 @@ class _Candidates:
     def ended(self, run: Run, mask: Callable[[str], str] | None, cut: bool = False, error: str = "") -> None:
         """End the run on its replies that handed in nothing: it lands its latest candidate that carries the mark,
         else a hand-in it holds. With none, the run fails, so it runs again, but a curator's ends with what it
-        decided, a composer's leaves its subagents' content standing, and a subagent's normal end wrote nothing, so
-        its part stands."""
+        decided, a composer's leaves its subagents' content standing, and a subagent's wrote nothing, so its part
+        stands, but for one whose room or calls were spent or whose reply was cut."""
         cut = cut or any(reply.cut for reply in self.replies)
         last = CUT_NOTHING if cut else "" if not self.replies or self.replies[0].offered else SPENT_NOTHING
         if (got := self.latest()) is not None:
@@ -1457,6 +1458,8 @@ class PydanticRun(AgentRun):
                     takes.ended(result, self._mask())
                 if not plain or result.status == "failed":  # with nothing to land, the budget is why
                     takes.spent(result, str(error))
+                elif result.status == WROTE_NOTHING and takes.agent.role == "subagent":  # its part stands
+                    result.note = str(error) + takes.kept(result)
             except Exception as error:  # noqa: BLE001 - any model or loop error ends the run, and what it spent counts
                 self._failed(result, error)
                 if route is not None and isinstance(status := getattr(error, "status_code", None), int):

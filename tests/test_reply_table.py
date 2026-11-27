@@ -113,6 +113,7 @@ class Row:
     limit: str
     status: str  # how the run ends
     takes: str | None  # the text it lands, or None
+    note: str = ""  # what its note starts with, where the row says
 
 
 def _sub(text: str) -> str:
@@ -181,7 +182,7 @@ ROWS = [
     Row("subagent", "U", "none", WROTE_NOTHING, None),
     Row("subagent", "X", "none", WROTE_NOTHING, None),
     Row("subagent", "S", "none", WROTE_NOTHING, None),
-    Row("subagent", "U", "budget@2", WROTE_NOTHING, None),
+    Row("subagent", "U", "budget@2", WROTE_NOTHING, None, "the run holds "),
     Row("subagent", "H,N", "none", "done", _sub(RISKS)),
     Row("subagent", "S,H", "none", "done", _sub(RISKS)),
     Row("subagent", "T,U", "calls", "done", U),
@@ -213,3 +214,4 @@ def test_the_reply_table(row: Row) -> None:
         logging.disable(logging.NOTSET)
     taken = got.result.text if got.result is not None else None
     assert (got.status, taken) == (row.status, row.takes), (got.status, taken, got.note)
+    assert got.note.startswith(row.note), got.note
