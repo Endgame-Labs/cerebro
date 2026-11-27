@@ -71,6 +71,7 @@ from .budget import (
     Stopped,
     UnpricedModel,
     read_caps,
+    spend_digits,
     stop_line,
     stopping,
 )
@@ -2470,15 +2471,19 @@ def _run_again(workspace: Cerebro, agent: Agent, article: str, who: list[str]) -
             workspace.store.set_state(f"compiled:{agent.id}:{article}", None)
 
 
-def _usd(workspace: Cerebro, runs: list[Run]) -> str:
-    """What the runs cost on their agents' models, as a line says it."""
+def _usd(workspace: Cerebro, runs: list[Run], checks: float = 0.0) -> str:
+    """What the runs cost on their agents' models, as a line says it, and once grounding's `checks` of their text
+    cost anything, what the writing and the checks each cost, at places where the two add up to the whole."""
     total = 0.0
     for run in runs:
         agent = workspace.agent(run.agent) if hasattr(workspace, "agent") else None
         if agent is not None:
             spec = workspace.model_of(agent)
             total += cost(spec.provider, spec.model, run.usage)
-    return f"${total:.4f}"
+    if not checks:
+        return f"${total:.4f}"
+    digits = spend_digits(total + checks, [total, checks], least=4)
+    return f"${total + checks:.{digits}f} (writing ${total:.{digits}f}, checks ${checks:.{digits}f})"
 
 
 def _shown(compiled: Any) -> Run | None:
@@ -2511,12 +2516,13 @@ def _compiled_line(workspace: Cerebro, key: str, compiled: Any) -> str:
         return f"ran       {key}: skipped, {compiled.waiting or 'nothing it reads has moved'}"
     if compiled.article is not None:
         article = compiled.article.identity.id
-        return f"ran       {key}: wrote articles/{article}.md, {_usd(workspace, runs)}"
+        return f"ran       {key}: wrote articles/{article}.md, {_usd(workspace, runs, compiled.checks)}"
     run = _shown(compiled)
     if run is not None and run.status == WROTE_NOTHING:  # its status is what the line says already: why, once
-        return f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, {_usd(workspace, runs)}"
+        return (f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, "
+                f"{_usd(workspace, runs, compiled.checks)}")
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
-    return f"ran       {key}: wrote nothing, {said}, {_usd(workspace, runs)}"
+    return f"ran       {key}: wrote nothing, {said}, {_usd(workspace, runs, compiled.checks)}"
 
 
 def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:

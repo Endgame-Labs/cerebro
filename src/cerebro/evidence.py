@@ -73,7 +73,7 @@ from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, update_sta
 from .window import Span, WindowError, holds, is_window, read_time, span
 from .workspace import Workspace
 
-__all__ = ["BUILTIN", "KEEP_BAR", "KEEP_BARS", "LEFT_OUT", "RUN_SPEND", "DecisionKeepJudge", "Evidence",
+__all__ = ["BUILTIN", "KEEP_BAR", "KEEP_BARS", "LEFT_OUT", "DecisionKeepJudge", "Evidence",
            "EvidenceError", "Finished", "Item", "KeepJudge", "KeepScores", "LastSets", "Launch", "NotBuilt", "Passage",
            "ScriptError", "SqlError", "Starter", "blocks", "choose", "digest", "estimate_tokens", "fingerprint", "gather",
            "gather_failed", "keep_bar", "left_key", "preload", "render", "start"]
@@ -1014,8 +1014,6 @@ def _spawn(launch: Launch, keeper: bool) -> subprocess.Popen[bytes]:
 
 # -- the gatherer: a method for each kind of line
 
-# What a run's grounding calls are kept under in the spend log, before its agent's id.
-RUN_SPEND = "ground"
 READ_AT_ONCE = 20  # the most articles one read asks for
 SUMMARY_NOTE = "summary:"  # how a line that says a summary fell back to an article's first part opens
 
@@ -1073,7 +1071,7 @@ class _Gatherer:
             return row.get("agent") in self.writers
         if source == "spend":
             run = str(row.get("run") or "")
-            return run in self.runs() or run in {f"{RUN_SPEND} {w}" for w in self.writers}
+            return run in self.runs()
         if source == "merges":
             return row.get("by") in self.writers
         if source == "proposals":

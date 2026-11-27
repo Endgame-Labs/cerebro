@@ -66,7 +66,6 @@ from .errors import CerebroError
 from .evidence import (
     CITE,
     GATHER,
-    RUN_SPEND,
     SUMMARY_NOTE,
     DecisionKeepJudge,
     Evidence,
@@ -86,7 +85,7 @@ from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
 from .records import RETRACTS, proposals
 from .reply import outside
-from .run import REVIEW, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
+from .run import REVIEW, RUN_ID, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, new_run_id, tokens
 from .secrets import MARK
 from .store import PropertyError, Store, StoreError, check_value, own_key, update_state
 from .tokens import MASKED
@@ -131,6 +130,7 @@ class Compiled:
     rendered: list[str] = field(default_factory=list)  # the headings code wrote from `rendered:` on a skip
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
+    checks: float = 0.0  # what grounding's judge spent on its runs, in dollars
     cleaned: list[str] = field(default_factory=list)  # a line for each change landing made to the text, counted
 
 
@@ -609,6 +609,7 @@ class _Grounding:
         self.article, self.lookup, self.root, self.ledger = article, lookup, root, ledger
         self.clock, self.decider, self.decision, self.zone, self.floor = clock, decider, decision, zone, floor
         self.known: dict[tuple[str, str], list[Verdict]] = {}
+        self.judges: list[Held] = []  # each editor's judge held to the cap, which kept what it spent
 
     def linked(self) -> list[Fact]:
         """The current facts linked to the article, as `read` gives them."""
@@ -645,9 +646,10 @@ class _Grounding:
     def editor(self, agent: Agent, reads: Callable[[], list[Evidence]]) -> Editor:
         """An editor for one run of `agent`, held to the agent file's `min_grounding` or the workspace's. `reads`
         gives what the run has read when the editor is asked, so what it read by its tools is found too."""
-        decider = self.decider
+        decider, run = self.decider, new_run_id()
         if decider is not None and self.ledger is not None and self.decision is not None:
-            decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, f"{RUN_SPEND} {agent.id}")
+            decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, run)
+            self.judges.append(decider)
         judge = Judge(decider, self.article, _workspace(self.root), f"{self.clock().astimezone(self.zone):%Y-%m-%d}")
 
         def found(ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -667,7 +669,7 @@ class _Grounding:
                     for id in ids if id in citable or id in cited}
 
         floor = agent.min_grounding if agent.min_grounding is not None else self.floor
-        return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "")
+        return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "", run)
 
 
 def _workspace(root: Path) -> str:
@@ -753,8 +755,11 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
                  scheduled=scheduled, hold=hold, by_hand=by_hand, starter=starter, zone=zone, sources=sources,
                  judge=keep_judge(decider, store, clock, ledger, decision, root))
     if agent.role == "composer":
-        return _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
-    return _single(c, agent, article, descriptions, subagents)
+        compiled = _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
+    else:
+        compiled = _single(c, agent, article, descriptions, subagents)
+    compiled.checks = sum(judge.usd for judge in grounding.judges)
+    return compiled
 
 
 def keep_judge(decider: Decider | None, store: Store, clock: Clock, ledger: Ledger | None, decision: ModelSpec | None,
@@ -802,7 +807,7 @@ class _Compile:
         """`run_agent` under this compile's caps and in its log, priced on the model the agent's own file names, if it
         names one, else on the compile's, its first hand-in shown to `editor`."""
         return run_agent(agent, evidence, tools, agent_run=self.agent_run, store=self.store, ledger=self.ledger,
-                         model=_model(agent, self.model), clock=self.clock, review=editor.review)
+                         model=_model(agent, self.model), clock=self.clock, review=editor.review, run_id=editor.run)
 
 
 def _single(c: _Compile, agent: Agent, article: str, descriptions: Mapping[str, str] | None,
@@ -1680,12 +1685,13 @@ def _cut(text: str, scrub: Callable[[str], str] | None, most: int) -> str:
 
 def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], *, agent_run: AgentRun,
               store: Store, ledger: Ledger | None = None, model: ModelSpec | None = None,
-              clock: Clock = system_clock, review: Callable[[str], str] | None = None) -> Run:
+              clock: Clock = system_clock, review: Callable[[str], str] | None = None, run_id: str = "") -> Run:
     """The part every agent's run shares, a writer's, a subagent's, a composer's or a curator's: reserve what the run
     may spend under the compilation cap, as `_estimate` gives it, run the agent with its tools on its evidence, its
-    first hand-in shown to `review`, and in every outcome, a run that fails or raises included, record what it spent
-    in the ledger and a row in the `agent-runs` log, then let the reservation go. Raises `BudgetSpent` before the run
-    when the cap is reached, or runs under way already hold what is left of it, as `HeldForRoom`."""
+    first hand-in shown to `review`, under `run_id` when its editor minted one, and in every outcome, a run that fails
+    or raises included, record what it spent in the ledger and a row in the `agent-runs` log, then let the reservation
+    go. Raises `BudgetSpent` before the run when the cap is reached, or runs under way already hold what is left of
+    it, as `HeldForRoom`."""
     if stopping(store):
         raise Stopped(f"serve is stopping, so {agent.id} does not run: it runs on a later pass")
     ticket = ledger.reserve("compilation", clock(), model, agent.budget.tokens_per_run,
@@ -1694,12 +1700,13 @@ def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., 
     interrupted = False  # an interrupt goes on up as itself, not as a stop of serve
     try:
         try:
-            reviewing = REVIEW.set(review)
+            reviewing, minted = REVIEW.set(review), RUN_ID.set(run_id)
             try:
                 with under(store):
                     run = agent_run.run(agent, evidence, tools, agent.budget)
             finally:
                 REVIEW.reset(reviewing)
+                RUN_ID.reset(minted)
         except BaseException as stopped:  # an interrupt: the turns it made before it count
             run, interrupted = getattr(stopped, "partial_run", None), True
             raise
@@ -1716,7 +1723,8 @@ def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., 
             "run": run.id if run else "", "agent": agent.id, "target": agent.target,
             "status": run.status if run else "failed", "provider": model.provider if model else "",
             "model": model.model if model else spent.model, "requests": spent.requests,
-            "tool_calls": spent.tool_calls, "ended_at": run.ended_at if run else stamp(clock()),
+            "tool_calls": spent.tool_calls, "input_tokens": spent.input_tokens, "output_tokens": spent.output_tokens,
+            "ended_at": run.ended_at if run else stamp(clock()),
             **({"note": _kept_note(store, run.note)} if run and run.note else {}),
             **({"refused": len(run.refused), "refused_tools": run.refused} if run and run.refused else {})})
         if run is not None and run.status == STOPPED and not interrupted:

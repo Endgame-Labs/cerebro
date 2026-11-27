@@ -761,8 +761,6 @@ def proposal_row(id: str, by: Caller, status: str = "waiting", decided_by: Calle
     ("agent-runs", run_row("reports/weekly", "run_2"), run_row("things/article", "run_3"), "run_2"),
     ("spend", {"at": "2026-11-16T09:00:00Z", "usd": 0.01, "run": "run_1"},
      {"at": "2026-11-16T09:00:00Z", "usd": 0.01, "run": "run_3"}, "run_1"),
-    ("spend", {"at": "2026-11-16T09:00:00Z", "usd": 0.001, "run": "ground reports/weekly"},
-     {"at": "2026-11-16T09:00:00Z", "usd": 0.001, "run": "ground things/article"}, "ground reports/weekly"),
     ("proposals", proposal_row("p_2", WEEKLY), proposal_row("p_3", OTHER), "p_2"),
     ("merges", {"at": "2026-11-16T09:00:00Z", "distinct_from": ["a/x", "a/y"], "by": "reports/weekly"},
      {"at": "2026-11-16T09:00:00Z", "distinct_from": ["a/x", "a/z"], "by": "things/curator"}, "a/y"),

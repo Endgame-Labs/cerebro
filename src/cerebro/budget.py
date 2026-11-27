@@ -80,6 +80,7 @@ __all__ = [
     "first_run_cap",
     "read_caps",
     "run_estimate",
+    "spend_digits",
     "spent_by_runs",
     "stop",
     "stop_line",
@@ -320,6 +321,16 @@ def first_run_cap(settings: Mapping[str, Any]) -> float:
 def spent_by_runs(store: Store, runs: list[str]) -> float:
     """Dollars the ledger holds for these runs, by their ids, whatever the day."""
     return sum(store.total(LOG, "usd", {"run": run}) for run in dict.fromkeys(runs) if run)
+
+
+def spend_digits(total: float, parts: list[float], least: int = 2) -> int:
+    """The fewest places, `least` at least, at which the parts of a spend read as adding up to its total and no
+    amount spent reads as nothing."""
+    for digits in range(least, 7):
+        if round(sum(round(p, digits) for p in parts), digits) == round(total, digits) and all(
+                round(p, digits) > 0 for p in [total, *parts] if p > 0):
+            return digits
+    return 6
 
 
 def _clock(at: str, zone: tzinfo) -> str:

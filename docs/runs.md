@@ -163,6 +163,14 @@ Every model call is checked against its cap before it starts. Past a cap, that j
 spent     today $0.007 of $50.00: extraction $0.003, compilation $0.004
 ```
 
+As each run in a pass ends, the pass prints a `ran` line that says what the run cost. Once the [checks](agents.md#how-cerebro-checks-what-an-agent-writes) of its sentences cost anything, that line splits the cost into writing and checks:
+
+```text
+ran       projects/launch: wrote articles/projects/launch.md, $0.0155 (writing $0.0150, checks $0.0005)
+```
+
+The run's row in the `agent-runs` log keeps what the run read and wrote, in tokens, as `input_tokens` and `output_tokens`.
+
 ## When a run fails
 
 A run that fails waits before it tries again: 30 seconds, then twice as long each time, up to an hour. New evidence, a change to the agent's file, or a run by hand ends the wait. The pass names the failure and what to fix:
