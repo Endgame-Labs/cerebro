@@ -872,8 +872,6 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
                             _land_own(c, article, [agent.id], agent, evidence, writes, run.ended_at) or stamp_)
 
     lands = _lands(run, bool(text))  # land what it handed in
-    if lands and text:
-        _scored(store, run, editor)
     if not lands or not text:
         read()  # what it set lands, whatever its text
         notes: list[str] = []
@@ -908,6 +906,7 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
         again, noted = _land(store, article, parts, finished, [agent.id, *orphans], after)
     except _LeftAlone as left:
         return Compiled(run, store.article(article), skipped=True, waiting=str(left), left_alone=str(left), runs=[run])
+    _scored(store, run, editor)
     short = [] if run.status == "done" else [f"its run {run.status} ({run.note})"]
     short += [line for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)] if run.status == "done" else []
     return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=[*short, *noted],
@@ -1084,13 +1083,13 @@ def _wrote_nothing(store: Store, run: Run, dropped: list[str]) -> None:
 NOTES_MOST = 16_000  # characters of what grounding said that one run's line keeps, as `_kept_note` bounds a note
 
 
-def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], lines: list[str]) -> None:
+def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int] | None, lines: list[str]) -> None:
     """Keep what grounding did on the run's line of the `agent-runs` log: a later row of the same run, as it stood,
-    with `grounding`, the counts by kind, when there are any, and `notes`, the lines it held already, then each line
-    of what grounding scored and of what landing made safe, whole and masked as the store masks a row. One run keeps
-    at most `NOTES_MOST` characters of them, whole lines in order, and a last line counts the rest, so the log grows by
-    a bounded row a run."""
-    if run is None or not run.id or not (tally or lines):
+    with `notes`, the lines it held already, then each line of what grounding scored and of what landing made safe,
+    whole and masked as the store masks a row. A `tally` says the run's text lands: the row then names its `article`,
+    with `grounding`, the counts by kind, when there are any. One run keeps at most `NOTES_MOST` characters of the
+    lines, whole lines in order, and a last line counts the rest, so the log grows by a bounded row a run."""
+    if run is None or not run.id or tally is None and not lines:
         return
     if (last := _run_row(store, run)) is None:
         return
@@ -1104,15 +1103,15 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
             break
         kept.append(line)
         room -= len(line)
-    store.append("agent-runs", {**last, "article": run.target, **({"grounding": dict(tally)} if tally else {}),
-                                "notes": kept})
+    landed = {} if tally is None else {"article": run.target, **({"grounding": dict(tally)} if tally else {})}
+    store.append("agent-runs", {**last, **landed, "notes": kept})
 
 
 def _scored(store: Store, run: Run, editor: Editor) -> None:
-    """Keep each sentence `editor` scored of a run's text on its run's row, and count what it marked and left unscored
-    toward the article compiling."""
+    """Keep each sentence `editor` scored of a run's text that lands, and what it marked and left unscored, on its
+    run's row, and count those toward the article compiling."""
     tallied(editor.tally)
-    keep_grounding(store, run, {}, editor.scores)
+    keep_grounding(store, run, editor.tally, editor.scores)
 
 
 # A subagent's run that failed fails the article's whole run, and nothing of it lands.
@@ -1489,7 +1488,6 @@ class _Composing:
             text, dropped = _landing(self.editor, composer, own.result.text)
             self.compiled.dropped += dropped
             if text:
-                _scored(self.c.store, own, self.editor)
                 self.plan = [_Part(composer.id, composer.id, text, self.everything, own.started_at, own.ended_at,
                                    whole=True)]
                 self.new = True
@@ -1618,10 +1616,6 @@ class _Composing:
             return compiled if not self.leave else _finish(store, article, c.root, compiled, c.grounding)
         if fixed(self.composer) and plan:
             birth(store, self.composer, article, min((p.started for p in plan if p.started), default=stamp(c.clock())))
-        for n, editor in self.editors.items():  # what each subagent's text that lands was scored, on its run's row
-            if self.subs[n].id in self.stood:
-                _scored(store, self.ran[n], editor)
-
         def after() -> None:
             self.land_sets()
             _keep_material(store, article, self.subs, self.held, landed=True)
@@ -1642,6 +1636,11 @@ class _Composing:
             compiled.notes += noted
         except _LeftAlone as left:
             return replace(compiled, article=store.article(article), skipped=True, waiting=str(left), left_alone=str(left))
+        for n, editor in self.editors.items():  # what each subagent's text that landed was scored, on its run's row
+            if self.subs[n].id in self.stood:
+                _scored(store, self.ran[n], editor)
+        if own is not None and self.composer.id in self.stood:
+            _scored(store, own, self.editor)
         if stood := [p.by for p in plan if p.by not in self.stood]:  # a part its writer left as it was, not text new
             compiled.dropped += _withdrawn(c.grounding, store, article, stood)  # to this run, which the editor scored
         return _finish(store, article, c.root, compiled, c.grounding)

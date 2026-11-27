@@ -6,6 +6,7 @@ refused when a caller archived that article. Fakes only."""
 from __future__ import annotations
 
 import itertools
+import json
 from pathlib import Path
 
 import pytest
@@ -121,6 +122,7 @@ def test_a_run_by_hand_cut_short_by_a_persons_archive_says_it_ran_and_nothing_la
     weekly.pass_()
     with weekly.open() as workspace:
         before = [s.text for s in workspace.store.article("reports/weekly").compilations]
+    counted = json.loads(weekly.command("status", "--json").output)["grounding"]
     told: list = []
 
     def writer(prompt: str):  # type: ignore[no-untyped-def]
@@ -129,7 +131,8 @@ def test_a_run_by_hand_cut_short_by_a_persons_archive_says_it_ran_and_nothing_la
                 told.append(other.tell(YOU, "archive reports/weekly", target="reports/weekly",
                                        kind="article.archive"))
                 carry(other)
-        return cited(prompt)
+        cite = cited(prompt)["Summary"].removeprefix("x ")  # three sentences, where the pass's text had one
+        return {"Summary": f"The note moved {cite}. The review moved {cite}. The date moved {cite}."}
 
     weekly.run = ScriptedRun(writer)
     weekly.note(7)
@@ -143,6 +146,7 @@ def test_a_run_by_hand_cut_short_by_a_persons_archive_says_it_ran_and_nothing_la
     with weekly.open() as workspace:
         found = workspace.store.article("reports/weekly")
         assert found.identity.status == "archived" and [s.text for s in found.compilations] == before
+    assert counted and json.loads(weekly.command("status", "--json").output)["grounding"] == counted  # as it was
 
 
 # -- an agent's admit of a merged article is listed as what it does, and its curator carries out the yes

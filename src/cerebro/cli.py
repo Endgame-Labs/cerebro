@@ -1951,6 +1951,7 @@ def _capped(workspace: Cerebro, agent: Agent, article: str, line: str, capped: l
 def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled, capped: list[str]) -> str:
     """Print what `compile --article` did with one run, and give how it is
     counted: written, ran (it wrote nothing), fresh, waiting or failed."""
+    from .ground import counted
     from .run import WROTE_NOTHING
     from .runner import unmoved
 
@@ -1965,8 +1966,10 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         return "fresh"
     if compiled.article is not None:
         _echo(f"wrote    {article}  articles/{article}.md")
+        if did := counted(compiled.grounding):
+            _echo(f"grounding {article}: {did}")
         if compiled.cleaned:  # each line of it kept on its run's line, as a pass keeps it
-            keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+            keep_grounding(workspace.store, compiled.run, None, compiled.cleaned)
             _echo(f"cleaned  {article}: {made_safe(len(compiled.cleaned))}")
         if compiled.warning:
             _echo(f"warning  {compiled.warning}")

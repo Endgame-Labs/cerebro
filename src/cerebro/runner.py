@@ -2340,7 +2340,7 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
     # each line kept on its run's line, and counted for its end
-    keep_grounding(workspace.store, run, compiled.grounding, compiled.cleaned)
+    keep_grounding(workspace.store, run, None, compiled.cleaned)
     if compiled.grounding:
         result.grounding[key] = compiled.grounding
     if compiled.cleaned:
@@ -2610,7 +2610,7 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
     `held` line says it once, with when it runs. Each line of what landing made safe is kept on its run's line."""
-    keep_grounding(workspace.store, compiled.run, compiled.grounding, compiled.cleaned)
+    keep_grounding(workspace.store, compiled.run, None, compiled.cleaned)
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]
