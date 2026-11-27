@@ -73,6 +73,14 @@ Each line under `evidence:` gathers one thing, in order. The agent cites what it
 | `- files: [workspace.md]` | Files from the workspace, whole |
 | `- sql: { source: warehouse, query: "select kind, count(*) as total from things group by kind" }` | Rows from a [database source](sources.md#query-a-database) |
 | `- script: { run: scripts/usage.py }` | What a script in the workspace prints, in at most 60 seconds. Give it a `#!` first line and run `chmod +x` on it. |
+| `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text |
+
+A record a source sends `into:` a collection waits for an article there before Cerebro reads it. Its curator sees it only through a `held` line, so a curator of `things` fed by `into: things` reads:
+
+```yaml
+evidence:
+  - held: {}
+```
 
 In a value, `this` means the article being written. So `articles: this` keeps the facts linked to it. `this.<field>` means the articles a field of it names, such as `this.linked`.
 
@@ -118,6 +126,7 @@ model: { provider: fireworks, model: glm-5p3, retries: 5 }   # in place of setti
 authority: { admit: false, archive: false, merge: false, split: false }   # what this curator does on its own; a kind set false, or left out, waits for you in cerebro review
 evidence:
   - query: { from: facts, window: last_90_days }   # what the sources say, to admit from
+  - held: {}   # the records your sources hold for projects, newest first
 heartbeat: [manual]   # try it with agents run, then set [change, daily] once it reads well
 ---
 

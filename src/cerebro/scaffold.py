@@ -594,6 +594,7 @@ CURATOR = """---
 authority: {{ admit: false, archive: false, merge: false, split: false }}   # what this curator does on its own; a kind set false, or left out, waits for you in cerebro review
 evidence:
   - query: {{ from: facts, window: last_90_days }}   # what the sources say, to admit from
+  - held: {{}}   # the records your sources hold for {collection}, newest first
 heartbeat: [manual]   # try it with agents run, then set [change, daily] once it reads well
 ---
 
