@@ -48,6 +48,8 @@ TEXT = """Alder renews in March [^f_1]. Alder signs for ten years [^f_1].
 
 <!-- Alder signs for ten years [^f_1]. -->
 
+**For ten years:**
+
 | Term | ten years [^f_1] |
 
 Write `[^unsupported]` as code. Run `make ten years. Then ship` now [^f_1].
@@ -61,7 +63,6 @@ term: ten years
 MARKED = TEXT.replace("ten years [^f_1].", "ten years [^f_1].[^unsupported]").replace(
     "now [^f_1].", "now [^f_1].[^unsupported]").replace(
     "ten years [^f_1] |", "ten years [^f_1][^unsupported] |").replace(
-    "## Signed for ten years [^f_1]", "## Signed for ten years [^f_1][^unsupported]").replace(
     "ten years\n```\n", "ten years\n```\n[^unsupported]\n")
 
 
@@ -78,7 +79,7 @@ class Weak(FakeDecider):
 
 
 def test_each_line_a_reader_sees_under_the_floor_lands_whole_with_one_mark_after_it_and_nothing_else_moves() -> None:
-    assert editor(Weak("ten years")).marked(TEXT) == MARKED  # a heading, a row, a comment and a fence among them
+    assert editor(Weak("ten years")).marked(TEXT) == MARKED  # a row, a comment and a fence, never a heading or a label
     copied = MARKED + "[^unsupported]: Not fully backed by the facts it cites.\n"
     assert editor(FakeDecider()).marked(copied) == TEXT  # a mark a later score does not call for comes off
 
@@ -157,8 +158,8 @@ def test_with_no_decision_model_or_past_the_cap_a_sentence_is_unscored_and_lands
     text = "Alder signs for ten years [^f_1].\n\n## Next\n\nAlder renews in March [^f_1]."
     assert quiet.marked(text) == spent.marked(text) == text
     assert quiet.scores == [] and quiet.tally == {}
-    assert [line.split('"')[0] for line in spent.scores] == ["(before the first heading): unscored ", *["Next: unscored "] * 2]
-    assert spent.scores[0].endswith("compilation spent its cap") and spent.tally["unscored"] == 3
+    assert [line.split('"')[0] for line in spent.scores] == ["(before the first heading): unscored ", "Next: unscored "]
+    assert spent.scores[0].endswith("compilation spent its cap") and spent.tally["unscored"] == 2
 
 
 class Bounded(FakeDecider):

@@ -132,7 +132,7 @@ def test_a_sentence_scored_under_min_grounding_lands_whole_with_its_mark_and_the
     text = "One shipped [^r0]. Two moved because one shipped [^r0].\n\n## Next\n\nThree waits [^r0]. Four [^r0]."
     compiled = compile_article(AGENT, agent_run=ScriptedRun(lambda p: text), decider=decider, **common)
     assert body(compiled.article) == (f"One shipped [^r0]. Two moved because one shipped [^r0].[^unsupported]\n\n"
-                                      f"## Next\n\nThree waits [^r0].[^unsupported] Four [^r0].\n\n{UNSUPPORTED}")
+                                      f"## Next\n\nThree waits [^r0]. Four [^r0].[^unsupported]\n\n{UNSUPPORTED}")
     assert markdown(compiled.article).count("[^unsupported]:") == 1 and compiled.dropped == []
     assert len(decider.asked) == 2  # one request a passage
     notes = [r.data for r in store.rows("agent-runs") if r.data.get("run") == compiled.run.id][-1]["notes"]
@@ -201,7 +201,7 @@ def test_a_part_a_composer_hands_in_as_its_subagent_returned_it_keeps_its_scores
     from cerebro.fakes import FakeDecider
 
     agents, _store, _items, common = briefs(tmp_path)
-    decider = FakeDecider({"s2": 0})  # each passage's first sentence, after its heading, made up
+    decider = FakeDecider({"s1": 0})  # each passage's first sentence made up
     drafts = {"briefs/subagents/risks": ScriptedRun(lambda p: "Risks one [^r0]."),
               "briefs/subagents/people": ScriptedRun(lambda p: "People one [^r0].")}
 
@@ -212,7 +212,7 @@ def test_a_part_a_composer_hands_in_as_its_subagent_returned_it_keeps_its_scores
     run = ByAgent({**drafts, "briefs/article": ScriptedRun(composes)})
     compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider, **common)
     asked = [[s["sentence"] for s in state["passage"]] for state, _ in decider.asked]
-    assert sorted(asked) == [["People", "People one."], ["Risks", "Risks one."], ["Verdict", "Alder holds."]]  # Risks
+    assert sorted(asked) == [["Alder holds."], ["People one."], ["Risks one."]]  # Risks
     # once, as returned
     assert body(compiled.article) == ("## Risks\n\nRisks one [^r0].[^unsupported]\n\n## Verdict\n\nAlder holds [^r0]."
                                       "[^unsupported]\n\n[^unsupported]: Not fully backed by the facts it cites.")
@@ -222,7 +222,7 @@ def test_a_part_a_composer_hands_in_as_its_subagent_returned_it_keeps_its_scores
     agents = workspace(tmp_path, {})
     compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider, **common,
                     subagents=list(agents.values()))
-    assert [[s["sentence"] for s in state["passage"]] for state, _ in decider.asked] == [["Risks", "Risks one."]]
+    assert [[s["sentence"] for s in state["passage"]] for state, _ in decider.asked] == [["Risks one."]]
 
 
 def test_an_agent_with_subagents_and_no_instructions_of_its_own_joins_their_content_with_no_model(
