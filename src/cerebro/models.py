@@ -38,8 +38,8 @@ __all__ = [
     "DECISION_MAX_BYTES", "DEFAULTS", "EFFORTS", "ENTRY_KEYS", "JOBS", "PRICES", "PROVIDERS", "RETRIES",
     "RUNE_MAX_QUESTIONS", "SETTINGS_KEYS", "TRIES", "WAIT_MOST", "Answer", "Choice", "Decider", "Decision",
     "DecisionError", "DecisionTooLarge", "HttpDecider", "ModelSettingsError", "ModelSpec", "Price", "Provider",
-    "Question", "Score", "TokenCount", "Tokens", "Tried", "YesNo", "cost", "price_of", "read_model", "read_models",
-    "wire_id",
+    "Question", "Score", "TokenCount", "Tokens", "Tried", "YesNo", "advice_for", "cost", "price_of", "read_model",
+    "read_models", "wire_id",
 ]
 
 JOBS = ("extraction", "decision", "compilation")
@@ -580,13 +580,12 @@ class HttpDecider(Decider):
                 raise DecisionError(f"{self.spec.model} at {self.url} answered with a redirect (HTTP {status}), which "
                                     "is not followed so the key stays with its host: check the decision URL")
             if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
+                at = ""
                 if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
                     self.route.refused(status, self.call)
-                    raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}: check providers in "
-                                        "settings.yaml")
-                hint = (f"check the {self.spec.key_name} key" if status in (401, 403)
-                        else "check the model id and the request")
-                raise DecisionError(f"{self.spec.model} answered HTTP {status}: {hint}")
+                    at = f" at {self.url}"
+                said = advice_for(status, None if at else f"the {self.spec.key_name} key")
+                raise DecisionError(f"{self.spec.model}{at} answered HTTP {status}: {said}")
             try:
                 reply = json.loads(body)
             except ValueError:
@@ -594,6 +593,18 @@ class HttpDecider(Decider):
             if not isinstance(reply, dict):
                 raise DecisionError(f"{self.spec.model} gave a reply that is not an object: ask again, or report it")
             return reply
+
+
+def advice_for(status: int, key: str | None) -> str:
+    """What a person does about a model call that failed with HTTP `status`, every road alike: for a refused key, check
+    `key`, or with None, as through a gateway, which is sent no provider's key, its settings."""
+    if status in (401, 403):
+        return f"check {key}" if key is not None else "check providers in settings.yaml"
+    if status == 402:
+        return "payment is due at the provider"
+    if status in (408, 429) or status >= 500:
+        return "the provider is busy or down, so try again later"
+    return "check the model id and the request"
 
 
 def _tokens(model: str, usage: Mapping[str, Any], key: str) -> int:

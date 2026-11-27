@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+import pytest
 from click.testing import CliRunner
 from conftest import GTM
 from mcp import Client
@@ -300,8 +301,9 @@ def test_the_admit_lines_the_review_and_connect_waits_the_cooldown_and_the_compi
 
 
 def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_page() -> None:
-    """The lines a run gives the model or a person about its hand-in and its room: the note on a reply taken as text,
-    on a run that handed in nothing at each ending, the step of a run that ran and wrote nothing, the line to decide
+    """The lines a run gives the model or a person about its hand-in and its room: the line that names the article
+    it writes, the note on a reply taken as text, on a run that handed in nothing at each ending, the step and the
+    pass's line of a run that ran and wrote nothing, with its cost split into writing and checks, the line to decide
     now, the note before a curator's turn, and what a curator out of room or calls is told, which never asks it to
     hand in text, since it hands in none."""
     from types import SimpleNamespace
@@ -317,20 +319,22 @@ def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_pa
         SPENT_NOTHING,
         STANDS,
         TOOK_REPLY,
+        WRITES,
         WROTE_NOTHING,
         _Room,
     )
-    from cerebro.runner import _compiled_step
+    from cerebro.runner import _compiled_line, _compiled_step
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     floor = _Room(100_000, "", 40, deciding=True, decisions=["admit", "leave_out"]).floor_line()
-    ran = SimpleNamespace(skipped=False, article=None, runs=[],
+    ran = SimpleNamespace(skipped=False, article=None, runs=[], checks=0.01,
                           run=SimpleNamespace(status=WROTE_NOTHING, note=HANDED_NOTHING))
     step = _compiled_step(SimpleNamespace(id="things/article"), ran)["text"]
-    lines = [TOOK_REPLY, HANDED_NOTHING, SPENT_NOTHING, CUT_NOTHING, STANDS, step, DECIDE_NOTE, floor, NO_ROOM,
-             NO_CALLS, NO_ROOM_DECIDING, NO_CALLS_DECIDING]
+    told = _compiled_line(SimpleNamespace(), "things/article", ran)
+    lines = [WRITES, TOOK_REPLY, HANDED_NOTHING, SPENT_NOTHING, CUT_NOTHING, STANDS, step, told, DECIDE_NOTE, floor,
+             NO_ROOM, NO_CALLS, NO_ROOM_DECIDING, NO_CALLS_DECIDING]
     assert not [line for line in lines if words.search(line) or WORDS.search(line)]
-    assert "admit or leave_out" in floor
+    assert "admit or leave_out" in floor and "(writing $" in told
     assert not [line for line in (DECIDE_NOTE, floor, NO_ROOM_DECIDING, NO_CALLS_DECIDING) if "hand in" in line.lower()]
 
 
@@ -894,6 +898,44 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     lines = [busy_line(Path(".cerebro/cerebro.sqlite")), busy_line(None), SEARCH_BEHIND]
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
+
+
+def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_status_say_no_section_brain_or_page(
+        tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from factoid.models import ModelError
+    from suites.extraction import MEMO
+    from test_facts import on_factoid
+
+    from cerebro.facts import ExtractionFailed
+    from cerebro.gateway import Gateway, Route
+    from cerebro.models import DecisionError, HttpDecider, ModelSpec, YesNo
+
+    def through(provider: str) -> Gateway:  # a gateway, which holds the line that stops the pass
+        return Gateway({provider: Route(provider, "http://gateway.example.internal:8769")},
+                       lambda: datetime(2026, 11, 18, 9, tzinfo=UTC), UTC)
+
+    words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
+    seen: list[str] = []
+    for status in (401, 402, 404, 503):  # direct, and through a gateway
+        for gateway in (None, through("typesafe")):
+            decider = HttpDecider(ModelSpec("typesafe", "jev-1.13.0", job="decision", retries=0), key=lambda: "k",
+                                  send=lambda url, headers, data, status=status: (status, {}, b""),
+                                  route=gateway.route("typesafe") if gateway else None)
+            with pytest.raises(DecisionError) as refused:
+                decider.decide("The sky is blue.", {"q": YesNo("Is the sky blue?")})
+            seen += [str(refused.value), gateway.said if gateway else ""]
+    for n, gateway in enumerate((None, through("fireworks"))):
+        (tmp_path / str(n)).mkdir()
+        handler, models = on_factoid(tmp_path / str(n), gateway)
+        for status in (401, 402, 408, 400):
+            models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
+            with pytest.raises(ExtractionFailed) as failed:
+                handler.extract(MEMO)
+            seen.append(str(failed.value))
+        handler.close()
+    assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
 
 def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_no_section_brain_or_page(
