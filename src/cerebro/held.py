@@ -31,12 +31,12 @@ import re
 import unicodedata
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from .agent import Agent, EvidenceLine
 from .connector import NOBODY, Ours, Record, outside_domain, registrable
-from .evidence import Evidence, EvidenceError, Item, recent_since
+from .evidence import RECENT_DAYS, Evidence, EvidenceError, Item
 from .identity import OWN_WEIGHED, bound_to, reached, working, would_bind
 from .records import Proposal, proposals
 from .store import Store, own_key, record_from, update_state
@@ -50,6 +50,7 @@ __all__ = [
     "Held",
     "HeldList",
     "StandIn",
+    "before_cut",
     "check_line",
     "entry",
     "first_run_open",
@@ -156,7 +157,13 @@ def first_run_since(store: Store) -> str:
     with no session."""
     session = store.state(FIRST_RUN_KEY)
     began = session.get("at") if isinstance(session, dict) else None
-    return recent_since(datetime.fromisoformat(began)) if began else ""
+    return (datetime.fromisoformat(began) - timedelta(days=RECENT_DAYS)).date().isoformat() if began else ""
+
+
+def before_cut(at: str, since: str) -> bool:
+    """Whether a record dated `at` is older than `since`, the first day a first run reads. An undated record never
+    is, and with no `since` none is."""
+    return bool(since and at and at[:10] < since)
 
 
 def pinned(store: Store) -> set[str] | None:

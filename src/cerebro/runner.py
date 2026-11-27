@@ -108,7 +108,16 @@ from .evidence import IN_FIRST_BUILD, RECENT_DAYS
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
 from .ground import LINES as GROUND_LINES
 from .ground import TALLY, counted
-from .held import OWN_WEIGHED, first_run_since, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
+from .held import (
+    OWN_WEIGHED,
+    before_cut,
+    first_run_since,
+    keep_own,
+    pass_first_run,
+    reweigh_own,
+    waits_for_own,
+    weighed,
+)
 from .identity import (
     DecisionJudge,
     Judged,
@@ -1363,7 +1372,7 @@ def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None)
                         f"no article binds it, so it waits for the curator of {record.into}")
     if record.extract in ("records", "none"):
         return Decision(NOTHING, f"its source extracts it into {record.extract}")
-    if ahead.since and record.at and record.at[:10] < ahead.since:
+    if before_cut(record.at, ahead.since):
         return Decision(HOLD, OLDER_HOLD)
     return Decision(TAKE)
 

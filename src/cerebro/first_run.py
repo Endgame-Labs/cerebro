@@ -65,7 +65,18 @@ from .curate import (
 )
 from .errors import CerebroError
 from .evidence import IN_FIRST_BUILD, RECENT_DAYS
-from .held import Held, _name, first_run_since, held_for, own_held, own_names, own_side, passed_first_run, same_name
+from .held import (
+    Held,
+    _name,
+    before_cut,
+    first_run_since,
+    held_for,
+    own_held,
+    own_names,
+    own_side,
+    passed_first_run,
+    same_name,
+)
 from .identity import redirects, working
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
 from .records import _slug as record_slug
@@ -440,7 +451,7 @@ class LocalApproval(Approval):
         since = first_run_since(self.workspace.store)
         return [Row(f"not-weighed:{h.source}:{h.id}", agent.id, agent.target,
                     h.name or (base := h.id.rpartition("/")[2]).rpartition(".")[0] or base,
-                    prior.get((h.source, h.id), OLDER if h.at and h.at[:10] < since else NOT_WEIGHED), True, dict(h.keys),
+                    prior.get((h.source, h.id), OLDER if before_cut(h.at, since) else NOT_WEIGHED), True, dict(h.keys),
                     record={"source": h.source, "id": h.id}, unweighed=(h.source, h.id) not in prior)
                 for h in held if (h.source, h.id) not in taken]
 
