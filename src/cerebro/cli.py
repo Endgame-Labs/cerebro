@@ -1988,8 +1988,7 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         key = agent.id if article == agent.id else f"{agent.id} on {article}"  # as agents run says it
         _echo(f"ran      {key}: wrote nothing: {run.note or 'it handed in nothing'}")
         return "ran"
-    why = f"run {run.id} wrote nothing: {run.status}" + (f": {run.note}" if run.note else "") if run else "no run"
-    _echo(f"failed   {article}  {agent.id}: {why}")
+    _echo(f"failed   {article}  {agent.id}: {failure(run, agent.id) if run else 'no run'}")
     return "failed"
 
 

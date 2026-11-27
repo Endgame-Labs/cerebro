@@ -174,7 +174,7 @@ def test_agents_run_runs_every_article_says_each_failure_and_exits_1_with_the_co
     ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
     assert ran.exit_code == 1
     assert ran.output.splitlines() == [
-        "failed   things/article on things/a: run run_x wrote nothing: failed: the model broke",
+        "failed   things/article on things/a: run run_x: failed: the model broke",
         "wrote    things/b  articles/things/b.md", "grounding things/article on things/b: left 1 sentence unscored",
         "wrote    things/c  articles/things/c.md", "grounding things/article on things/c: left 1 sentence unscored",
         "Error: things/article: 1 of 3 runs failed"]

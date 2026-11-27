@@ -135,7 +135,7 @@ An agent with nothing new to write can say so, with a reason. Its run wrote noth
 ran       projects/atlas: wrote nothing: it said there is nothing to write: Nothing new since the last article.
 ```
 
-A model that hands in no text and gives no reason, even when asked again, fails its run. `cerebro status` lists it, and the next pass tries again.
+A model that hands in no text and gives no reason, even when asked again, fails its run. `cerebro status` lists it, and a later pass tries it again, [after the wait](runs.md#when-a-run-fails). A subagent's run that does this wrote nothing, and its part keeps the text it had.
 
 [Runs](runs.md) explains when things run, and how to cap what they spend.
 

@@ -4,8 +4,8 @@ it is no failure. A reply is taken for its parts under the headings the agent's 
 the text under its heading; the turn a spent or cut run ends on is read so: an agent of one heading, or a subagent,
 takes the text under its first heading or all of it, and one that names none takes all of it. With nothing handed in
 and nothing to take, at a normal end, after the run's room or calls were spent, or at a turn cut at its output limit,
-the run fails and runs again. A composer that adds nothing leaves its subagents' content standing, whatever the
-ending."""
+the run fails and runs again, but a subagent's normal end wrote nothing, so its part stands. A composer that adds
+nothing leaves its subagents' content standing, whatever the ending."""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def test_a_subagent_on_a_normal_end_returns_the_text_under_its_heading_and_nothi
     run = PydanticRun(_model([], "Done.\n\n## Risks\n\nThe review moved [^f_1].\n")).run(SUB, EVIDENCE, [], Budget())
     assert run.status == "done" and run.result is not None and run.result.text == "The review moved [^f_1]."
     bare = PydanticRun(_model([], "The review moved [^f_1].")).run(SUB, EVIDENCE, [], Budget())
-    assert bare.status == "failed" and bare.result is None  # nothing under a named heading
+    assert bare.status == WROTE_NOTHING and bare.result is None  # nothing under a named heading
 
 
 def test_a_composer_that_ends_with_a_reply_and_no_hand_in_leaves_its_subagents_content_standing() -> None:

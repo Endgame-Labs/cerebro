@@ -159,6 +159,7 @@ ROWS = [
     Row("writer", "T,H", "calls", "done", ART),
     Row("writer", "T,E", "calls", "failed", None),
     Row("writer", "T,H", "budget@2", "budget spent", None),
+    Row("writer", "U", "budget@2", "budget spent", None),
     # errors
     Row("writer", "UnexpectedModelBehavior", "none", "failed", None),
     Row("writer", "HG,UnexpectedModelBehavior", "none", "done", HG),
@@ -177,9 +178,10 @@ ROWS = [
     Row("whole", "T,S", "calls", "done", "done"),
     # a subagent: its heading is its one
     Row("subagent", "H", "none", "done", _sub(RISKS)),
-    Row("subagent", "U", "none", "failed", None),
-    Row("subagent", "X", "none", "failed", None),
-    Row("subagent", "S", "none", "failed", None),
+    Row("subagent", "U", "none", WROTE_NOTHING, None),
+    Row("subagent", "X", "none", WROTE_NOTHING, None),
+    Row("subagent", "S", "none", WROTE_NOTHING, None),
+    Row("subagent", "U", "budget@2", WROTE_NOTHING, None),
     Row("subagent", "H,N", "none", "done", _sub(RISKS)),
     Row("subagent", "S,H", "none", "done", _sub(RISKS)),
     Row("subagent", "T,U", "calls", "done", U),

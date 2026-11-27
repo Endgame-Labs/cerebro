@@ -85,7 +85,7 @@ def test_unheaded_text_before_the_ask_is_not_taken_for_a_writer_or_a_subagent() 
     run = PydanticRun(_said(said, "Done.")).run(AGENT, EVIDENCE, [], Budget())
     assert run.status == "failed" and run.result is None
     sub = PydanticRun(_said(said, "Done.")).run(SUB, EVIDENCE, [], Budget())
-    assert sub.status == "failed" and sub.result is None
+    assert sub.status == WROTE_NOTHING and sub.result is None
     headed = PydanticRun(_said("## Other\n\n" + said, "Done.")).run(SUB, EVIDENCE, [], Budget())
     assert headed.result is None
     own = PydanticRun(_said("## Risks\n\n" + said, "Done.")).run(SUB, EVIDENCE, [], Budget())

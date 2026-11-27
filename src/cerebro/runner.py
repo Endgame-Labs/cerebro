@@ -2495,12 +2495,12 @@ def _shown(compiled: Any) -> Run | None:
 
 
 def failure(run: Run, agent: str) -> str:
-    """Why a compile wrote nothing, as its `failed` line says it: the run, its agent when that is not `agent`, and
+    """Why a compile failed, as its `failed` line says it: the run, its agent when that is not `agent`, and
     what it ended with; or for a composed article's run that failed as a whole, which has no run id of its own, why
     and the subagent's run that failed it."""
     if not run.id:
         return run.note
-    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f" wrote nothing: {run.status}"
+    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f": {run.status}"
             + (f": {run.note}" if run.note else ""))
 
 
@@ -2516,7 +2516,7 @@ def _compiled_line(workspace: Cerebro, key: str, compiled: Any) -> str:
     if run is not None and run.status == WROTE_NOTHING:  # its status is what the line says already: why, once
         return f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, {_usd(workspace, runs)}"
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
-    return f"ran       {key}: wrote nothing, {said}, {_usd(workspace, runs)}"
+    return f"ran       {key}: {said}, {_usd(workspace, runs)}"
 
 
 def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
@@ -2532,7 +2532,7 @@ def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
         return {"mark": "ran", "text": f"ran and wrote nothing: {run.note or 'it handed in nothing'}"}
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
     who = agent.id if run is None or run.agent == agent.id else run.agent
-    return {"mark": "failed", "why": f"{who} wrote nothing: {said}"}
+    return {"mark": "failed", "why": f"{who}: {said}"}
 
 
 def _n(n: int, noun: str) -> str:

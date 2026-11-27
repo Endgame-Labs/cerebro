@@ -37,7 +37,7 @@ def _run(status: str, note: str = "", agent: str = "reports/weekly") -> Run:
 def test_a_pass_names_each_run_that_wrote_nothing_and_its_closing_line_counts_them(
         capsys: pytest.CaptureFixture[str]) -> None:
     result = PassResult(compiled=["things/first"], ran={"things/article on things/second": DECLINED},
-                        failed={"things/article on things/third": "run r3 wrote nothing: failed: a model error"})
+                        failed={"things/article on things/third": "run r3: failed: a model error"})
     cli._print(result)
     out = capsys.readouterr().out.splitlines()
     assert f"ran       things/article on things/second: wrote nothing: {DECLINED}" in out
@@ -70,14 +70,14 @@ def test_a_run_by_hand_that_wrote_nothing_is_no_failure_and_says_why(capsys: pyt
                                     _run("failed", CUT_NOTHING)])
 def test_a_run_by_hand_that_failed_still_exits_1(failed: Run) -> None:
     why = cli._print_compiled("reports/weekly", "reports/weekly", Compiled(run=failed, article=None, runs=[failed]))
-    assert why.startswith("run run_failed wrote nothing: failed"), why
+    assert why.startswith("run run_failed: failed"), why
 
 
 def test_a_run_by_hand_whose_own_run_wrote_nothing_while_a_subagent_failed_exits_1() -> None:
     own = _run(WROTE_NOTHING, "it added nothing, so its subagents' content stands", "things/article")
     sub = _run("failed", "a model error", "things/subagents/overview")
     why = cli._print_compiled("things/article", "things/first", Compiled(run=own, article=None, runs=[sub, own]))
-    assert "of things/subagents/overview wrote nothing: failed" in why, why
+    assert "of things/subagents/overview: failed" in why, why
 
 
 class Weekly:
