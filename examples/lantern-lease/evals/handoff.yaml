@@ -1,0 +1,35 @@
+context: Incoming counsel reads a fictional theater lease packet as of 20 November 2026. Evaluate evidence handling, not outside legal advice.
+questions:
+  - id: governing-roof
+    ask: Who pays for roof replacement, and why does the lease's original term no longer control?
+    query: agreements
+    expect:
+      judge: The signed Amendment Two dated 2 November assigns roof maintenance and replacement solely to Morrow, replacing the original tenant duty. The unsigned proposal does not impose its contribution.
+  - id: live-dispute
+    ask: What question remains open about renewal?
+    query: matters
+    expect:
+      judge: The signed deadline is 15 November 2026. Timely receipt remains disputed, with competing delivery accounts and courier proof outstanding. Neither the withdrawn 31 October date nor the unsigned 30 November proposal is the operative deadline.
+  - id: no-outcome-invented
+    ask: Does the handoff establish enforceability, waiver, or who would win litigation?
+    query: matters
+    expect:
+      judge: The article does not assert a legal outcome or waiver. It describes an unresolved receipt dispute and further evidence to obtain, respecting the client's restriction on threatening proceedings or withholding rent.
+  - id: queryable-deadline
+    ask: Which executed agreement carries the signed notice deadline?
+    query: agreements
+    filters: { notice_due: '2026-11-15', execution_state: executed }
+    expect:
+      judge: The returned agreement is the Lantern Theater lease, with signed amendments distinguished from the unsigned proposal.
+  - id: focused-dispute
+    ask: Which issue is still disputed, and what evidence is needed?
+    query: issues
+    filters: { resolution_state: disputed }
+    expect:
+      judge: The issue concerns timely receipt of renewal notice, not roof cost. It distinguishes the sent email and claimed courier delivery from Morrow's reception log, and identifies courier proof as the next evidence.
+  - id: resolved-roof
+    ask: Which resolved issue changes the client's exposure?
+    query: issues
+    filters: { resolution_state: resolved }
+    expect:
+      judge: The roof issue states that signed Amendment Two places maintenance and replacement cost on Morrow. The estimate is not Lantern's agreed debt, and the unsigned draft contribution is not a signed duty.
