@@ -174,7 +174,7 @@ def test_agents_run_runs_every_article_says_each_failure_and_exits_1_with_the_co
     ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
     assert ran.exit_code == 1
     assert ran.output.splitlines() == [
-        "failed   things/article on things/a: run run_x wrote nothing: failed: the model broke",
+        "failed   things/article on things/a: run run_x: failed: the model broke",
         "wrote    things/b  articles/things/b.md", "grounding things/article on things/b: left 1 sentence unscored",
         "wrote    things/c  articles/things/c.md", "grounding things/article on things/c: left 1 sentence unscored",
         "Error: things/article: 1 of 3 runs failed"]
@@ -225,9 +225,10 @@ def test_agents_run_tells_a_runs_own_budget_from_a_daily_cap(
         assert ran.exit_code == 0 and "failed" not in ran.output, ran.output
         return
     assert ran.exit_code == 1  # a part that failed fails its article
-    assert (f"failed   {COMPOSER} on things/b: run run_scripted spent its own budget, not a daily cap, before it "
-            f"handed in text: budget: {{ tokens_per_run, tool_calls }} in agents/{RISKS}.md sets it: the run holds "
-            "41000 tokens, its budget of 40000") in ran.output.splitlines()
+    [line] = [line for line in ran.output.splitlines() if line.startswith(f"failed   {COMPOSER} on things/b: run ")]
+    assert line.endswith(f" spent its own budget, not a daily cap, before it handed in text: budget: "
+                         f"{{ tokens_per_run, tool_calls }} in agents/{RISKS}.md sets it: the run holds 41000 tokens, "
+                         "its budget of 40000"), line
 
 
 def test_a_part_agents_run_left_held_after_its_periods_run_is_said_once_and_runs_at_the_next_scheduled_run(

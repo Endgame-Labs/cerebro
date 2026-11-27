@@ -71,6 +71,7 @@ from .budget import (
     Stopped,
     UnpricedModel,
     read_caps,
+    spend_digits,
     stop_line,
     stopping,
 )
@@ -705,7 +706,8 @@ def _holder(workspace: Cerebro) -> str:
     """The id this process's leases on `workspace` name: a file under `.cerebro/holders/` it holds locked for as long as
     it runs. The kernel lets the lock go when the process ends, however it ends, so the next start can tell a holder
     that ended from one that runs, in any process or container on this machine. Empty where a file cannot be locked, and
-    a lease of no holder waits until it lapses."""
+    a lease of no holder waits until it lapses. The file is touched each time it is named, so one that is free and was
+    not touched for `LEASE` seconds names no lease that holds, and the next process to make its own file sweeps it."""
     if getattr(workspace, "root", None) is None:
         return ""
     root = str(workspace.root)
@@ -720,33 +722,46 @@ def _holder(workspace: Cerebro) -> str:
                 make_file(folder / f"{id}.lock")
                 held = open(folder / f"{id}.lock", "w")  # noqa: SIM115 - held open, and locked, while the process runs
                 fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                made = os.fstat(held.fileno()).st_mtime
+                for file in folder.glob("*.lock"):
+                    with contextlib.suppress(OSError):  # another process that starts may sweep it first
+                        if file.stat().st_mtime < made - LEASE and _free(file):
+                            file.unlink()
                 _HOLDERS[root] = (id, held)
             except (ImportError, OSError):
                 _HOLDERS[root] = ("", None)
-        return _HOLDERS[root][0]
+        id, held = _HOLDERS[root]
+        if held is not None:
+            with contextlib.suppress(OSError):  # a file that cannot be touched may be swept once its process ends:
+                os.utime(held.fileno())  # its leases then wait until they lapse
+        return id
 
 
 def _gone(workspace: Cerebro, held: dict[str, Any]) -> bool:
     """Whether the process that holds a lease ended without giving it back, as after a second Ctrl-C, a kill or a
     power cut: its holder file is there and its lock is free. A lease of a process that runs, of another machine
-    whose file this one cannot lock, or of no holder, waits until it lapses."""
+    whose file this one cannot lock, or of no holder, waits until it lapses. Only a sweep removes the file, so every
+    lease of a process that ended is taken over this way."""
     holder = held.get("holder")
     if not isinstance(holder, str) or len(holder) != 32 or not holder.isalnum() or holder == _holder(workspace):
         return False
+    return _free(workspace.root / ".cerebro" / "holders" / f"{holder}.lock")
+
+
+def _free(file: os.PathLike[str]) -> bool:
+    """Whether the holder file `file` is there and no process holds its lock."""
     try:
         import fcntl
 
-        file = os.open(workspace.root / ".cerebro" / "holders" / f"{holder}.lock", os.O_RDWR)
+        fd = os.open(file, os.O_RDWR)
     except (ImportError, OSError):
         return False
     try:
-        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         return False  # its process holds it: alive
     finally:
-        os.close(file)
-    with contextlib.suppress(OSError):
-        os.unlink(workspace.root / ".cerebro" / "holders" / f"{holder}.lock")
+        os.close(fd)
     return True
 
 
@@ -1192,9 +1207,12 @@ def _curate(workspace: Cerebro, result: PassResult) -> None:
         result.step("agents", "open", total=len(due))
     with _holding(workspace, [agent for agent, _ in due], result.token):
         _curate_due(workspace, due, result)
-    for agent, _ in due:
-        if ids := first_list(workspace, agent.id):
-            result.warnings.append(first_list_line(agent.id, len(ids)))
+    warned = [first_list_line(agent.id, len(ids)) for agent, _ in due if (ids := first_list(workspace, agent.id))]
+    if warned:  # the line names review --accept-from, which takes what was shown by now
+        from .first_run import stamp_shown  # imported here: the first run builds on this module
+
+        stamp_shown(workspace)
+    result.warnings += warned
 
 
 def run_curators(workspace: Cerebro, agents: list[Agent], result: PassResult) -> None:
@@ -2322,7 +2340,7 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
     # each line kept on its run's line, and counted for its end
-    keep_grounding(workspace.store, run, compiled.grounding, compiled.cleaned)
+    keep_grounding(workspace.store, run, None, compiled.cleaned)
     if compiled.grounding:
         result.grounding[key] = compiled.grounding
     if compiled.cleaned:
@@ -2453,15 +2471,19 @@ def _run_again(workspace: Cerebro, agent: Agent, article: str, who: list[str]) -
             workspace.store.set_state(f"compiled:{agent.id}:{article}", None)
 
 
-def _usd(workspace: Cerebro, runs: list[Run]) -> str:
-    """What the runs cost on their agents' models, as a line says it."""
+def _usd(workspace: Cerebro, runs: list[Run], checks: float = 0.0) -> str:
+    """What the runs cost on their agents' models, as a line says it, and once grounding's `checks` of their text
+    cost anything, what the writing and the checks each cost, at places where the two add up to the whole."""
     total = 0.0
     for run in runs:
         agent = workspace.agent(run.agent) if hasattr(workspace, "agent") else None
         if agent is not None:
             spec = workspace.model_of(agent)
             total += cost(spec.provider, spec.model, run.usage)
-    return f"${total:.4f}"
+    if not checks:
+        return f"${total:.4f}"
+    digits = spend_digits(total + checks, [total, checks], least=4)
+    return f"${total + checks:.{digits}f} (writing ${total:.{digits}f}, checks ${checks:.{digits}f})"
 
 
 def _shown(compiled: Any) -> Run | None:
@@ -2478,12 +2500,12 @@ def _shown(compiled: Any) -> Run | None:
 
 
 def failure(run: Run, agent: str) -> str:
-    """Why a compile wrote nothing, as its `failed` line says it: the run, its agent when that is not `agent`, and
+    """Why a compile failed, as its `failed` line says it: the run, its agent when that is not `agent`, and
     what it ended with; or for a composed article's run that failed as a whole, which has no run id of its own, why
     and the subagent's run that failed it."""
     if not run.id:
         return run.note
-    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f" wrote nothing: {run.status}"
+    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f": {run.status}"
             + (f": {run.note}" if run.note else ""))
 
 
@@ -2494,12 +2516,13 @@ def _compiled_line(workspace: Cerebro, key: str, compiled: Any) -> str:
         return f"ran       {key}: skipped, {compiled.waiting or 'nothing it reads has moved'}"
     if compiled.article is not None:
         article = compiled.article.identity.id
-        return f"ran       {key}: wrote articles/{article}.md, {_usd(workspace, runs)}"
+        return f"ran       {key}: wrote articles/{article}.md, {_usd(workspace, runs, compiled.checks)}"
     run = _shown(compiled)
     if run is not None and run.status == WROTE_NOTHING:  # its status is what the line says already: why, once
-        return f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, {_usd(workspace, runs)}"
+        return (f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, "
+                f"{_usd(workspace, runs, compiled.checks)}")
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
-    return f"ran       {key}: wrote nothing, {said}, {_usd(workspace, runs)}"
+    return f"ran       {key}: {said}, {_usd(workspace, runs, compiled.checks)}"
 
 
 def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
@@ -2515,7 +2538,7 @@ def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
         return {"mark": "ran", "text": f"ran and wrote nothing: {run.note or 'it handed in nothing'}"}
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
     who = agent.id if run is None or run.agent == agent.id else run.agent
-    return {"mark": "failed", "why": f"{who} wrote nothing: {said}"}
+    return {"mark": "failed", "why": f"{who}: {said}"}
 
 
 def _n(n: int, noun: str) -> str:
@@ -2533,7 +2556,7 @@ def unmoved(workspace: Cerebro, agent: Agent, articles: list[str]) -> str:
     again = f"cerebro agents run {agent.id} runs it again now"
     if not any(written(workspace, agent, article) for article in articles):
         return f"nothing it reads has moved since its last run, which wrote nothing: {again}"
-    return f"nothing it reads has moved since its last write: {again}, whether or not anything moved"
+    return f"nothing it reads has moved since its last run: {again}, whether or not anything moved"
 
 
 def _render(workspace: Cerebro, result: PassResult) -> None:
@@ -2587,7 +2610,7 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
     `held` line says it once, with when it runs. Each line of what landing made safe is kept on its run's line."""
-    keep_grounding(workspace.store, compiled.run, compiled.grounding, compiled.cleaned)
+    keep_grounding(workspace.store, compiled.run, None, compiled.cleaned)
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]

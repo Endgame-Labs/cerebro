@@ -216,11 +216,11 @@ def test_an_agent_file_with_a_sql_line_reads_postgres_through_one_read_only_tran
     assert writer.cooldown is None and not any("cooldown" in w for w in writer.warnings)  # schedule.articles covers it
     (entry,) = gather(writer, Lookup(), {}, root=root, sources={"warehouse": Masked(warehouse(root, store), lambda: str)})
     assert entry.heading == f"Sql warehouse, the rows of {PIPELINE}"
-    assert entry.lines == ['- [^sql:warehouse:1] {"region": "East", "sum": 4000}',
-                           '- [^sql:warehouse:2] {"region": "North", "sum": 3000}',
-                           '- [^sql:warehouse:3] {"region": "South", "sum": 3000}']
+    assert entry.lines == ['- [^sql:warehouse:2705d7ff:1] {"region": "East", "sum": 4000}',
+                           '- [^sql:warehouse:2705d7ff:2] {"region": "North", "sum": 3000}',
+                           '- [^sql:warehouse:2705d7ff:3] {"region": "South", "sum": 3000}']
     assert [(c.kind, c.id, c.source) for c in entry.citations] == [
-        ("record", f"sql:warehouse:{i}", "sql:warehouse") for i in (1, 2, 3)]
+        ("record", f"sql:warehouse:2705d7ff:{i}", "sql:warehouse") for i in (1, 2, 3)]
     assert server.dsns == [DSN]  # read from the store as the query ran
     connection = read_only(server, opened(PIPELINE))
     assert connection.fetched and all(n <= 50 for n in connection.fetched)

@@ -27,7 +27,7 @@ from .connector import Connector, CursorError, Listing, Record, RecordNotFound, 
 from .evidence import Evidence
 from .facts import Extracted, Extraction, Fact, FactNotFound, Mention, NoBody, Quote
 from .models import Answer, Choice, Decider, Decision, DecisionError, Question, Score, TokenCount, YesNo
-from .run import AgentRun, Entry, Rewriter, Run, Usage
+from .run import RUN_ID, AgentRun, Entry, Rewriter, Run, Usage
 from .search import Hit, Index
 from .secrets import Secrets, _check_value, _not_found, changed, check_name
 from .store import (
@@ -636,8 +636,8 @@ class ScriptedRun(AgentRun):
             if (name := getattr(tool, "__name__", "")) in HAND_INS:
                 raise ToolError(f"a tool is named {name}, which is how a run hands in what it wrote: rename that tool")
         clock = self.clock or system_clock
-        text = opening(evidence, clock(), self.root)
-        run = Run(id="run_scripted", agent=agent.id, target=agent.target, status="done",
+        text = opening(agent, evidence, clock(), self.root)
+        run = Run(id=RUN_ID.get() or "run_scripted", agent=agent.id, target=agent.target, status="done",
                   transcript=[Entry("user", text)], usage=Usage(model="scripted", requests=1),
                   started_at=stamp(clock()))
         by_name = {tool.__name__: tool for tool in tools}

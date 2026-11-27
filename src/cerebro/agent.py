@@ -386,6 +386,12 @@ def _anchored(value: Any) -> bool:
     return isinstance(value, str) and (value == "this" or value.startswith("this."))
 
 
+def _kinds(file: _File, where: str, key: str, value: Any) -> None:
+    """The kinds a line on facts keeps, under `key`: one kind's name, or a list of them."""
+    if not isinstance(value, (str, list)) or (isinstance(value, list) and not all(isinstance(c, str) for c in value)):
+        raise file.fail(f"{where} {key} is not a class or a list of them: write {key}: [timeline]")
+
+
 def _query(file: _File, n: int, kind: str, value: Any, curates: bool) -> None:
     where = f"evidence {n}, {kind}"
     if not isinstance(value, dict) or not isinstance(value.get("from"), str) or not value["from"].strip():
@@ -395,6 +401,9 @@ def _query(file: _File, n: int, kind: str, value: Any, curates: bool) -> None:
         raise file.fail(f"{where} from collections takes no filter: it lists every collection the site shows")
     sided = False
     for key, filter_value in filters.items():
+        if source == "facts" and key in ("classes", "kind"):
+            _kinds(file, where, key, filter_value)
+            continue
         if isinstance(filter_value, (dict, list)):
             raise file.fail(f"{where} filter {key} takes one value, not a list or a map: write {key}: <value>")
         if str(key).lower() == "limit":
@@ -494,11 +503,7 @@ def _evidence(file: _File, value: Any, curates: bool) -> list[EvidenceLine]:
             if "window" in args and not is_window(args["window"]):
                 raise file.fail(f"evidence {n}, facts window {args['window']!r} is no window: write one such as "
                                 "last_30_days or this_quarter")
-            classes = args.get("classes", [])
-            if not isinstance(classes, (str, list)) or (isinstance(classes, list)
-                                                        and not all(isinstance(c, str) for c in classes)):
-                raise file.fail(f"evidence {n}, facts classes is not a class or a list of them: write classes: "
-                                "[timeline]")
+            _kinds(file, f"evidence {n}, facts", "classes", args.get("classes", []))
             relation = args.get("relation", [*RELATIONS])
             if not (relation in RELATIONS or (isinstance(relation, list) and relation
                                               and all(r in RELATIONS for r in relation))):

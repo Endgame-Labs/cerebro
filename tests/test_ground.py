@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ import pytest
 from cerebro.budget import BudgetSpent
 from cerebro.facts import Fact, Quote
 from cerebro.fakes import FakeDecider
-from cerebro.ground import Editor, Judge, fields_of, split_sentences
+from cerebro.ground import AGAIN, Editor, Judge, fields_of, split_sentences
 from cerebro.models import Decision, DecisionTooLarge, Question
 
 DATA = Path(__file__).parent / "data" / "ground"
@@ -127,6 +128,18 @@ def test_the_first_hand_in_hears_of_each_sentence_under_the_floor_and_one_with_n
     told = editor(FakeDecider({"s1": 2}), floor=0.6).review("Alder signs for ten years [^f_1].")
     assert '"Alder signs for ten years [^f_1].": 0.50' in told
     assert editor(FakeDecider()).review("Alder renews in March [^f_1].") == ""
+
+
+def test_a_numbered_reference_with_no_definition_goes_back_to_its_writer() -> None:
+    told = editor(FakeDecider()).review("Alder renews in March (term_id T8),[1] [^f_1]. It renews in March[2] "
+                                        "[^f_1][3].\n\n```\n[2]: https://example.com\n```\n")
+    assert re.findall(r"\[(\d+)\]", told) == ["1", "2", "3"]  # though every sentence is backed
+    linked = ("Alder renews in March [^f_1] [3], [4](https://example.com), [5][6], `e = [7]`, \\[8] and [11].\n\n"
+              "    x = [9]\n\n```\nd = [10]\n```\n\n[3]: https://example.com\n[6]: https://example.com\n\n"
+              "- [11] local/alder.md\n")
+    assert editor(FakeDecider()).review(linked) == ""  # a definition, a list of sources, a link, an escape or code
+    both = editor(FakeDecider({"s1": 0})).review("Alder signs for ten years [^f_1] [1].")
+    assert "[1]" in both and both.count(AGAIN) == 1  # one hand-in asked for, whatever it is told
 
 
 def test_a_passage_scored_once_or_seeded_with_its_scores_is_not_asked_again_and_each_reader_marks_by_its_floor(

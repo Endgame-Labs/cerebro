@@ -146,14 +146,16 @@ def test_a_lease_whose_process_ended_is_taken_over_at_once_in_one_line_and_a_liv
     workspace = Cerebro(tmp_path / "ws", store=MemoryStore(), extraction=FakeExtraction(), trusted=True)
     holders = tmp_path / "ws" / ".cerebro" / "holders"
     holders.mkdir(parents=True)
-    later, live, dead = "2999-01-01T00:00:00Z", "a" * 32, "b" * 32
+    later, live, dead, ago = "2999-01-01T00:00:00Z", "a" * 32, "b" * 32, time.time() - 2 * runner.LEASE
     (holders / f"{dead}.lock").write_text("")  # its process ended: nothing holds its lock
     alive = subprocess.Popen([sys.executable, "-c", HOLDING, str(holders / f"{live}.lock")], stdout=subprocess.PIPE,
                              text=True)
     try:
         assert alive.stdout is not None and alive.stdout.readline().strip() == "held"
-        workspace.store.set_state("lease:projects/a", {"by": "a-pass-that-died", "until": later, "pid": 4242,
-                                                   "holder": dead})
+        os.utime(holders / f"{live}.lock", (ago, ago))  # it runs, and named its file in no lease for two leases
+        for name in "ae":  # two leases of one pass that died
+            workspace.store.set_state(f"lease:projects/{name}", {"by": "a-pass-that-died", "until": later, "pid": 4242,
+                                                                 "holder": dead})
         workspace.store.set_state("lease:projects/b", {"by": "a-pass-that-runs", "until": later, "pid": alive.pid,
                                                    "holder": live})
         workspace.store.set_state("lease:projects/c", {"by": "an-older-pass", "until": later})  # names no holder
@@ -162,15 +164,60 @@ def test_a_lease_whose_process_ended_is_taken_over_at_once_in_one_line_and_a_liv
         said: list[str] = []
         result = runner.PassResult(say=said.append)
         took = {name: runner._lease(workspace, SimpleNamespace(id=f"projects/{name}"), result.token, result)
-                for name in "abcd"}
+                for name in "abcde"}
     finally:
         alive.kill()
         alive.wait(5)
-    assert took["a"] == "" and workspace.store.state("lease:projects/a")["pid"] == os.getpid()
+    assert took["a"] == took["e"] == "" and workspace.store.state("lease:projects/e")["pid"] == os.getpid()
     assert took["b"] == took["c"] == took["d"] == later
     assert said == ["note      took over the leases of pid 4242, which ended without letting them go"]
-    assert not (holders / f"{dead}.lock").exists()
+    assert runner._lease(workspace, SimpleNamespace(id="projects/b"), result.token, result) == ""  # it ended now
     runner.let_go(workspace)
+
+
+KILLED = """
+import sys, time
+from pathlib import Path
+from types import SimpleNamespace
+from cerebro import Cerebro, runner
+from cerebro.fakes import FakeExtraction
+workspace = Cerebro(Path(sys.argv[1]), extraction=FakeExtraction(), trusted=True)
+with runner.hold(workspace, SimpleNamespace(id="things/first")):
+    print("began", flush=True)
+sys.stdin.readline()
+with runner.hold(workspace, SimpleNamespace(id="things/a")):
+    print("held", flush=True)
+    time.sleep(30)
+"""
+
+
+def test_a_pass_killed_long_after_it_began_is_taken_over_at_once_and_the_file_of_one_long_ended_is_swept(
+        tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    root, ago = tmp_path / "ws", time.time() - 2 * runner.LEASE
+    root.mkdir()
+    (root / "settings.yaml").write_text("{}\n")
+    holders, ended = root / ".cerebro" / "holders", root / ".cerebro" / "holders" / f"{'e' * 32}.lock"
+    killed = subprocess.Popen([sys.executable, "-c", KILLED, str(root)], stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, text=True)
+    try:
+        assert killed.stdin is not None and killed.stdout is not None
+        assert killed.stdout.readline().strip() == "began"
+        for file in holders.iterdir():
+            os.utime(file, (ago, ago))  # its pass began two leases ago
+        ended.write_text("")
+        os.utime(ended, (ago, ago))  # a process that ended two leases ago
+        killed.stdin.write("go\n")
+        killed.stdin.flush()
+        assert killed.stdout.readline().strip() == "held"  # it took a lease just now
+    finally:
+        killed.kill()
+        killed.wait(5)
+    with Cerebro(root, extraction=FakeExtraction(), trusted=True) as workspace, \
+            runner.hold(workspace, SimpleNamespace(id="things/a")):
+        pass  # taken over at once, where a lease it cannot prove gone raises LeaseHeld
+    assert not ended.exists()
 
 
 def test_a_tool_refusal_is_masked_of_every_stored_secret_before_it_reaches_the_caller(tmp_path: Path) -> None:

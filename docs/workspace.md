@@ -113,7 +113,7 @@ Any change to the `providers:` block means you trust the workspace again with `c
 models    fireworks, openai, anthropic, typesafe calls go to http://gateway.example.internal:8769
 ```
 
-If the gateway refuses a call with 400, 401, 402 or 403, the pass stops and says why. The next pass tries again. Your daily caps still apply.
+If the gateway refuses a call with 401, 402 or 403, the pass stops and says why, and the next pass tries again. Any other error fails that call alone. If every call fails with 400, check `base_url` and the headers in `providers:`. Your daily caps still apply.
 
 Other keys you may want, each with its own guide:
 

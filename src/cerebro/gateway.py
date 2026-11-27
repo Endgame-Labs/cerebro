@@ -6,7 +6,8 @@ keeps the provider's own path; with one set, the provider's key is optional, and
 insists on one. A header's value is text, `{ secret: name }`, read from the secrets store when a call is made, or a
 mapping of text values, sent as one JSON object; a provider's mapping is merged over the shared one. `{call}`,
 `{agent}` and `{run}` in a value are filled on each call, and a value whose placeholder has nothing to fill is left
-out. A host that refuses a call with a status in `STOP` stops the pass: no call starts after it until the next.
+out. A host that refuses a call with a status in `STOP`, a refused key or payment due, stops the pass: no call starts
+after it until the next. Any other refusal fails that call alone.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ __all__ = ["NO_KEY", "SETTINGS_KEYS", "STOP", "Gateway", "ProvidersError", "Rout
            "route_lines"]
 
 NO_KEY = "unused"  # the key sent through a gateway that holds the provider's key itself
-STOP = (400, 401, 402, 403)  # a refusal no try again mends: a header, a path or a key the host does not take
+STOP = (401, 402, 403)  # a refused key or payment due, which every later call meets: a 400 is one bad request
 EXAMPLE = "http://gateway.example.internal:8769"
 PLACES = ("call", "agent", "run")
 TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")  # a header name, as HTTP spells one

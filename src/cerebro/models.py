@@ -580,7 +580,8 @@ class HttpDecider(Decider):
                 raise DecisionError(f"{self.spec.model} at {self.url} answered with a redirect (HTTP {status}), which "
                                     "is not followed so the key stays with its host: check the decision URL")
             if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
-                if self.route is not None and self.route.refused(status, self.call):
+                if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
+                    self.route.refused(status, self.call)
                     raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}: check providers in "
                                         "settings.yaml")
                 hint = (f"check the {self.spec.key_name} key" if status in (401, 403)

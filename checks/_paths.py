@@ -1,7 +1,8 @@
 """What a live check prints of the paths a run takes at the edge of its hand-in and its room, one line per run that
 took any, so a live run shows whether they fire: a reply taken as text, a run that handed in nothing, one whose room
 or calls were spent or whose reply was cut with nothing handed in, a curator that met its floor, and a call refused for
-room or for calls; and the lines of a pass's runs that ran and wrote nothing, which a check prints beside its failures."""
+room or for calls; and the lines of a pass's runs that wrote nothing and did not fail, which a check prints beside its
+failures."""
 
 from __future__ import annotations
 
@@ -29,8 +30,8 @@ def paths(run: Any) -> str:
 
 
 def ran_lines(result: Any, indent: str = "  ") -> list[str]:
-    """A line for each run of a pass that ran and wrote nothing, no failure, so a live run's report shows every run
-    that handed in nothing beside those that failed."""
+    """A line for each run of a pass that ran and wrote nothing, no failure, so a live run's report shows each
+    beside those that failed."""
     return [f"{indent}ran     {key}: wrote nothing: {why}" for key, why in result.ran.items()]
 
 

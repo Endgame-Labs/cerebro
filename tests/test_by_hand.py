@@ -51,7 +51,7 @@ def test_compile_on_a_new_agent_links_the_facts_taken_in_before_it_and_writes(tm
     assert ran.exit_code == 0 and _wrote(ran), ran.output
 
 
-def test_a_by_hand_run_that_has_nothing_to_cite_never_says_since_its_last_write(
+def test_a_by_hand_run_that_has_nothing_to_cite_is_never_skipped(
         tmp_path: Path, stand_ins: None) -> None:  # noqa: F811
     workspace = tmp_path / "empty-workspace"
     assert run("init", str(workspace), "--daily-usd", "5").exit_code == 0
@@ -59,7 +59,7 @@ def test_a_by_hand_run_that_has_nothing_to_cite_never_says_since_its_last_write(
     _fill(workspace, "projects/otter")
     ran = run("agents", "run", "projects/otter", "--workspace", str(workspace))  # it runs
     assert ran.exit_code == 0, ran.output
-    assert "since its last write" not in ran.output
+    assert "nothing it reads has moved" not in ran.output
 
 
 def test_a_by_hand_run_of_a_written_article_reruns_it_and_says_how_a_pass_would_treat_it(
@@ -79,5 +79,5 @@ def test_a_pass_that_skips_a_written_article_names_the_command_that_rebuilds_it(
     path.write_text(path.read_text().replace("heartbeat: [manual]", "heartbeat: { on: [change], cooldown: 0 }"))
     assert _wrote(run("serve", "--once", "--workspace", str(workspace)))
     again = run("serve", "--once", "--workspace", str(workspace))
-    assert ("skipped   projects/otter: nothing it reads has moved since its last write: cerebro agents run "
+    assert ("skipped   projects/otter: nothing it reads has moved since its last run: cerebro agents run "
             "projects/otter runs it again now") in again.output, again.output

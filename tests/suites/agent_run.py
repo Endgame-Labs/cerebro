@@ -15,7 +15,7 @@ from cerebro.agent import Agent, Budget
 from cerebro.apps import ToolError
 from cerebro.article import Citation
 from cerebro.evidence import Evidence
-from cerebro.run import ROLES, AgentRun, Entry
+from cerebro.run import ROLES, RUN_ID, AgentRun, Entry
 
 AGENT = Agent(id="reports/weekly", path=Path("agents/reports/weekly.md"), role="writer", target="reports/weekly",
               prompt="Write the weekly report.\n\n# Output\n\n## Summary\n\n## Next", output=["Summary", "Next"])
@@ -40,6 +40,15 @@ def test_a_run_gives_the_text_it_handed_in_with_a_transcript_and_usage(make_run:
     assert run.result.text == "## Summary\n\nIt moved [^f_1].\n\n## Next\n\nWatch March."
     assert run.agent == "reports/weekly" and run.target == "reports/weekly" and run.id
     assert run.usage.requests >= 1 and run.usage.model
+
+
+def test_a_run_takes_the_id_set_for_it_before_it_starts(make_run: Callable[..., AgentRun]) -> None:
+    minted = RUN_ID.set("run_minted")  # as compile sets it, so what grounding spends on the run is kept under it
+    try:
+        run = make_run(lambda prompt: "x [^f_1]").run(AGENT, EVIDENCE, [], Budget())
+    finally:
+        RUN_ID.reset(minted)
+    assert run.id == "run_minted"
 
 
 def test_a_transcript_is_entries_the_run_given_first_and_each_call_answered(make_run: Callable[..., AgentRun]) -> None:
