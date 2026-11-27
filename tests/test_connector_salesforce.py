@@ -234,6 +234,9 @@ class FakeOrg:
         fields, object, where = self.parse(soql)
         if object == "EmailMessage" and self.no_email:
             return httpx.Response(400, json=[{"errorCode": "INVALID_TYPE", "message": "not supported"}])
+        if object == "User" and "IsDeleted" in soql:  # a real org's User has no such column
+            return httpx.Response(400, json=[{"errorCode": "INVALID_FIELD",
+                                              "message": "No such column 'IsDeleted' on entity 'User'."}])
         every = path.endswith("queryAll")
         rows = sorted((r for r in self.rows.get(object, []) if (every or not r["IsDeleted"]) and where(r)),
                       key=lambda r: r["Id"])
@@ -808,6 +811,19 @@ def test_opportunities_of_account_reads_one_account_by_id_or_exact_name(org: Fak
     assert any("Account.Name = 'O\\'Brien & Co'" in q for q in org.queries)  # the escaper, as every value
 
 
+def test_an_accounts_closed_deals_are_those_closed_in_the_last_days_and_its_past_due_ones_are_open_and_late(
+        org: FakeOrg) -> None:
+    connector = make(org)
+    late = org.add("Opportunity", {"Name": "Acme Corp add-on", "AccountId": ACME, "OwnerId": ME, "IsClosed": False,
+                                   "IsWon": False, "CloseDate": "2026-09-30", "StageName": "Prospecting"})
+    lost = org.add("Opportunity", {"Name": "Acme Corp trial", "AccountId": ACME, "OwnerId": ME, "IsClosed": True,
+                                   "IsWon": False, "CloseDate": "2026-09-01", "StageName": "Closed Lost"})
+    assert [r.id for r in connector.ask("opportunities_closed", {"account": "Acme Corp"}).records] == [lost]
+    assert [r.id for r in connector.ask("opportunities_closed", {"account": ACME, "days": 365}).records] == [lost, PILOT]
+    assert [r.id for r in connector.ask("opportunities_past_due", {"account": ACME}).records] == [late]
+    assert connector.ask("opportunities_past_due", {"account": INITECH}).records == []
+
+
 def test_the_people_questions_give_contacts_where_the_login_owns_has_a_role_or_names_an_account(org: FakeOrg) -> None:
     connector, wile, sam = make(org), sf_id("003", 1), sf_id("003", 2)
     ada = org.add("Contact", {"Name": "Ada Pell", "AccountId": sf_id("001", 2), "Email": "ada@northwind.example",
@@ -967,7 +983,6 @@ def test_a_deal_deleted_at_the_source_archives_its_article_unless_a_persons_word
     clock = [NOW]
     workspace = _deal_workspace(tmp_path, org, clock)
     workspace.run_once()
-    workspace.run_once()  # reads the deals the first pass admitted
     tell(workspace.store, None, Caller("you", "person"), "Lead with the signed order form.",
          "opportunities/acme-corp-renewal", as_="proposal")  # a person's instruction is their word on it
     clock[0] = org.clock = NOW + timedelta(hours=1)

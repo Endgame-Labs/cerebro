@@ -145,6 +145,11 @@ QUESTIONS = {
                              "default)",
     "opportunities_of_account": "the open opportunities of one account not yet past their close date, by the "
                                 "account's id or exact name; params: account (required)",
+    "opportunities_closed": "the opportunities of one account closed, won or lost, whose close date falls in the last "
+                            "`days` (90 by default, at most 365), by the account's id or exact name, the latest "
+                            "first; params: account (required), days",
+    "opportunities_past_due": "the open opportunities of one account whose close date has passed, by the account's id "
+                              "or exact name, the oldest first; params: account (required)",
 }
 ASK_DAYS, MAX_ASK_DAYS = 90, 365
 OWNERS = {"opportunities_i_own": ("me", "reports"), "opportunities_closing": ("company", "me", "reports"),
@@ -158,7 +163,9 @@ TAKES = {"accounts_i_own": {"days": Days(ASK_DAYS, 1, MAX_ASK_DAYS)},
          "contacts_of_account": {"account": Text("Acme Corp"), "domain": Text("acme.example")},
          "opportunities_i_own": {"owner": Word(OWNERS["opportunities_i_own"])},
          "opportunities_closing": {"days": Days(ASK_DAYS, 1, MAX_ASK_DAYS), "owner": Word(OWNERS["opportunities_closing"])},
-         "opportunities_of_account": {"account": Text("Acme Corp", required=True, what="the account's id or exact name")}}
+         "opportunities_of_account": {"account": Text("Acme Corp", required=True, what="the account's id or exact name")},
+         "opportunities_closed": {"account": Text("Acme Corp", required=True, what="the account's id or exact name"), "days": Days(ASK_DAYS, 1, MAX_ASK_DAYS)},
+         "opportunities_past_due": {"account": Text("Acme Corp", required=True, what="the account's id or exact name")}}
 MAX_DEPTH = 10  # how far down the reporting tree `owner: reports` reads
 # The fields read from each mapped object whatever the mapping says: what scopes, links and dates its records.
 NEED = {ACCOUNT: ("Id", "Name", "OwnerId", "SystemModstamp"), CONTACT: ("Id", "Name", "AccountId", "SystemModstamp"),
@@ -736,7 +743,7 @@ class _ObjectMap:
             add(name)
         for name in [*self.identity.values(), *self.fields.values()]:
             add(name)
-            if name.lower() == "ownerid":  # a colleague is named by email until their article exists
+            if name.lower() == "ownerid":  # `_field` gives an owner by their email
                 add("Owner.Email")
                 add("Owner.Name")
         return out
@@ -1255,9 +1262,11 @@ class SalesforceConnector(Connector):
         return found
 
     def _deleted(self, session: _Session, ids: list[str], since: str) -> list[tuple[str, str]]:
-        """The ids, with their stamps, of the records read for `ids` that were deleted since a time."""
+        """The ids, with their stamps, of the records of `ids`, and of what is logged on them, deleted since a time.
+        A User is never deleted, only made inactive, and has no IsDeleted to ask."""
         where = f"IsDeleted = true AND SystemModstamp >= {since}"
-        asks = [*((object, "Id") for object in OWN_ID), (TASK, LOGGED), (EVENT, LOGGED), (EMAIL, "RelatedToId")]
+        asks = [*((object, "Id") for object in OWN_ID if object != USER), (TASK, LOGGED), (EVENT, LOGGED),
+                (EMAIL, "RelatedToId")]
         gone = []
         for object, key in asks:
             if (object in MAPPED and object not in self.objects) or (object == EMAIL and self.no_email):
@@ -1331,9 +1340,9 @@ class SalesforceConnector(Connector):
         found = self._held[1]
         removed = []
         deleted = _deleted_since(state)
-        known = [a for a in scope if state.mark is not None and a in state.read] if not held and deleted else []
-        if known:
-            for id, stamp in self._deleted(session, known, deleted):
+        asked = scope if state.mark is not None and not held and deleted else []  # admitted since the last pass too
+        if asked:
+            for id, stamp in self._deleted(session, asked, deleted):
                 if state.seen.get(id, [""])[0] != _GONE:
                     removed.append(id)
                 state.seen[id] = [_GONE, stamp]
@@ -1442,11 +1451,16 @@ class SalesforceConnector(Connector):
         owner, days = read.get("owner", ""), read.get("days", ASK_DAYS)
         session = self._session()
         today = self.now().astimezone(self.zone).date()
-        where = ["IsClosed = false"]
+        where = [f"IsClosed = {'true' if question == 'opportunities_closed' else 'false'}"]
         if question == "opportunities_closing":
             where += [f"CloseDate >= {today.isoformat()}", f"CloseDate <= {(today + timedelta(days=days)).isoformat()}"]
+        elif question == "opportunities_closed":
+            where.append(f"CloseDate >= {(today - timedelta(days=days)).isoformat()}")
+        elif question == "opportunities_past_due":
+            where.append(f"CloseDate < {today.isoformat()}")
         elif question == "opportunities_of_account":
             where.append(f"CloseDate >= {today.isoformat()}")
+        if read.get("account"):
             account = id18(read["account"])
             where.append(f"AccountId = {_soql_string(account)}" if account.startswith("001")
                          else f"Account.Name = {_soql_string(read['account'])}")
@@ -1455,7 +1469,7 @@ class SalesforceConnector(Connector):
         rows = (self._deal_rows(session, _and(*where), "OwnerId", owners, extra) if owners is not None
                 else self._deal_rows(session, _and(*where), extra=extra))
         rows.sort(key=lambda r: _text(r, "Id"))
-        rows.sort(key=lambda r: _text(r, "CloseDate")[:10] or "9999")
+        rows.sort(key=lambda r: _text(r, "CloseDate")[:10] or "9999", reverse=question == "opportunities_closed")
         answer = []
         for row in rows[:limit]:
             found = self._deal(session, row)

@@ -41,6 +41,7 @@ from cerebro.connectors.gong import (
     is_read,
     render_call,
 )
+from cerebro.curate import in_scope
 from cerebro.fakes import MemoryStore
 from cerebro.fetch import fetch_tool
 from cerebro.identity import bound_to, reached
@@ -569,10 +570,11 @@ def ids(connector: GongConnector, question: str, params: dict[str, Any] | None =
     return [r.id for r in connector.ask(question, params).records]
 
 
-def test_a_curator_asks_for_the_calls_with_a_domain_admits_it_and_that_domains_calls_reach_it(
+def test_a_curator_asks_for_the_calls_with_a_domain_admits_it_and_that_domains_calls_come_into_scope(
         connector: GongConnector, server: StandIn, tmp_path: Path) -> None:
     store = MemoryStore()
     acme, globex = connector.get(ACME_CALL), connector.get(GLOBEX_CALL)
+    assert bound_to(store, acme) == [] and not in_scope(store, acme, curated={"calls"})
     server.requests.clear()
     asked: list[dict[str, Any]] = []
 
@@ -587,9 +589,10 @@ def test_a_curator_asks_for_the_calls_with_a_domain_admits_it_and_that_domains_c
                    "directions": "both", "first": "2026-10-08", "last": "2026-10-08"}}
     assert [r["id"] for r in asked[0]["rows"]] == ["acme.example", "vandelay.example"]
     assert done.admitted == ["accounts/acme-corp"]
-    # the call's parties' domain reaches the account, and binds the call to nothing: it only carries it
-    assert reached(store, acme) == ["accounts/acme-corp"] and bound_to(store, acme) == []
-    assert reached(store, globex) == []
+    # the call's parties' domain puts it in scope with the account, and binds it to nothing: it only carries it
+    assert reached(store, acme) == ["accounts/acme-corp"] and in_scope(store, acme, curated={"calls"})
+    assert bound_to(store, acme) == []
+    assert reached(store, globex) == [] and not in_scope(store, globex, curated={"calls"})
     assert {path for _, path, _ in server.requests} == {"/v2/calls/extensive"}  # no transcript was asked for
 
 

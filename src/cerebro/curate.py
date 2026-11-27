@@ -135,15 +135,14 @@ def working_set(store: Store) -> list[Identity]:
 
 
 def in_scope(store: Store, record: Record, *, curated: Collection[str] = ()) -> bool:
-    """Whether a listed record is extracted: when its keys reach an article in the working set, a key it only carries
-    among them, as the domain of a part's parties reaches the part's parent, and not when they reach only articles out
-    of it. One whose collection, `into`, is one of `curated`, the collections a curator keeps, counts only the articles
-    of that collection, whatever another collection holds, and is held for that curator until one reaches it. Any
-    other reached by none is extracted."""
+    """Whether a listed record is extracted. It is when a key binds it to an article in the working set, and not
+    when it binds only to articles out of it. One bound to none is held when its collection, `into`, is one of
+    `curated`, the collections a curator keeps, and extracted otherwise. A key the record only carries counts here,
+    as the domain of a part's parties puts the part in scope with its parent, though it binds the part to nothing."""
     ids = reached(store, record)
-    if record.into and record.into in curated:
-        return any(id.startswith(record.into + "/") and working(store, id) for id in ids)
-    return not ids or any(working(store, id) for id in ids)
+    if ids:
+        return any(working(store, id) for id in ids)
+    return not (record.into and record.into in curated)
 
 
 def unbuilt(agents: list[Agent]) -> list[str]:

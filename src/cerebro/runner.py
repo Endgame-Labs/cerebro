@@ -107,7 +107,7 @@ from .errors import CerebroError
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
 from .ground import LINES as GROUND_LINES
 from .ground import TALLY, counted
-from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, weighed
+from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
 from .identity import (
     DecisionJudge,
     Judged,
@@ -1351,8 +1351,8 @@ def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None)
     if ahead.discovering and record.id in ahead.first:  # held for the first run's discovery: it waits for the decision
         return Decision(HOLD, FIRST_HOLD)
     if not in_scope(workspace.store, record, curated=ahead.curated):
-        return Decision(HOLD, f"no article binds it, so it waits for the curator of {record.into}"
-                        if record.into in ahead.curated else "it binds only articles out of the working set")
+        return Decision(HOLD, "it binds only articles out of the working set" if reached(workspace.store, record) else
+                        f"no article binds it, so it waits for the curator of {record.into}")
     if record.extract in ("records", "none"):
         return Decision(NOTHING, f"its source extracts it into {record.extract}")
     return Decision(TAKE)
@@ -1489,7 +1489,12 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
     held = {row["id"]: record_from(row) for row in was_held if row["id"] not in ahead.gone and row["id"] not in fresh}
     handled = {*tried, *ahead.gone, *fresh, *(row["id"] for row in was_held)}
     ahead = replace(ahead, first=first)
-    going = [*held.values(), *listed.records]
+    taken = {row["id"] for row in was_held if row.get("read") and row["id"] in held}
+    for id in list(taken):  # read before, unchanged: it stays held only while it waits for its own article
+        if not waits_for_own(workspace.store, held[id], ahead.curated):
+            held.pop(id)
+            taken.discard(id)
+    going = [*(record for record in held.values() if record.id not in taken), *listed.records]
     early = _Early(workspace, connector)  # what is asked ahead is let go however the turns end
     try:
         for done, record in enumerate(going, 1):
@@ -1501,6 +1506,9 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
                 held[record.id] = replace(record, body=None)
                 continue
             held.pop(record.id, None)
+            if waits_for_own(workspace.store, record, ahead.curated):  # read, and held for its own collection's curator
+                held[record.id] = replace(record, body=None)
+                taken.add(record.id)
             _keep_keys(workspace, name, record)
             if decision.act == NOTHING:  # its text is read for nothing: its fields, as listed, still go
                 if not _extract_fields(workspace, name, record, result, landed):
@@ -1511,7 +1519,8 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
                 waiting.append(record.id)
     finally:
         early.close()
-    rows = {id: asdict(record) | {"listed_at": first.get(record.id, now)} for id, record in held.items()}
+    rows = {id: asdict(record) | {"listed_at": first.get(record.id, now)} | ({"read": True} if record.id in taken else {})
+            for id, record in held.items()}
     _keep_extracted(workspace, listed, handled, waiting, rows, result)
     result.step("distill", "end", name, mark="warning" if waiting else "done",
                 text=f"{_n(result.read - read, 'record')} • {_n(result.extracted - facts, 'fact')}",
@@ -1741,8 +1750,9 @@ def _gone_at_source(workspace: Cerebro, name: str, id: str, result: PassResult, 
     """A record its source removed leaves the working set with its own article, archived and kept, unless a caller
     said something of that article, an instruction or its own admit: then it stays, and its identity's `in_source`
     says it is gone there. One whose id is `hidden`, as it holds a stored value, is named without it."""
-    keys = (workspace.store.state(f"keys:{name}") or {}).get(id) or {}
-    owned = {follow(article_id, redirects(workspace.store)) for key in keys for article_id in workspace.store.bound(key, id)}
+    # one never read, as one admitted and gone before a pass reads it, is found by its id under the keys its source issues
+    keys = (workspace.store.state(f"keys:{name}") or {}).get(id) or workspace.connectors[name].IDENTITY_KEYS
+    owned ={follow(article_id, redirects(workspace.store)) for key in keys for article_id in workspace.store.bound(key, id)}
     what = "the record it is bound to, whose id holds a value the secrets store keeps," if hidden else f"{id},"
     for article_id in sorted(p for p in owned if working(workspace.store, p)):
         article = workspace.store.article(article_id)
