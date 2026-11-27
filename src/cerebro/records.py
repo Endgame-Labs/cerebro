@@ -86,6 +86,7 @@ __all__ = [
     "settle_told",
     "tell",
     "told_waiting",
+    "was_retracted",
 ]
 
 KINDS = ("article.instruct", "article.admit", "article.link", "article.archive", "article.merge", "article.split",
@@ -422,9 +423,20 @@ UNDO = {"article.admit": "archive it to take it out of the working set again",
         "article.split": "merge the two articles again"}
 
 
-def retracted_records(store: Store) -> set[str]:
-    """The ids of the records an accepted `record.retract` took back. No pass reads one into facts again."""
-    return {p.target for p in proposals(store, ACCEPTED) if p.kind == "record.retract"}
+def retracted_records(store: Store) -> dict[str, str]:
+    """When the latest accepted `record.retract` of each record it names was decided, by record id."""
+    found: dict[str, str] = {}
+    for p in proposals(store, ACCEPTED):
+        if p.kind == "record.retract":
+            found[p.target] = max(found.get(p.target, ""), p.decided_at)
+    return found
+
+
+def was_retracted(record: Record, retracted: dict[str, str]) -> bool:
+    """Whether a retract of `retracted_records` took back this revision of `record`: one kept no later than it. A
+    revision its maker keeps after a retract is the maker's new word. Times go to the second, so one kept in the same
+    second as the retract counts as taken back."""
+    return record.id in retracted and record.at <= retracted[record.id]
 
 
 def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str, Caller | None]:
@@ -502,6 +514,8 @@ def retract(store: Store, extraction: Extraction | None, caller: Caller, id: str
                    decided_at=at, decision_reason=reason)
     withdrew, stands = _take_back(store, extraction, id, at, row.id)
     propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
+    if what == "record" and extraction is not None:  # facts a pass saved after the take-back read them, before the row
+        _withdraw(extraction, id, [])
     return RetractResult(id, withdrew, row.kind, row.id, stands)
 
 

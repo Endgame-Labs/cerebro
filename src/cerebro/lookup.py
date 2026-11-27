@@ -47,7 +47,15 @@ from .expiry import marks
 from .facts import Extraction, Fact, Quote
 from .identity import follow, in_working_set, redirects, tied
 from .models import Decider, ModelSpec
-from .records import DecideResult, Decision, RetractResult, TellResult, instructions_on, retracted_records
+from .records import (
+    DecideResult,
+    Decision,
+    RetractResult,
+    TellResult,
+    instructions_on,
+    retracted_records,
+    was_retracted,
+)
 from .records import decide as decide_proposals
 from .records import retract as retract_input
 from .records import tell as tell_workspace
@@ -673,8 +681,8 @@ class StoreLookup(Lookup):
         result.items = result.items[offset:None if limit is None else offset + limit]
         if app_kind:
             taken = retracted_records(self.store)
-            result.warnings += [f"record {id} was retracted" for id in dict.fromkeys(
-                r.id for r in [*result.items, *result.recent]) if id in taken]
+            shown = {r.id: r for r in [*result.items, *result.recent]}
+            result.warnings += [f"record {id} was retracted" for id, r in shown.items() if was_retracted(r, taken)]
         result.stale = self._stale([f for item in result.items for f in _facts_in(item)])
         shown = {f.id for item in result.items for f in _facts_in(item)}
         result.ties = {id: how for id, how in result.ties.items() if id in shown}
