@@ -695,33 +695,17 @@ def aimed_first_run(tmp_path: Path) -> tuple[Cerebro, Any]:
 
 
 @pytest.mark.usefixtures("every_curator_weighs")  # the visits curator holds no record of its own
-def test_an_admit_into_another_collection_is_counted_under_the_first_runs_list_not_listed(tmp_path: Path) -> None:
+def test_an_admit_into_another_collection_is_a_row_of_that_collections_list_and_is_built_once_ticked(
+        tmp_path: Path) -> None:
+    from cerebro.curate import working_set
+
     workspace, out = aimed_first_run(tmp_path)
     with workspace:
-        pile = LocalApproval(workspace).pile()
-        built = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
-    assert "Hooli" not in [row.name for row in pile.rows()]
-    assert out is not None and "1 proposal waits with its collection's curator" in out.lines[-2]
-    assert built is not None and "1 proposal waits with its collection's curator" in built.lines[-1]
-
-
-@pytest.mark.usefixtures("every_curator_weighs")  # the visits curator holds no record of its own
-@pytest.mark.parametrize("approve", [True, False])
-def test_a_first_run_list_declined_whole_while_a_curator_holds_a_proposal_ends_and_counts_it(
-        tmp_path: Path, approve: bool) -> None:
-    from cerebro.records import Decision
-
-    workspace, _ = aimed_first_run(tmp_path)
-    with workspace:
-        own = [p.id for p in proposals(workspace.store, "waiting") if p.by.name == "things/curator"]
-        workspace.decide(YOU, reject=[Decision(id, "not ours") for id in own])
-        if approve:  # approving what is left, nothing, declines the list
-            LocalApproval(workspace).apply(Choices())
-            assert workspace.store.state(KEY)["status"] == "declined"
-        else:
-            out = run(workspace, choose=None)
-            assert out is not None and out.lines[-2].startswith("Nothing approved")
-            assert "1 proposal waits with its collection's curator" in out.lines[-1]
+        things = next(listed for listed in LocalApproval(workspace).pile().lists if listed.collection == "things")
+        assert ("Hooli", "visits/curator") in [(row.name, row.agent) for row in things.proposed()]
+        assert out is not None and not any("waits with its collection's curator" in line for line in out.lines)
+        run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
+        assert "things/hooli" in [identity.id for identity in working_set(workspace.store)]
 
 
 def test_the_path_of_a_proposal_folded_into_an_accepted_row_under_another_name_leads_to_the_article_it_made(

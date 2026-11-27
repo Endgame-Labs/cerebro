@@ -339,8 +339,8 @@ class LocalApproval(Approval):
 
     def _waiting(self, session: dict[str, Any]) -> list[dict[str, Any]]:
         """The admits that are rows of this list, in the order discovery kept them, the same whoever finished first,
-        then as they were filed: an admit a collection's own curator filed, and on a late list one by a curator it
-        was asked of."""
+        then as they were filed: every admit into a collection a curator keeps, whoever filed it, and on a late list
+        one by a curator it was asked of."""
         order = {id: n for n, id in enumerate(session.get("order") or [])}
         # the query gives the newest first; a stable sort keeps the filing order among the rest
         filed = self._query({"from": "proposals", "status": "waiting", "kind": "article.admit"})[::-1]
@@ -350,7 +350,7 @@ class LocalApproval(Approval):
         for p in sorted(filed, key=lambda p: order.get(str(p.get("id")), len(order))):
             by = str((p.get("by") or {}).get("name") or "")
             agent = keeper.get(_collection(p))
-            if agent is None or by != agent.id or self.late and by not in asked:
+            if agent is None or self.late and by not in asked:
                 continue
             out.append(p)
         return out
@@ -1519,7 +1519,8 @@ def waiting_line(pile: Pile, chosen: bool = False) -> str:
 def rest_lines(workspace: Cerebro, rest: list[str], more: bool = True) -> list[str]:
     """What the first run says after its summary while rows of its list wait, by id in `rest`: how many, and where a
     person decides them; `more` once something was approved beside them."""
-    waiting = {p.id for p in proposals(workspace.store, "waiting")}
+    held = {p.id for p in workspace.with_curators()}  # counted apart, by the line that says they wait there
+    waiting = {p.id for p in proposals(workspace.store, "waiting") if p.id not in held}
     if not (count := sum(id in waiting for id in rest)):
         return []
     line = (f"{count}{' more' if more else ''} {'is' if count == 1 else 'are'} waiting. Run cerebro review, or ask your "

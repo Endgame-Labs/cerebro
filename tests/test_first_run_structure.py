@@ -110,8 +110,8 @@ def test_a_curator_proposing_the_parent_of_what_it_found_files_a_row_of_that_col
         assert filed.payload["keys"]["code"] == ["t-alder"]
         pile = LocalApproval(workspace).pile()
         things = next(listed for listed in pile.lists if listed.collection == "things")
-        assert [row.agent for row in things.proposed()] == ["things/curator"]  # the person sees its own curator's
-        assert script.ran.count("things/curator") == 1  # one round: the row aimed at it waits for its next run
+        assert [row.agent for row in things.proposed()] == ["things/curator", "parts/curator"]  # the person sees both
+        assert script.ran.count("things/curator") == 1  # one round: the row aimed at it is the person's to tick
 
 
 def test_the_same_curator_does_not_file_one_parent_twice_and_a_record_not_held_there_is_refused(tmp_path: Path) -> None:

@@ -27,7 +27,7 @@ On a scheduled run or one asked for by hand, work through your whole file. On a 
 A caller is anyone who sends Cerebro a command. When a caller accepts a proposal, you carry it out on your next run. You cannot turn a caller's yes down.
 
 - Name each proposal you carry out, by its id, in the act that carries it out. One act may carry out several of the same kind on the same thing.
-- An admit you filed that a caller approved is made at its own path and under its own name: you judged it already.
+- An admit a curator filed, you or another, that a caller approved is made at its own path and under its own name: it was judged already.
 - An admit a caller asked for by name is yours to work out. Find which thing they mean, and make it under the name your evidence gives. If that thing already has an article, admit that article and name the ask.
 - If you cannot tell which thing is meant, carry out nothing for it. It stays accepted, and the caller sees that.
 
