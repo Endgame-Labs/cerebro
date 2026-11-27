@@ -59,9 +59,9 @@ marked as an earlier save with its own day and the day of the save that
 replaced it. Give each earlier save a row of its own, named by the document
 and the day its facts give, superseded by the save after it, and keep its
 claims out of Current.
-Cite a fact of an earlier save only beside a fact of a later save of the
-same document, in a row of Versions or in a sentence that says what changed
-and when: a sentence or a row that cites an earlier save alone is dropped.
+Never cite a fact of an earlier save alone. Cite it beside a fact of a later
+save of the same document, in a row of Versions or in a sentence that says
+what changed and when.
 When a version's window needs what an earlier save of a document said and
 your evidence does not hold it, call query with source facts and filters
 { record: that document's citation source, latest: false } for every save of
