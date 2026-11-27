@@ -286,8 +286,7 @@ def test_a_query_that_matches_nothing_says_why(parts: tuple[Lookup, Store]) -> N
         "no article of projects holds stage: won, which holds closed, open"]
     store.set_field("projects/apollo", "due", Property("2026-12-01", YOU, "2026-11-01T09:00:00Z"))
     assert lookup.query(YOU, "projects", {"due": "last_7_days"}).warnings == [
-        "no article of projects matches due: last_7_days",
-        "1 article of projects has no field due, so the query left it out"]
+        "no article of projects matches due: last_7_days"]
     assert lookup.query(YOU, "projects", {"compiled_at": "2020"}).warnings == [
         "no article of projects matches compiled_at: 2020"]  # a field of the article itself, not a property
     assert lookup.query(YOU, "proposals", {"owner": "west"}).warnings == [
@@ -302,15 +301,24 @@ def test_a_query_that_matches_nothing_says_why(parts: tuple[Lookup, Store]) -> N
 def test_a_query_on_a_field_some_articles_lack_keeps_those_that_hold_it_and_counts_the_rest(
         parts: tuple[Lookup, Store]) -> None:
     lookup, store = parts
-    for path, title in (("projects/orion", "Orion"), ("projects/lyra", "Lyra")):
-        store.create(Identity(path, "projects", title))
+    for path, title, status in (("projects/orion", "Orion", "active"), ("projects/lyra", "Lyra", "active"),
+                                ("projects/rigel", "Rigel", "archived")):
+        store.create(Identity(path, "projects", title, status=status))
     store.set_field("projects/orion", "size", Property(3, YOU, "2026-11-01T09:00:00Z"))
     store.set_field("projects/orion", "linked", Property(["projects/apollo"], YOU, "2026-11-01T09:00:00Z"))
+    store.set_field("projects/lyra", "stage", Property(None, YOU, "2026-11-01T09:00:00Z"))  # a null is no value
     some = lookup.query(YOU, "projects", {"stage": "open"})
     assert [a.identity.id for a in some.items] == ["projects/apollo"]
     assert some.warnings == ["2 articles of projects have no field stage, so the query left them out"]
-    assert lookup.query(YOU, "projects", {"stage": "open", "size": 3}).warnings == [
-        "1 article of projects that the other filters keep has no field stage, so the query left it out"]
+    one = "1 article of projects that the other filters keep has no field stage, so the query left it out"
+    assert lookup.query(YOU, "projects", {"stage": "open", "size": 3}).warnings == [one]
+    assert lookup.query(YOU, "projects", {"stage": "open"}, where=[Where("size", ">", 2)]).warnings == [one]
+    assert lookup.query(YOU, "projects", {"id": ["projects/apollo", "projects/orion"], "stage": "open"}).warnings == [
+        one]
+    store.set_field("projects/apollo", "due", Property("2026-11-15", YOU, "2026-11-01T09:00:00Z"))
+    assert lookup.query(YOU, "projects", {"due": "last_7_days"}).warnings == [
+        "3 articles of projects have no field due, so the query left them out"]
+    assert lookup.query(YOU, "projects", {"stage": "open"}, matching="moved").warnings == []  # words keep fewer
     assert lookup.query(YOU, "projects", {"linked": "projects/apollo"}).warnings == []  # no links, links to nothing
 
 

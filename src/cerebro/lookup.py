@@ -380,9 +380,11 @@ def _values(article: Article) -> dict[str, Any]:
 
 
 def _held(article: Article, key: str) -> list[Any]:
-    """The values an article holds in the field `key`, a list item by item: none when it has no such field."""
+    """The values an article holds in the field `key`, a list item by item, a null as no value: none when it has no
+    such field."""
     prop = fields(article).get(key)
-    return [] if prop is None else prop.value if isinstance(prop.value, list) else [prop.value]
+    values = [] if prop is None else prop.value if isinstance(prop.value, list) else [prop.value]
+    return [v for v in values if v is not None]
 
 
 def _after_last_run(article: Article) -> str:
@@ -932,7 +934,7 @@ class StoreLookup(Lookup):
                    follow(_path(str(v)), moved)) if k == "id" else v
                for k, v in filters.items() if k in OWN and k not in windows}
 
-        def meets(article: Article, but: str = "") -> bool:
+        def meets(article: Article, but: str | None = None) -> bool:
             values = _values(article) | {"status": _status(article)}
             if "status" not in filters and not in_working_set(article.identity):
                 return False
@@ -951,20 +953,21 @@ class StoreLookup(Lookup):
                            reverse=order_by is None or descending)
             kept = timed + [a for a in kept if not moment(a)]
         result = QueryResult(source, [*kept, *standing], len(kept) + len(standing), said, ordered)
-        every = [] if kept or standing else self.store.query(source)  # read whole only to say why none matched
-        if every:
-            result.warnings += self._why_empty(source, every, filters, windows, where)
-        result.warnings += self._lacking(source, filters, literal, where, meets, kept or every)
+        if not kept and not standing:
+            result.warnings += self._why_empty(source, self.store.query(source), filters, windows, where)
+        elif kept and not narrowed:  # a search's words keep fewer than the filters, so a count would be too many
+            result.warnings += self._lacking(source, filters, literal, where, meets)
         return result
 
     def _lacking(self, source: str, filters: dict[str, Any], literal: dict[str, Any], where: list[Where] | None,
-                 meets: Callable[[Article, str], bool], seen: list[Article]) -> list[str]:
-        """A line for each filtered field that articles the other filters keep lack, so the query left them out, with
-        how many. None for a field no article in `seen` holds: a query on it matched nothing and says why. None for
-        `linked` either: an article with no links links to nothing, so it is rightly out of what links to one."""
+                 meets: Callable[[Article, str], bool]) -> list[str]:
+        """For a query that kept some articles, a line for each filtered field that articles the other filters keep
+        lack, so the query left them out, with how many. None for `linked`: an article with no links links to nothing,
+        so it is rightly out of what links to one. A query that kept none says why instead, so no count moves the
+        digest of an evidence line that matched nothing."""
         lines = []
         for key in filters:
-            if key in OWN or key == LINKED or not any(_held(a, key) for a in seen):
+            if key in OWN or key == LINKED:
                 continue
             others = [self._wanted(k, v) for k, v in literal.items() if k != key] + list(where or [])
             if n := sum(1 for a in self.store.query(source, others) if meets(a, key) and not _held(a, key)):
