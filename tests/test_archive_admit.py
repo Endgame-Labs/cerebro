@@ -94,8 +94,8 @@ def test_an_admit_that_names_one_article_and_gives_another_ones_key_never_binds_
 
 @pytest.mark.parametrize("keys, said", [  # an alias names no one thing: a domain that differs tells beta apart
     ({"alias": ["Alfa", "Bet"]}, "bind things/alpha, things/beta"),
-    ({"domain": ["alpha.example"], "alias": ["Bet"]}, "things/alpha joins the working set again. The key alias Bet "
-                                                      "stays on things/beta")])
+    ({"domain": ["alpha.example"], "alias": ["Bet"]}, ("things/alpha joins the working set again. The key alias Bet "
+                                                       "stays on things/beta"))])
 def test_an_admit_with_keys_of_two_articles_is_refused_unless_a_key_that_names_one_thing_tells_one_apart(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keys: dict[str, list[str]], said: str) -> None:
     w = Workspace(tmp_path / "w", monkeypatch, "things")
