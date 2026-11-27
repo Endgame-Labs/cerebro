@@ -912,7 +912,7 @@ def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_stat
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     seen: list[str] = []
-    for status in (401, 429):  # through a gateway
+    for status in (401, 402, 404, 429):  # through a gateway
         decider = HttpDecider(ModelSpec("typesafe", "jev-1.13.0", job="decision", retries=0), key=lambda: "k",
                               send=lambda url, headers, data, status=status: (status, {}, b""),
                               route=Route("typesafe", "http://gateway.example.internal:8769"))
