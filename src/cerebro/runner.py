@@ -136,7 +136,19 @@ from .identity import (
 from .models import ModelSpec, cost
 from .private import make_file, make_folder
 from .project import read_ours, read_schedule, zone_of
-from .records import ACCEPTED, RETRY, TOLD, Claimed, extract_told, instructions_on, proposals, settle_told
+from .records import (
+    ACCEPTED,
+    RETRY,
+    TOLD,
+    Claimed,
+    extract_told,
+    finish_retracts,
+    instructions_on,
+    proposals,
+    retracted_records,
+    settle_told,
+    was_retracted,
+)
 from .rendered import descriptions
 from .run import WROTE_NOTHING, Run
 from .source import read_source, span
@@ -277,6 +289,8 @@ def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = 
             _curate(workspace, result)
         if not until:
             result.tell("stage     extract: reading what the sources listed into facts, and linking them")
+            if workspace.extraction is not None:
+                _leave_no_retract_half_done(workspace, result)
             _link(workspace, _extract_all(workspace, sources, result) + _extract_kept(workspace, result), result)
             if workspace.lookup.extraction is not None:
                 _retry_told(workspace, result)
@@ -1708,7 +1722,9 @@ KEPT_CURSOR, KEPT_FAILED = own_key("cursor", "kept"), own_key("failed", "kept") 
 def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Record]]:
     """Extract each record an app kept or revised since the last pass, and each that failed before, as a source's
     records are: held to the extraction cap, and tried again next pass when it fails. A revised record is handed over
-    whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded."""
+    whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded. A revision a
+    retract took back is never extracted, and what it gave while a retract landed, or what a pass that stopped
+    before it checked left, is withdrawn."""
     landed: list[tuple[Fact, Record]] = []
     kinds = {kind for app in workspace.apps for kind in app.kinds}
     if not kinds or workspace.extraction is None:
@@ -1717,10 +1733,15 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
     waiting, handled = [], set()
     fresh = [id for kind, id in changed if kind == "record"]
     result.tried[KEPT_FAILED] = list(workspace.store.state(KEPT_FAILED) or [])
+    taken = retracted_records(workspace.store)
     for id in dict.fromkeys([*result.tried[KEPT_FAILED], *fresh]):
         handled.add(id)
         record = workspace.store.record(id)
         if record is None or record.source not in kinds:
+            continue
+        if was_retracted(record, taken):
+            if not _withdraw_retracted(workspace, record, result):
+                waiting.append(id)
             continue
         if record.extract not in ("records", "none") and "extraction" in result.stopped:  # it checks the ledger
             _waits(result, KEPT_FAILED, id)
@@ -1734,11 +1755,51 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
             else:
                 result.failed[f"{record.source}/{id}"] = f"{type(error).__name__}: {error}"
             waiting.append(id)
-    with workspace.store.exclusive():  # only what this pass handled leaves the lists, and the cursor only moves on
+    with workspace.store.exclusive():  # waits for a tell's or a decide's write, so a retract filed in it is read here
+        late = retracted_records(workspace.store) if landed else {}
+        overtaken = {r.id: r for _, r in landed if was_retracted(r, late)}  # a retract landed while it was read
+        for record in overtaken.values():
+            if not _withdraw_retracted(workspace, record, result):
+                waiting.append(record.id)
+        # only what this pass handled leaves the lists, and the cursor only moves on
         update_state(workspace.store, KEPT_CURSOR, lambda now: max(now or 0, later))
         update_state(workspace.store, KEPT_FAILED, lambda now: list(dict.fromkeys(
             [*(id for id in now or [] if id not in handled), *waiting])))
-    return landed
+    result.read -= len(overtaken)
+    result.extracted -= sum(r.id in overtaken for _, r in landed)
+    return [(f, r) for f, r in landed if r.id not in overtaken]
+
+
+def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) -> bool:
+    """Withdraw every fact a record a retract took back still has standing, as the retract's own sweep does, and say
+    so: those a pass read as the retract landed, and those a pass that stopped before it checked left behind. A
+    failure is reported and gives False, so the record waits for the next pass, and the pass goes on."""
+    try:
+        standing = workspace.extraction.facts(record=record.id, latest=False)  # type: ignore[union-attr]
+        for fact in standing:
+            workspace.extraction.retract(fact.id)  # type: ignore[union-attr]
+    except Exception as error:  # noqa: BLE001 - one record's failure is reported, and the rest go on
+        result.failed[f"{record.source}/{record.id}"] = f"{type(error).__name__}: {error}"
+        return False
+    if standing:
+        result.retracted += len(standing)
+        result.notices.append(_retracted_notice(record))
+    return True
+
+
+def _leave_no_retract_half_done(workspace: Cerebro, result: PassResult) -> None:
+    """Finish each retract whose take-back stopped partway, and say what a record's withdrew."""
+    withdrawn, failed = finish_retracts(workspace.store, workspace.extraction,  # type: ignore[arg-type]
+                                        stamp(workspace.clock()))
+    result.failed.update(failed)
+    for id, facts in withdrawn.items():
+        result.retracted += len(facts)
+        if (record := workspace.store.record(id)) is not None:  # a fact's retract names no record
+            result.notices.append(_retracted_notice(record))
+
+
+def _retracted_notice(record: Record) -> str:
+    return f"{record.source}/{record.id}: record {record.id} was retracted, so the facts read from it are withdrawn"
 
 
 def _retry_told(workspace: Cerebro, result: PassResult) -> None:

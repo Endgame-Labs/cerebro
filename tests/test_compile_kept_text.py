@@ -5,6 +5,7 @@ A part is kept as it stands, less each line that cites only facts withdrawn sinc
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -83,11 +84,15 @@ def test_a_kept_body_drops_a_line_citing_only_a_record_taken_back(tmp_path: Path
     told = tell(store, extraction, you, "The pump in hall two failed on Monday.", as_="fact").record
     kept_record = tell(store, extraction, you, "The valve in hall one was mended.", as_="fact").record
     retract(store, extraction, you, told, "the wrong pump")
+    revised = Record(id="n1", source="note", revision="1", at="2026-11-10T09:00:00Z", body="The fan stopped.", by=you)
+    store.keep(revised)
+    retract(store, extraction, you, revised.id, "reworded", clock=lambda: datetime(2026, 11, 11, 9, tzinfo=UTC))
+    store.keep(replace(revised, revision="2", at="2026-11-12T09:00:00Z"))  # its maker's word after the retract
     grounding = _Grounding("things/alder", lookup=StoreLookup(store, extraction), root=tmp_path,
                            ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None, zone=UTC,
                            floor=0.6)
-    gone = grounding.withdrawn([Citation("record", told), Citation("record", kept_record)])
-    assert told in gone and kept_record not in gone
+    gone = grounding.withdrawn([Citation("record", told), Citation("record", kept_record), Citation("record", "n1")])
+    assert told in gone and kept_record not in gone and "n1" not in gone
 
 
 def test_compile_converges_a_run_that_returns_nothing_for_an_agent_that_never_wrote(tmp_path: Path) -> None:

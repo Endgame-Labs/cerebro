@@ -47,7 +47,15 @@ from .expiry import marks
 from .facts import Extraction, Fact, Quote
 from .identity import follow, in_working_set, redirects, tied
 from .models import Decider, ModelSpec
-from .records import DecideResult, Decision, RetractResult, TellResult, instructions_on
+from .records import (
+    DecideResult,
+    Decision,
+    RetractResult,
+    TellResult,
+    instructions_on,
+    retracted_records,
+    was_retracted,
+)
 from .records import decide as decide_proposals
 from .records import retract as retract_input
 from .records import tell as tell_workspace
@@ -124,7 +132,8 @@ class QueryResult:
     it holds and when the newest was kept, and `recent`, at a top-level collection, the newest records under it.
     `read_as` is the line that says how to read the records' text, when the reply gives it. `ties` says, by fact
     id, how each fact of a query by `articles` that is not plainly about them is tied to them: `mentions` when it
-    names them, `record` when it reaches them only through a record of theirs.
+    names them, `record` when it reaches them only through a record of theirs. `retracted` names each record of an
+    app's kind it gives that a retract took back, as its warnings say.
     """
 
     source: str
@@ -138,6 +147,7 @@ class QueryResult:
     recent: list[Record] = field(default_factory=list)
     read_as: str = ""
     ties: dict[str, str] = field(default_factory=dict)
+    retracted: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -679,6 +689,11 @@ class StoreLookup(Lookup):
         if offset and offset >= result.count > 0:
             result.warnings.append(f"offset {offset} is past the {result.count} matches: pass a smaller offset")
         result.items = result.items[offset:None if limit is None else offset + limit]
+        if app_kind:
+            taken = retracted_records(self.store)
+            shown = {r.id: r for r in [*result.items, *result.recent]}
+            result.retracted = [id for id, r in shown.items() if was_retracted(r, taken)]
+            result.warnings += [f"record {id} was retracted" for id in result.retracted]
         result.stale = self._stale([f for item in result.items for f in _facts_in(item)])
         shown = {f.id for item in result.items for f in _facts_in(item)}
         result.ties = {id: how for id, how in result.ties.items() if id in shown}
@@ -1173,7 +1188,7 @@ class StoreLookup(Lookup):
         if terms == []:
             result.warnings.append(_no_terms(str(about)))
         shown: set[str] = set()  # the ids of the facts the reply holds
-        moved = redirects(self.store)
+        moved, taken = redirects(self.store), retracted_records(self.store)
         for id in ids:
             article = self.store.article(_path(id))
             gone = article.identity.id if article is not None and article.identity.status == "merged" else \
@@ -1203,6 +1218,8 @@ class StoreLookup(Lookup):
             facts = self._facts_named(id.strip())
             if (record := self.store.record(id.strip())) is not None and self._facts_only(caller, record.source):
                 result.warnings.append(_facts_of(record))
+            if record is not None and was_retracted(record, taken):
+                result.warnings.append(f"record {record.id} was retracted")
             if facts:
                 kept = narrow(facts, terms)
                 if terms and not kept:
