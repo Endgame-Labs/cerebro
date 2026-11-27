@@ -60,6 +60,7 @@ from .curate import (
     LEFT_OUT,
     curator_order,
     proposing,
+    weights_of,
     working_set,
     yes_left,
 )
@@ -351,8 +352,8 @@ class LocalApproval(Approval):
                                      str(state.get("note") or ""), agent.id in cut, said,
                                      f"{len(unlisted)} more held for {agent.target} are of the workspace's own side "
                                      "and not listed" if unlisted else ""))
-        pile.groups = tree(plain([row for row in pile.rows() if not row.left_out]), _articles(self.workspace),
-                           redirects(self.workspace.store))
+        pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
+                           _articles(self.workspace), redirects(self.workspace.store))
         return pile
 
     def _waiting(self, session: dict[str, Any]) -> list[dict[str, Any]]:
