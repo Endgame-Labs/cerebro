@@ -23,6 +23,6 @@ def test_the_fake_run_measures_the_fields_and_ends_with_its_three_numbers(capsys
     assert live_fields.main() == 0
     out = capsys.readouterr().out
     # the stand-in sets deals only, and drops the field its evidence says is retired
-    assert "fields right 30/33; followed a change 2/2; emptied and followed 1/1; changed with no new evidence 0" in out
+    assert "fields right 25/28; followed a change 2/2; emptied and followed 1/1; changed with no new evidence 0" in out
     assert "its fact is retired" in out and "spent model tokens on the pass with nothing changed: 0" in out
     assert "KEY" not in out.replace("FIREWORKS_API_KEY", "").replace("TYPESAFE_API_KEY", "")

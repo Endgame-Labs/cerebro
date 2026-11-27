@@ -1614,10 +1614,9 @@ def _extract_whole(workspace: Cerebro, record: Record, result: PassResult, lande
 
 def _extract_fields(workspace: Cerebro, name: str, record: Record, result: PassResult,
                     landed: list[tuple[Fact, Record]]) -> bool:
-    """Hand the fields a source gives a record in scope to the facts layer, one fact a field, held to the extraction
-    cap and its cost kept, and add their facts to `landed`. A value that is another record's key, such as a part's
-    parent id, is given as the one other article of the working set it binds, by its title and its path, so its fact
-    names it in words a reader knows. A record that gives no name of its own is named as the one article it binds.
+    """Hand the fields a source gives a record in scope to the facts layer, one fact a field, each value as the
+    source gave it, held to the extraction cap and its cost kept, and add their facts to `landed`. A record that gives
+    no name of its own is named as the one article of its own it binds.
     A failure is reported and gives False, so the record waits for the next pass, and the pass goes on."""
     if workspace.extraction is None:
         return True
@@ -1628,10 +1627,10 @@ def _extract_fields(workspace: Cerebro, name: str, record: Record, result: PassR
             result.failed[f"sources/{name}/{record.id}#fields"] = f"{type(error).__name__}: {error}"
             return False
         return True
-    worded = replace(record, fields={k: _worded(workspace, record, v) for k, v in record.fields.items()})
+    worded = record
     own = own_articles(workspace.store, record)
     if not _gives_a_name(record) and len(own) == 1 and (article := workspace.store.article(own[0])) and article.identity.title:
-        worded.keys = {**record.keys, "name": [article.identity.title]}  # named as its one article is, never by its id
+        worded = replace(record, keys={**record.keys, "name": [article.identity.title]})  # never named by its id
     model, extracted = workspace.models["extraction"], Extracted([])
     try:
         workspace.ledger.check("extraction", workspace.clock(), model)
@@ -1654,34 +1653,6 @@ def _gives_a_name(record: Record) -> bool:
     """Whether a record gives a name of its own: a `name` key, or a `name`, `title` or `subject` field."""
     return any(str(v).strip() for v in record.keys.get("name", [])) or any(
         isinstance(record.fields.get(k), str) and record.fields[k].strip() for k in ("name", "title", "subject"))
-
-
-def _worded(workspace: Cerebro, record: Record, value: Any) -> Any:
-    """A field's value with each item that binds another article of the working set given as that article, as
-    `_worded_one` gives one: a list item by item, and an entry that holds an `email` by that address."""
-    if isinstance(value, list):
-        return [_worded(workspace, record, item) for item in value]
-    if isinstance(value, dict) and isinstance(value.get("email"), str):
-        named = _worded_one(workspace, record, value["email"])
-        return named if named != value["email"] else value
-    return _worded_one(workspace, record, value)
-
-
-def _worded_one(workspace: Cerebro, record: Record, value: Any) -> Any:
-    """A field's value, or the one other article of the working set it binds under one of the record's keys or an
-    `email`, such as a part's parent id or an owner's address: its title, with its path in brackets, so a reader
-    knows it by name and a writer can set a field that links to it."""
-    if not isinstance(value, str) or not value or value == record.id:
-        return value
-    own = set(own_articles(workspace.store, record))
-    found = {follow(id, redirects(workspace.store)) for key in {*record.keys, "email"}
-             for id in workspace.store.bound(key, value)}
-    found = {id for id in found if id not in own and working(workspace.store, id)}
-    if len(found) != 1:
-        return value
-    id = found.pop()
-    article = workspace.store.article(id)
-    return f"{article.identity.title} ({id})" if article is not None and article.identity.title else id
 
 
 KEPT_CURSOR, KEPT_FAILED = own_key("cursor", "kept"), own_key("failed", "kept")  # how far into the store's changes kept records were read
@@ -1779,8 +1750,9 @@ def _gone_at_source(workspace: Cerebro, name: str, id: str, result: PassResult, 
     """A record its source removed leaves the working set with its own article, archived and kept, unless a caller
     said something of that article, an instruction or its own admit: then it stays, and its identity's `in_source`
     says it is gone there. One whose id is `hidden`, as it holds a stored value, is named without it."""
-    keys = (workspace.store.state(f"keys:{name}") or {}).get(id) or {}
-    owned = {follow(article_id, redirects(workspace.store)) for key in keys for article_id in workspace.store.bound(key, id)}
+    # one never read, as one admitted and gone before a pass reads it, is found by its id under the keys its source issues
+    keys = (workspace.store.state(f"keys:{name}") or {}).get(id) or workspace.connectors[name].IDENTITY_KEYS
+    owned ={follow(article_id, redirects(workspace.store)) for key in keys for article_id in workspace.store.bound(key, id)}
     what = "the record it is bound to, whose id holds a value the secrets store keeps," if hidden else f"{id},"
     for article_id in sorted(p for p in owned if working(workspace.store, p)):
         article = workspace.store.article(article_id)

@@ -935,7 +935,7 @@ def test_extraction_keeps_the_names_of_a_records_own_parties_and_its_removal_dro
     assert cerebro.store.state("ours:notes") == {}
 
 
-def test_a_pass_hands_a_records_fields_to_the_facts_layer_named_in_words_a_reader_knows(tmp_path: Path) -> None:
+def test_a_pass_hands_a_records_fields_to_the_facts_layer_as_its_source_gave_them(tmp_path: Path) -> None:
     (tmp_path / "settings.yaml").write_text("{}\n")
     part = Record(id="P1", source="parts", revision="1", at="2026-11-10T09:00:00Z", body=None,
                   keys={"part_id": ["P1"]}, fields={"phase": "draft", "parent": "G9"}, extract="records", into="things")
@@ -948,7 +948,7 @@ def test_a_pass_hands_a_records_fields_to_the_facts_layer_named_in_words_a_reade
     result = cerebro.run_once()
     assert result.failed == {} and result.extracted == 2
     said = sorted(f.text for f in facts.facts(record="P1"))
-    assert said == ["The parent of Alder is Group Nine (groups/nine).", "The phase of Alder is draft."]
+    assert said == ["The parent of Alder is G9.", "The phase of Alder is draft."]  # whatever groups/nine holds
     assert sorted(cerebro.store.facts_of("things/alder")) == sorted(f.id for f in facts.facts(record="P1"))
     assert cerebro.store.article("things/alder").properties == {}  # a pass writes no field
     again = cerebro.run_once()

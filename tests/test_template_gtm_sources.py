@@ -16,7 +16,7 @@ from test_connector_salesforce import NOW, FakeOrg, make, seed
 
 from cerebro import scaffold
 from cerebro.app import Cerebro
-from cerebro.article import Identity
+from cerebro.article import Identity, Property
 from cerebro.caller import Caller
 from cerebro.connect import need
 from cerebro.fakes import FakeExtraction, FakeSecrets, MemoryStore, ScriptedRun
@@ -91,7 +91,7 @@ def test_the_documented_file_reads_as_the_file_the_template_laid_down_before(tmp
     source = read_source(tmp_path / "salesforce.yaml")
     assert source.kind == "salesforce" and source.window.behind == "90d"
     assert source.settings["org"] == "work"
-    assert source.settings["opportunities"] == {"default_currency": "USD", "closed_since": "24m"}
+    assert source.settings["opportunities"] == {"default_currency": "USD"}
     assert sorted(source.settings["objects"]) == ["Account", "Contact", "User"]
 
 
@@ -129,7 +129,7 @@ def test_a_file_with_its_kind_alone_reads_the_defaults_and_gives_no_account_a_su
     workspace, crm = _workspace(tmp_path, "kind: salesforce\n", ScriptedRun(cited))
     source = read_source(tmp_path / "sources" / "salesforce.yaml")
     assert source.settings == {} and source.behind().days == 90 and crm.org == ""
-    assert (crm.closed_months, crm.currency) == (24, "USD")
+    assert crm.currency == "USD"
     assert {name: (m.into, m.identity, m.fields) for name, m in crm.objects.items()} == {
         "Account": ("accounts", {"salesforce_id": "Id", "name": "Name", "aliases": "Website"},
                     {"owner": "OwnerId", "industry": "Industry", "website": "Website"}),
@@ -158,8 +158,8 @@ def test_a_file_with_its_kind_alone_asks_the_cli_for_its_default_org_and_names_t
 
 class Keeping(Recording):
     """As `Recording`, and the opportunities agent sets each field its facts give with override, as a model reading
-    "The close date of Acme Corp renewal is 2026-11-10." would: the account by the path in brackets. Each such run
-    is a stand-in of its own, since runs may go side by side."""
+    "The close date of Acme Corp renewal is 2026-11-10." would. Each such run is a stand-in of its own, since runs may
+    go side by side."""
 
     def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
         from cerebro.evidence import render
@@ -168,12 +168,8 @@ class Keeping(Recording):
             return super().run(agent, evidence, tools, budget)
         calls = []
         for name, value in re.findall(r"\] The ([a-z ]+) of [^\n]+? is (.+?)\. \(quote", render(evidence)):
-            path = re.search(r"\(([a-z-]+/[a-z0-9-]+)\)$", value)
-            said: Any = path[1] if path else value == "true" if value in ("true", "false") else \
-                int(value) if value.isdigit() else value
-            field = name.replace(" ", "_")  # its account is a link: the one path in linked
-            calls.append(("override", {"field": "linked", "value": [said]} if field == "account" else
-                          {"field": field, "value": said}))
+            said: Any = value == "true" if value in ("true", "false") else int(value) if value.isdigit() else value
+            calls.append(("override", {"field": name.replace(" ", "_"), "value": said}))
         done = ScriptedRun(cited, calls=calls).run(agent, evidence, tools, budget)
         self.read.setdefault(agent.id, []).append(done.transcript[0].text)
         return done
@@ -183,11 +179,14 @@ def test_once_a_person_adds_the_documented_file_the_deal_agent_keeps_its_fields_
         tmp_path: Path) -> None:
     run = Keeping()
     workspace, _ = _workspace(tmp_path, documented(), run)
+    for id, _, _ in ARTICLES[2:]:  # each deal linked to its account, as its curator admits it
+        account = INITECH if "initech" in id else ACME
+        workspace.store.set_field(id, "linked", Property([account], YOU, "2026-10-01T00:00:00Z"))
     with workspace:
         assert workspace.run_once().failed == {}
         assert workspace.run_once().failed == {}  # the report reads what the deal agents set in the pass before
         deal = {k: p.value for k, p in workspace.store.article("opportunities/initech-platform").properties.items()}
-        assert deal["stage"] == "Negotiation/Review" and deal["linked"] == [INITECH] and deal["is_closed"] is False
+        assert deal["stage"] == "Negotiation/Review" and deal["is_closed"] is False
         assert workspace.store.article("opportunities/acme-corp-renewal").properties["close_date"].value == "2026-11-10"
         open_deals = workspace.query(YOU, "opportunities", {"is_closed": False}).items
         assert {a.identity.id for a in open_deals} >= {"opportunities/acme-corp-renewal", "opportunities/initech-platform"}

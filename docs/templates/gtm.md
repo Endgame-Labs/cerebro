@@ -116,14 +116,13 @@ Type its number or alias. To skip the question, or off a terminal, name the org:
 To read more than the defaults, write `sources/salesforce.yaml` yourself. This file reads what the template's agents need. Its `org:` is the alias you logged in with.
 
 ```yaml
-# Your CRM, read only: the accounts the curators admit, and their contacts, deals,
-# tasks, events and emails. Log in with the Salesforce CLI: sf org login web --alias work
+# Your CRM, read only: each account, contact, user and deal the curators admit, and the
+# tasks, events and emails logged on it. Log in with the Salesforce CLI: sf org login web --alias work
 kind: salesforce
 org: work
 window: { behind: 90d }
 opportunities:
   default_currency: USD   # a deal whose record names no currency; change it if the org's one currency is not USD
-  closed_since: 24m       # the closed deals the opportunities collection holds: whole months or years, or all
 objects:                  # what lands where; a file that names objects reads only those, so all three are here
   Account:
     into: accounts

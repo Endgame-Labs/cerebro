@@ -17,6 +17,7 @@ Cerebro is a framework. Sales (the `gtm` template) is one use of it. Nothing in 
 - **The test:** would this code path work unchanged for a research lab, a law practice or a codebase?
 - **Where a domain rule goes:** a template (`src/cerebro/templates/`), the connector that issues a source's own key, or the workspace's files. Never the engine.
 - **No collection is first or main.** Order comes from the data, such as what hangs off what, never from a name.
+- **No collection gates another.** What an article gets depends only on its own keys. Whether another collection holds an article never changes what a source lists for it, what binds to it, what it is shown, or whether it is built. A curator may make one collection wait on another, in its prompt, where a person can change it. The engine and the connectors never do.
 - **This covers comments, docstrings, examples and engine tests.** Use neutral names there (`things`, `parts`, a `parent:` header). Sales words belong in template tests.
 
 ### 2. A model decides. Code guards.

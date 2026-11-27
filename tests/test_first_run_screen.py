@@ -186,13 +186,15 @@ def test_off_a_terminal_a_later_round_is_named_by_its_own_number(tmp_path: Path)
 
     from cerebro.first_run import run
 
-    said: list[str] = []  # parts has nothing to weigh until things proposes, so it is first asked in round 2
+    said: list[str] = []  # parts is asked again in round 2, once things proposes the parent P1 links to
     script = Script({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]})
     with open_it(lay_out_workspace(tmp_path), script) as workspace:
         run(workspace, choose=lambda pile: None, say=said.append)
     assert [line for line in said if "parts collection" in line] == [
-        "stage     discover: reviewing sources for parts collection, round 2",
-        "proposed  1 article to parts collection in round 2, by agents/parts/curator.md"]
+        "stage     discover: reviewing sources for parts collection",
+        "proposed  1 article to parts collection, by agents/parts/curator.md",
+        "stage     discover: reviewing sources again for parts collection, round 2",
+        "proposed  nothing to parts collection in round 2, by agents/parts/curator.md"]
 
 
 def test_a_round_with_no_curator_to_ask_has_no_heading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
