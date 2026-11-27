@@ -174,8 +174,8 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
         tmp_path: Path, gateway: Gateway, road: str, status: int) -> None:
     """Breaks caught: a road that tries a refused call again, or goes on making calls after the refusal, a status of
     `STOP` that does not stop the pass, what a road says of the refusal holding the secret header's value that the
-    reply echoes, and a decision's or a record's refused key that does not send the person to the gateway's
-    settings."""
+    reply echoes, a decision's or a record's refused key that does not send the person to the gateway's settings,
+    and a stop line that does not send the person to them for a refused key, or to the provider for payment due."""
     call, _, path = ROADS[road]
     gateway.status = status
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
@@ -187,7 +187,8 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
         assert str(status) in said and VALUE[:8] not in said and VALUE[-8:] not in said, said
         assert status == 402 or road not in KEY_REFUSED or said.endswith(KEY_REFUSED[road]), said
         assert workspace.gateway.said.startswith(f"Model calls stopped: {HOST} refused a ")
-        assert f"HTTP {status} at 09:00 UTC" in workspace.gateway.said
+        todo = "payment is due at the provider" if status == 402 else "check providers in settings.yaml"
+        assert f"HTTP {status} at 09:00 UTC. Nothing more starts this pass: {todo}, and" in workspace.gateway.said
         with pytest.raises(CallRefused):
             workspace.ledger.check("compilation", NOW)
 

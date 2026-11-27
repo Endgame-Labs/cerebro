@@ -24,7 +24,7 @@ import httpx
 
 from .budget import CallRefused
 from .errors import CerebroError
-from .models import PROVIDERS
+from .models import PROVIDERS, advice_for
 from .secrets import SecretsError, check_name
 from .shown import shown
 
@@ -64,7 +64,7 @@ class Route:
     base_url: str = ""
     headers: Mapping[str, str | Secret | Mapping[str, str]] = field(default_factory=dict)
     secret: Callable[[str], str] = _no_secret
-    stop: Callable[[str], None] = lambda said: None
+    stop: Callable[[str, int], None] = lambda said, status: None
 
     def url(self, own: str) -> str:
         """`own`, a URL of the provider's, on this route's host, its path kept."""
@@ -97,7 +97,7 @@ class Route:
         """Whether `status` means stop on this route, a gateway's: the first such refusal stops the pass."""
         if not self.base_url or status not in STOP:
             return False
-        self.stop(f"{self.base_url} refused a {self.provider} {call} call with HTTP {status}")
+        self.stop(f"{self.base_url} refused a {self.provider} {call} call with HTTP {status}", status)
         return True
 
 
@@ -124,10 +124,10 @@ class Gateway:
     def route(self, provider: str) -> Route:
         return self.routes.get(provider) or Route(provider)
 
-    def _refuse(self, said: str) -> None:
+    def _refuse(self, said: str, status: int) -> None:
         at = self.clock().astimezone(self.zone).strftime("%H:%M %Z")
-        self.said = self.said or (f"Model calls stopped: {said} at {at}. Nothing more starts this pass: check "
-                                  "providers in settings.yaml, and the next pass tries again.")
+        self.said = self.said or (f"Model calls stopped: {said} at {at}. Nothing more starts this pass: "
+                                  f"{advice_for(status, None)}, and the next pass tries again.")
 
     def refused_at(self, url: str, status: int, call: str) -> None:
         """Stop the pass when the host of `url`, a route's, refused a call with a status in `STOP`, for a caller that
@@ -138,7 +138,7 @@ class Gateway:
 
         route = next((r for r in self.routes.values() if r.base_url and origin(r.base_url) == origin(url)), None)
         if status in STOP and route is not None:
-            self._refuse(f"{route.base_url} refused a {call} call with HTTP {status}")
+            self._refuse(f"{route.base_url} refused a {call} call with HTTP {status}", status)
 
     def check(self) -> None:
         """Refuse a call once a host refused one this pass, before it starts."""
