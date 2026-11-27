@@ -15,13 +15,13 @@ code: a fence, in a list item or a quote too, an indented block and a code span.
 block's goes on a line of its own after it, where what holds the block holds text, and a fence left open, which holds
 the rest of the text, gets none.
 
-`review` gives the writer each sentence under its floor, `min_grounding`, with its score and reason, while it can
-still revise. `marked` gives the text as it lands: `[^unsupported]` after each sentence under the floor, which the
-article defines once, as `UNSUPPORTED` reads. A passage scored once keeps its scores, by its heading and its text, as
-does one `seed` hands back with the scores it was given, so neither is asked about again; each reader marks them by
-its own floor. One with a sentence unscored, or an id not found, is asked about once a run, and again in a later run
-or once the run finds more of its ids. With no decision model, past the cap, or once a call fails, a sentence is
-unscored, and `scores` says why.
+`review` gives the writer each sentence under its floor, `min_grounding`, with its score and reason, and each number
+in brackets outside code that no line leads, while it can still revise. `marked` gives the text as it lands:
+`[^unsupported]` after each sentence under the floor, which the article defines once, as `UNSUPPORTED` reads. A
+passage scored once keeps its scores, by its heading and its text, as does one `seed` hands back with the scores it
+was given, so neither is asked about again; each reader marks them by its own floor. One with a sentence unscored,
+or an id not found, is asked about once a run, and again in a later run or once the run finds more of its ids. With
+no decision model, past the cap, or once a call fails, a sentence is unscored, and `scores` says why.
 """
 
 from __future__ import annotations
@@ -48,7 +48,8 @@ __all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
 SPAN_OR_MARK = re.compile(r"(`+).*?(?<!`)\1(?!`)|" + re.escape(MARK))
-NUMBERED = re.compile(r"(?<![\w\]\\!])\[(\d+)\](?![(\[])")  # a numbered reference, as [1], that no link or index holds
+NUMBERED = re.compile(r"(?<!\\)\[(\d+)\](?![(\[])")  # a number in brackets, as [1], that no link holds
+LEADS = re.compile(r"[ >]*(?:(?:[-+*]|\d+[.)])[ \t]+)?\[(\d+)\]")  # a line it defines: `[1]: url`, or `- [1] a.md`
 # The judge's levels, lowest first, each with its value and what it means.
 SCALE = ((0.0, "made up: no cited fact holds what it says"),
          (0.2, "it misrepresents what its facts say of a person, a date, a number or a direction"),
@@ -690,19 +691,23 @@ class Editor:
 
     def review(self, text: str) -> str:
         """What the writer is told of `text` while it can revise: each sentence under the floor, with its score and
-        why, and each numbered reference outside code that no line of the text leads, or "" for neither."""
+        why, and each number in brackets that no line leads, as `[1]: url` does, code read for neither, or "" when
+        there is nothing to tell."""
         weak = [v for v in self.judged(text) if v.weak]
-        plain, at, refs = unmarked(text), 0, []
+        plain, at, refs, led = unmarked(text), 0, [], []
         code = _code(plain)
         for line in plain.splitlines(keepends=True):
-            refs += [] if _in_code(code, at) else NUMBERED.findall(SPAN_OR_MARK.sub("", line))
+            if not _in_code(code, at):
+                refs += NUMBERED.findall(SPAN_OR_MARK.sub("", line))
+                led += [m.group(1)] if (m := LEADS.match(line)) else []
             at += len(line)
-        stray = [f"[{n}]" for n in dict.fromkeys(refs)  # one a line leads, as `[1]: url` or `- [1] a.md`, is defined
-                 if not re.search(rf"^[ >]*(?:(?:[-+*]|\d+[.)])[ \t]+)?\[{n}\]", plain, re.MULTILINE)]
+        stray = [f"[{n}]" for n in dict.fromkeys(refs) if n not in led]
         lines = [f'- "{v.sentence}": ' + (f"{v.score:.2f}, " if v.score is not None else "") + v.reason
                  for v in weak]
         told = [REVISE.format(floor=f"{self.floor:g}", sentences="\n".join(lines))] if weak else []
-        return "\n\n".join(told + ([CITE_BY_ID.format(refs=", ".join(stray))] if stray else []))
+        if stray:
+            told.insert(0, CITE_BY_ID.format(refs=", ".join(stray)) + ("" if weak else f" {AGAIN}"))
+        return "\n\n".join(told)
 
 
 REVISE = """\
@@ -715,5 +720,7 @@ For each, cite the evidence that backs it, say only what its facts say, or leave
 reading. Then hand in your whole text again. That hand-in lands as it is, and a sentence still under {floor} is \
 marked as not fully backed by the facts it cites."""
 CITE_BY_ID = """\
-These numbers in brackets cite nothing, since no evidence has them as its id: {refs}. Cite evidence by the id it \
-gives, copied exactly, as [^fact_01m7p4qga4pxpjkgvf], or take the number out. Then hand in your whole text again."""
+These numbers in brackets cite nothing: {refs}. A citation is the id the evidence gives, copied exactly, as \
+[^fact_01m7p4qga4pxpjkgvf]. Cite the evidence by its id, take the number out, or leave it as it stands when it is \
+not a citation, as in words you quote from a source."""
+AGAIN = "Then hand in your whole text again."
