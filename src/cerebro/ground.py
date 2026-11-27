@@ -15,7 +15,7 @@ goes on the line after it closes.
 still revise. `marked` gives the text as it lands: `[^unsupported]` after each sentence under the floor, which the
 article defines once, as `UNSUPPORTED` reads. A passage scored once keeps its scores, by its heading and its text, as
 does one `seed` hands back with the scores it was given, so neither is asked about again; each reader marks them by
-its own floor. With no decision model, past the cap, or once a call fails, a sentence is unscored, and `scores` says
+its own floor. One with a sentence unscored, or an id not found, is asked about again. With no decision model, past the cap, or once a call fails, a sentence is unscored, and `scores` says
 why.
 """
 
@@ -589,7 +589,7 @@ class Editor:
     """Scores what one run hands in against what it read, as `found` gives the judge each cited id it found, and
     marks each sentence under `floor`. `known` holds each passage scored, by its heading and its text, shared by every
     editor of one compile, so a passage another run handed in already is not scored again, and each editor marks it
-    by its own floor. Text before any heading is read under `heading`, as a part is under the heading the article
+    by its own floor. A passage with a sentence left unscored, or an id not found, is not held there. Text before any heading is read under `heading`, as a part is under the heading the article
     shows above it. `scores` keeps a line for each sentence of the text it marked, with its score and why, for the
     run's log, and `tally` how many it marked and how many it left unscored. With no decision model it says nothing
     of a sentence."""
@@ -627,7 +627,8 @@ class Editor:
                 if reason and (missing := [id for id in unit.cited if id not in found]):
                     reason += f"; it cites {', '.join(f'[^{id}]' for id in missing)}, not found in what was read"
                 kept.append(Verdict(unit.shown, score, reason))
-            self.known[key] = kept
+            if set(ids) <= set(found) and all(v.score is not None for v in kept):  # else it is asked about again
+                self.known[key] = kept
         return [Verdict(u.shown, v.score, v.reason, v.score is not None and v.score < self.floor and u.end is not None)
                 for u, v in zip(passage.units, kept)]
 

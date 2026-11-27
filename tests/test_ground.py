@@ -105,6 +105,16 @@ def test_the_first_hand_in_hears_of_each_sentence_under_the_floor_and_one_with_n
 
 def test_a_passage_scored_once_or_seeded_with_its_scores_is_not_asked_again_and_each_reader_marks_by_its_floor(
         ) -> None:
+    """Unless a sentence of it was left unscored, or cited an id not found: then it is asked about again."""
+    read, decider, known = {FACT.id}, FakeDecider(), {}
+    again = Editor(Judge(decider), lambda ids: {id: {"text": "Alder renews in March."} for id in ids if id in read},
+                   known=known)
+    again.judged("Alder renews in March [^f_9].")
+    read.add("f_9")  # told f_9 was not found, the writer reads it and hands in the same text
+    assert again.judged("Alder renews in March [^f_9].")[0].reason == "the facts say it, in any words, language or style"
+    editor(Spent(), known=known).judged(TEXT)
+    editor(decider, known=known).judged(TEXT)
+    assert len(decider.asked) == 2 + TEXT.count("\n## ") + 1  # what one editor left unscored, the next one scores
     decider, known = FakeDecider({"s2": 2}), {}  # the second sentence 0.5, a reframe
     text = "Alder renews in March [^f_1]. Alder signs for ten years [^f_1]."
     first = editor(decider, known=known)
