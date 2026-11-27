@@ -733,9 +733,9 @@ class Cerebro:
         try:
             with masking(self.mask_every()):  # what a source gives a compile is masked before a line that says it is cut
                 compiled = compile_article(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run,
-                                           root=self.root, functions=self.exposed.evidence,
+                                           root=self.root, functions=self.exposed.evidence, subagents=self.agents,
                                            agent_tools=self.exposed.agent_tools, workspace=self.handle, ledger=self.ledger,
-                                           model=self.model_of(agent), clock=self.clock, this=this, subagents=self.agents,
+                                           model=self.models["compilation"], clock=self.clock, this=this,
                                            scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
                                            zone=self.zone, starter=self.start_script, sources=self.connectors,
                                            descriptions=descriptions(self.settings), only=only, hold=hold,
