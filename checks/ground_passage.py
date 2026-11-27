@@ -1,13 +1,13 @@
-"""One long passage scored as grounding scores it, on the real decision model: eleven sentences where later ones
-build on facts cited only in earlier ones, such as the last, which rests on the first. Not part of the test suite,
-and run by hand.
+"""One long passage scored as grounding scores it, on the real decision model: twelve sentences where later ones
+build on facts cited only in earlier ones, such as the last, which rests on the first, and one leans on an earlier
+fact that only seems to back it. Not part of the test suite, and run by hand.
 
     TYPESAFE_API_KEY=... uv run python checks/ground_passage.py [--tries 4]
     FIREWORKS_API_KEY=... uv run python checks/ground_passage.py --provider fireworks --model rune
 
 Each try scores the passage once and prints each sentence's score, how many requests it took and what they spent.
-It fails, and exits 1, when a sentence labelled backed lands marked, or the one labelled not backed lands unmarked,
-in any try. It prints no key. With no key set it says so and stops.
+It fails, and exits 1, when a sentence labelled backed lands marked, one labelled not backed lands unmarked, or any
+sentence goes unscored, in any try. It prints no key. With no key set it says so and stops.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ PASSAGE = [  # each sentence, and whether the facts it cites, read with the sent
     ("There they are read by machine every hour [^f_m7].", False),
     ("A wind profiler is planned for next year [^f_m8].", True),
     ("The profiler needs mains power, which the mast's new home on the north ridge has [^f_m9].", True),
+    ("The profiler will stand on the north ridge, by the mast [^f_m4].", False),
     ("Orla Brenn, who leads the mast work, sends the regional office a monthly data summary [^f_m10].", True),
     ("Since March 3, the mast has logged its readings from the north ridge [^f_m5].", True)]
 
@@ -81,14 +82,14 @@ def main() -> int:
         verdicts = Editor(Judge(decider, "notes/mast", "A field station's notes.", "2026-03-20"), found).judged(text)
         usd += decider.usd
         print(f"try {n + 1}: {decider.requests} requests, ${decider.usd:.4f}")
-        for at, (verdict, (_, backed)) in enumerate(zip(verdicts, PASSAGE), 1):
-            miss = verdict.weak == backed
-            wrong += [f"try {n + 1}, sentence {at}"] if miss else []
+        for at, (verdict, (_, backed)) in enumerate(zip(verdicts, PASSAGE, strict=True), 1):
+            miss = "unscored" if verdict.score is None else "against its label" if verdict.weak == backed else ""
+            wrong += [f"try {n + 1}, sentence {at} came out {miss}"] if miss else []
             score = f"{verdict.score:.2f}" if verdict.score is not None else "unscored"
             print(f"  {'MISS ' if miss else ''}{at} {'backed' if backed else 'not backed'}: {score}, {verdict.reason}")
     print(f"spent ${usd:.4f} over {args.tries} tries")
     for line in wrong:
-        print(f"FAIL: {line} came out against its label")
+        print(f"FAIL: {line}")
     print("PASS" if not wrong else "FAIL")
     return 1 if wrong else 0
 
