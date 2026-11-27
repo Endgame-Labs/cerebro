@@ -39,8 +39,8 @@ PASSAGE = [  # each sentence, and whether the facts it cites, read with the sent
     ("The new site has mains power and a fibre line [^f_m4].", True),
     ("Since the move, the mast has logged a reading every ten minutes [^f_m5].", True),
     ("Its two rain gauges stayed behind at the old site [^f_m6].", True),
-    ("There they are read by hand once a day [^f_m7].", True),
-    ("A wind profiler comes next year, paid for by the regional office [^f_m8].", False),
+    ("There they are read by machine every hour [^f_m7].", False),
+    ("A wind profiler is planned for next year [^f_m8].", True),
     ("The profiler needs mains power, which the mast's new home on the north ridge has [^f_m9].", True),
     ("Orla Brenn, who leads the mast work, sends the regional office a monthly data summary [^f_m10].", True),
     ("Since March 3, the mast has logged its readings from the north ridge [^f_m5].", True)]
