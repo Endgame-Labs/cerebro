@@ -10,7 +10,7 @@ the person goes under the groups. When the pass ends, the region is drawn a last
 and a blank line, so it stays above the summary.
 
 A first run shows its discovery on live steps: `FirstRunScreen` reads the sources on a step whose
-sub-lines count what each source listed, gives each curator of a round a step of its own, queued, then reviewing,
+sub-lines count what each source listed, gives each curator a step of its own, queued, then reviewing,
 then resolved to what it proposed or why it failed, records the approval on a step, and draws the build in the
 region.
 
@@ -391,7 +391,7 @@ def _words(line: str, width: int, cut_long: bool = False) -> list[str]:
 # ---- a first run -----------------------------------------------------------------------------------------------------
 
 # The lines of a first run's `say` the screen shows in their own place, on a step or in the region: what the pass and
-# the rounds say as each step happens. Any other line is said as it comes.
+# discovery say as each step happens. Any other line is said as it comes.
 SHOWN_ON_STEPS = ("stage ", "listed ", "read ", "proposed ", "failed ", "stopped ", "ran ", "One more list: ")
 
 
@@ -437,10 +437,9 @@ class FirstRunScreen:
 
     The sources are read on the step `Reading sources`, with a sub-line for each source in name order that counts
     what it listed, 0 until it lists, which resolves to `Read 239 records from 3 sources`, or with the warning mark
-    and what failed. Each round of discovery stands under its heading, `Round 2 of up to 4`, since discovery may end
-    sooner. The first says `Running discovery for parts and things collections.` and gives each curator a step,
-    `Queued for things collection` until it starts. In every round a curator's step is `Reviewing sources for things
-    collection`, its spinner and its clock turning while it runs, resolved in the round's order to `Proposed 4
+    and what failed. Discovery says `Running discovery for parts and things collections.` and gives each curator a
+    step, `Queued for things collection` until it starts. A curator's step is then `Reviewing sources for things
+    collection`, its spinner and its clock turning while it runs, resolved in the curators' order to `Proposed 4
     articles to things collection`, `Nothing new for things collection`, `Budget reached for things collection`
     or, with the failed mark, why it did not finish. The list is arranged on `Reviewing 12 proposals`, which resolves to
     `Reviewed 12 proposals`. An approval is recorded on `Recording 6 approvals`, which resolves to what it admitted.
@@ -466,8 +465,8 @@ class FirstRunScreen:
         self.listed: dict[str, int] = {}  # what each source listed, as the read goes
         self.failed: list[str] = []  # each source whose check failed, with why
         self.read = 0  # the sources whose check ended done
-        self.queued: list[str] = []  # the curators a round asks, until each has its queued step
-        self.asking = 0  # how many the round asks
+        self.queued: list[str] = []  # the curators discovery asks, until each has its queued step
+        self.asking = 0  # how many discovery asks
         self.collections: dict[str, str] = {}  # each curator's collection, by its id
         self.steps: dict[str, Step] = {}  # each curator's step, while it is live
         self.ended = False  # a curator's step resolved: what follows stands apart from them
@@ -560,14 +559,12 @@ class FirstRunScreen:
             self.reading.lines(*(f"{shown(name, NAME_CAP)}: {_records(n)}" for name, n in sorted(self.listed.items())))
 
     def _discover(self, event: Any) -> None:
-        if event.kind == "round":
-            self.p.heading(f"Round {event.done} of up to {event.total}")
-        elif event.kind == "open":
+        if event.kind == "open":
             self.queued, self.asking = [], event.total
         elif event.kind == "queue":
             self.collections[event.key] = event.text
             self.queued.append(event.key)
-            if len(self.queued) == self.asking:  # the round's line, then a queued step for each curator
+            if len(self.queued) == self.asking:  # discovery's line, then a queued step for each curator
                 names = sorted(dict.fromkeys(shown(self.collections[id], NAME_CAP) for id in self.queued))
                 self.p.line(_wrap(f"Running discovery for {_and(names)} collection{'' if len(names) == 1 else 's'}.", 0,
                                   self.p.width()))
@@ -594,7 +591,7 @@ class FirstRunScreen:
                 step.fail(self._fit(shown(event.text, NAME_CAP) or "Did not finish"))
                 self.said.add(event.key)
                 self.lines_said.add(f"{event.text}: {event.why}")
-            else:  # names its collection: several curators and rounds resolve to it, and each must be told apart
+            else:  # names its collection: several curators resolve to it, and each must be told apart
                 of = self._of(event.key)
                 step.done(f"Nothing new for {of} collection" if of else "Nothing new")
             self.ended = True

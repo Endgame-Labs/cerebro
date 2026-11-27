@@ -7,7 +7,7 @@ evidence:
 heartbeat: [change, daily]
 budget:                    # sized for the longest held list a run is shown, 500 records, and the mandate's fetches
   tokens_per_run: 120000   # 30000 for the opening, the held list at about 50 tokens a record; 20000 for the last two weeks' calls; 30000 for the mandate's fetches; the rest for the replies
-  tool_calls: 120          # about 15 for the mandate's fetches, about 100 for an admit for each line and a call for each proposal and each archive, and 5 kept for deciding
+  tool_calls: 60           # about 15 for the mandate's fetches, about 40 for the admits, proposals and archives, and 5 kept for deciding
 ---
 
 # Instructions
@@ -61,7 +61,13 @@ fit, or one fits only by domain and the times are far apart, admit it as its
 own article.
 
 Admit each call with fields linked set to a list of the path of its account,
-and of each attendee your evidence shows as an article.
+and of each attendee your evidence shows as an article. When its account has
+no article and nobody has proposed one, propose the account beside the call:
+admit with collection set to accounts, by the account's record when a fetch
+returned it, else by the company's name and domain, under the call's group.
+
+What clearly matters first: a call that is recent or coming up, and a call
+of an account with an open deal that closes soon.
 
 Archive a call whose accounts are all gone from the working set.
 

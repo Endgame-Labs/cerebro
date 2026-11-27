@@ -3637,17 +3637,6 @@ def _accept_line(pile: Any) -> Any:
             return None
 
 
-def _see_first(under_init: bool) -> str:
-    """At a terminal, before a first run's discovery: what the person wants to see first, or "" for Enter. Under
-    init, a blank line parts it from the Ready block."""
-    try:
-        if under_init:
-            click.echo("", err=True)
-        return str(click.prompt("What do you want to see first?", default="", show_default=False, err=True)).strip()
-    except click.Abort:
-        return ""
-
-
 def _ask_more(spent: float, more: float) -> bool:
     """At a terminal, when discovery reached its cap: continue for about `more`, or review what it found."""
     for _ in range(3):
@@ -3696,7 +3685,7 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
                      screen: Any = None) -> None:
     """What a first run did: each refusal of a decision, then the pass that built what was approved with the late
     lists' lines among its warnings, or the line that says the list waits, which exits 2. `failures` are what failed
-    in its rounds: one that still fails, as a curator whose last run failed or what the pass failed again, counts
+    in it: one that still fails, as a curator whose last run failed or what the pass failed again, counts
     with the pass's own, and one that ran since without failing is a warning. It exits 1 as `_pass_fails` says, the
     articles its approval admitted counting as work that landed. On a terminal's `screen`, the run ends as
     `_print_end` ends it, with the pass that built."""
@@ -3770,9 +3759,6 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
 @click.option("--once", is_flag=True, help="Run one pass, then exit.")
 @click.option("--yes", is_flag=True, help="On a first run, approve what its list ticks, and none left out, and ask "
               "nothing: the rest wait for cerebro review.")
-@click.option("--see-first", "see_first", default="", metavar="TEXT",
-              help="On a first run, what you want to see first, in your own words: the curators and the list's order "
-                   "and ticks follow it. At a terminal the run asks for it.")
 @click.option("--plain", is_flag=True, help="Print plain lines with no redraw: a pass's progress as a line per step, "
               "and a first run's list as plain lines that ask to accept or quit.")
 @click.option("--port", type=int, default=None, help="The MCP port. The default is settings.yaml's port, or 4747.")
@@ -3788,8 +3774,7 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
                    "exactly. Repeat for more. The default is settings.yaml's serve: allowed_origins:, else none.")
 @_refusing
 def serve(root: Path | None, once: bool, port: int | None, host: str | None, allowed: tuple[str, ...],
-          origins: tuple[str, ...] = (), yes: bool = False, plain: bool = False, under_init: bool = False,
-          see_first: str = "") -> None:
+          origins: tuple[str, ...] = (), yes: bool = False, plain: bool = False, under_init: bool = False) -> None:
     """Run a pass, then serve the wiki over MCP on localhost. With --once, run one pass and exit.
 
     A new workspace's first pass proposes what the wiki should hold and writes nothing until you decide: with --once
@@ -3803,15 +3788,13 @@ def serve(root: Path | None, once: bool, port: int | None, host: str | None, all
         with open_workspace(root) as workspace, _masked_errors(workspace):
             if not under_init:  # init's run step goes on under the walk's summaries, which name the workspace
                 _echo(f"workspace {workspace.root}", cap=None)
-            _serve_once(workspace, yes, plain, under_init, see_first)
+            _serve_once(workspace, yes, plain, under_init)
         return
     early = _settings_first(root)
     taken = [_port_first(early, host, port, allowed, origins)] if early is not None else []
     try:
         with open_workspace(root) as workspace, _masked_errors(workspace):
             _echo(f"workspace {workspace.root}", cap=None)
-            if see_first:
-                _echo(SEE_FIRST_UNUSED)
             _serving(workspace, taken, host, port, allowed, origins)
     finally:
         for sockets in taken:
@@ -3855,21 +3838,12 @@ def _masked_errors(workspace: Cerebro) -> Iterator[None]:
         sys.stderr = kept
 
 
-SEE_FIRST_UNUSED = "note      --see-first applies to a workspace's first run only: it was not used"
-
-
-def _serve_once(workspace: Cerebro, yes: bool, plain: bool, under_init: bool = False, see_first: str = "") -> None:
-    """`serve --once`: the first run's list, or one pass. Before a first run's discovery begins, at a terminal, it
-    asks what the person wants to see first, which `see_first` gives off one. A pass that fails with an error says so
-    in one line, masked as every line is, and exits 1."""
+def _serve_once(workspace: Cerebro, yes: bool, plain: bool, under_init: bool = False) -> None:
+    """`serve --once`: the first run's list, or one pass. A pass that fails with an error says so in one line, masked
+    as every line is, and exits 1."""
     from . import first_run
 
     asking = _asking() and not plain and not yes
-    if see_first and not first_run.begins(workspace):
-        _echo(SEE_FIRST_UNUSED)
-    if (see_first or _asking() and not yes) and first_run.begins(workspace) and (
-            words := see_first or _see_first(under_init)):
-        first_run.see_first(workspace, words)
     screen = _first_run_screen(workspace, plain, region=under_init)
     if screen is not None and under_init:  # a blank line under the Ready block sets the run apart
         screen.p.line("")

@@ -153,63 +153,6 @@ def test_curators_run_side_by_side_each_with_its_clock_and_resolve_to_what_they_
         "    TimeoutError: no answer in 120s"]  # why, muted under its line
 
 
-@pytest.mark.usefixtures("every_curator_weighs")  # parts is asked in round 1, before a parent of its parts is proposed
-def test_a_later_rounds_curator_whose_evidence_did_not_move_ends_its_step_as_nothing_new(tmp_path: Path) -> None:
-    from test_first_run_structure import Script, by_record, lay_out_workspace, open_it
-
-    from cerebro.first_run import run
-
-    class Later(Script):  # parts proposes in round 2 alone
-        def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
-            if agent.id == "parts/curator" and agent.id in self.ran:
-                self.calls[agent.id] = [by_record("P1")]
-            return super().run(agent, evidence, tools, budget)
-
-    screen, out, _ = still()
-    with open_it(lay_out_workspace(tmp_path), Later({"things/curator": [by_record("T1")], "parts/curator": []})) as w:
-        run(w, choose=lambda pile: None, on=screen)
-    shown = screen_of(out.getvalue()).split("\n")
-    # each round in its order under its number, every step it started resolved: none left running, none gone with
-    # no line, and a round that adds nothing ends discovery before the most there may be
-    assert shown[shown.index("Round 1 of up to 4"):] == [
-        "Round 1 of up to 4", "Running discovery for parts and things collections.",
-        "✓ Nothing new for parts collection  0.0s", "✓ Proposed 1 article to things collection  0.0s",
-        "", "Round 2 of up to 4",
-        "✓ Proposed 1 article to parts collection  0.0s", "✓ Nothing new for things collection  0.0s",
-        "", "Round 3 of up to 4",
-        "✓ Nothing new for parts collection  0.0s", "✓ Nothing new for things collection  0.0s",
-        "✓ Reviewed 2 proposals  0.0s"]
-
-
-def test_off_a_terminal_a_later_round_is_named_by_its_own_number(tmp_path: Path) -> None:
-    from test_first_run_structure import Script, by_record, lay_out_workspace, open_it
-
-    from cerebro.first_run import run
-
-    said: list[str] = []  # parts is asked again in round 2, once things proposes the parent P1 links to
-    script = Script({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]})
-    with open_it(lay_out_workspace(tmp_path), script) as workspace:
-        run(workspace, choose=lambda pile: None, say=said.append)
-    assert [line for line in said if "parts collection" in line] == [
-        "stage     discover: reviewing sources for parts collection",
-        "proposed  1 article to parts collection, by agents/parts/curator.md",
-        "stage     discover: reviewing sources again for parts collection, round 2",
-        "proposed  nothing to parts collection in round 2, by agents/parts/curator.md"]
-
-
-def test_a_round_with_no_curator_to_ask_has_no_heading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from test_first_run_structure import Script, lay_out_workspace, open_it
-
-    from cerebro import Cerebro
-    from cerebro.first_run import run
-
-    monkeypatch.setattr(Cerebro, "weighs_nothing", lambda self, agent: True)
-    screen, out, _ = still()
-    with open_it(lay_out_workspace(tmp_path), Script({})) as workspace:
-        run(workspace, choose=lambda pile: None, on=screen)
-    assert "Round" not in screen_of(out.getvalue())
-
-
 def test_a_question_or_the_list_takes_the_screen_once_what_is_live_has_gone_after_a_blank_line() -> None:
     screen, out, _ = still()
     round_of(screen, ("parts/curator", "parts"), ("places/curator", "places"))
@@ -552,8 +495,8 @@ def test_a_fault_of_the_drawing_stops_the_live_display_once_and_never_reaches_th
 
 @pytest.mark.parametrize("under_init", [True, False])
 def test_inside_init_the_run_stands_apart_from_the_walks_summaries_by_a_blank_line(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], under_init: bool) -> None:
-    # inside init: a blank line under the Ready block, then the question; once it gives way, a blank line, then the run
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, under_init: bool) -> None:
+    # inside init: a blank line under the Ready block, then the run
     import click
     from click.testing import CliRunner
 
@@ -572,13 +515,9 @@ def test_inside_init_the_run_stands_apart_from_the_walks_summaries_by_a_blank_li
 
     monkeypatch.setattr(first_run, "run", reading)
     monkeypatch.setattr(cli, "_asking", lambda: True)
-    monkeypatch.setattr(first_run, "begins", lambda workspace: True)
-    monkeypatch.setattr(click, "prompt", lambda text, **kwargs: print(f"{text}: ", end="", file=sys.stderr) or "")
-    capsys.readouterr()
     with pytest.raises(click.exceptions.Exit):
         click.Context(cli.serve).invoke(cli.serve, root=root, once=True, port=None, host=None, allowed=(),
                                         under_init=under_init)
-    assert capsys.readouterr().err.startswith("\nWhat do you want to see first?" if under_init else "What")
     drawn = out.getvalue()
     assert drawn.startswith("\n\r\x1b[K") == under_init  # a blank line, then the step, only under init
     assert "Reading sources" in drawn

@@ -154,14 +154,17 @@ def test_a_curator_whose_model_call_fails_inside_the_loop_failed_and_the_next_ru
         assert _landed_alone(workspace) == [] and _articles(workspace) == []
 
 
-def test_a_failed_run_beside_a_list_that_goes_on_is_a_line_to_check_and_is_asked_late(tmp_path: Path) -> None:
+def test_a_failed_run_beside_a_list_that_goes_on_is_a_line_to_check_and_runs_again_on_a_later_pass(
+        tmp_path: Path) -> None:
     import uuid
 
     from cerebro.run import Run
 
     class OneDown(Script):
+        down = True
+
         def run(self, agent, evidence, tools, budget):  # type: ignore[no-untyped-def]
-            if agent.id == "parts/curator" and not self.calls.get("up"):
+            if agent.id == "parts/curator" and self.down:
                 self.ran.append(agent.id)
                 return Run(id=f"run_{uuid.uuid4().hex[:8]}", agent=agent.id, target=agent.target, status="failed",
                            note="ModelHTTPError: status_code: 503, the model is overloaded")
@@ -169,13 +172,22 @@ def test_a_failed_run_beside_a_list_that_goes_on_is_a_line_to_check_and_is_asked
 
     script = OneDown({"things/curator": [by_record("T1")]})
     said: list[str] = []
-    with open_it(lay_out_workspace(tmp_path), script) as workspace:
+    root = lay_out_workspace(tmp_path)
+    with open_it(root, script) as workspace:
         out = run(workspace, choose=Choices.starter, say=said.append)
         assert out is not None and not out.failed and out.result is not None
         assert any(line.startswith("Discovery for parts collection did not finish: ") and "ModelHTTPError" in line
                    for line in out.lines)
         assert any(line.startswith("failed    parts/curator") for line in said)
-        assert any(line.startswith("stage     late: asking agents/parts/curator.md again") for line in said)
+        assert script.ran.count("parts/curator") == 1  # not asked again inside the first run
+    script.down, script.calls["parts/curator"] = False, [("admit", {"name": "Alder Gear", "reason": "Listed twice."})]
+    later = Cerebro(root, agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW + timedelta(minutes=1),
+                    connectors=[FakeConnector("src", list(RECORDS))])
+    with later as workspace:
+        script.store = workspace.store
+        workspace.run_once()  # serve's next pass, once a failed run's wait is over
+        assert script.ran.count("parts/curator") == 2 and proposing(workspace.store, "parts/curator")
+        assert [p.target for p in proposals(workspace.store, "waiting")] == ["parts/alder-gear"]  # it waits
 
 
 # -- a curator held for room waits, and fails nothing

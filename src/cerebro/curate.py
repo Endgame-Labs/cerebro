@@ -230,6 +230,17 @@ def proposing(store: Store, agent: str) -> bool:
                    for p in proposals(store))
 
 
+def for_a_person(store: Store, waiting: Iterable[Proposal]) -> set[str]:
+    """The ids of the `waiting` proposals a person decides, whatever collection they are for, so no curator holds
+    them: each a list showed a person who left it, as the first run's session keeps it offered, and each admit a
+    curator in proposal mode filed, a row of its late list."""
+    session = store.state(FIRST_RUN_KEY)
+    offered = {str(id) for id in session.get("offered") or []} if isinstance(session, dict) else set()
+    admits = [p for p in waiting if p.kind == "article.admit" and p.by.kind == "agent"]
+    listing = {name for name in {p.by.name for p in admits} if name.endswith("/curator") and proposing(store, name)}
+    return offered | {p.id for p in admits if p.by.name in listing}
+
+
 def in_own_first_run(store: Store, agent: str) -> bool:
     """Whether the curator `agent`, by its id, is still in its own first run: no decided proposal
     ends it. One the curator filed ends it, whoever decided it, and so does an archive
@@ -1870,7 +1881,8 @@ WOKE = "What woke this run"
 def _woke(wake: str, accepted: Collection[str] = (), news: bool = True) -> list[Evidence]:
     """What woke a curator's run, the first lines of its opening: the accepted proposals that woke it, if any, then
     the schedule, the change or the hand that ran it, unless the accepted ones alone woke it."""
-    line = {"first": "What woke this run: the first run.",
+    line = {"first": "What woke this run: the first run. Propose what clearly matters, then stop: the runs after "
+                     "this one fill in the rest.",
             "hand": "What woke this run: a run you asked for with agents run.",
             "change": "What woke this run: a change wake: your evidence moved since your last run. Weigh by your "
                       "mandate what is new in it, each held record and proposal, and nothing more."}.get(
@@ -1880,21 +1892,6 @@ def _woke(wake: str, accepted: Collection[str] = (), news: bool = True) -> list[
     if not accepted or wake != "change" or news:
         lines.append(line)
     return [Evidence(WOKE, lines, spelled="woke")]
-
-
-SEE_FIRST = "What a caller wants to see first"
-
-
-def _see_first(store: Store) -> list[Evidence]:
-    """The person's words on what to see first in the first run under way, which every curator of it reads as
-    their instruction, or none."""
-    words = str((store.state(FIRST_RUN_KEY) or {}).get("see_first") or "")
-    if not words:
-        return []
-    return [Evidence(SEE_FIRST, [f"A caller wants to see this first: {words}",
-                                 ("Propose what it names and what belongs with it, and everything else you would "
-                                  "propose all the same: it ranks what you find, and leaves nothing out.")],
-                     spelled="see first", counted=[])]
 
 
 ON_YOURS = "Proposals waiting on your collection"
@@ -2049,8 +2046,8 @@ def _asks(p: Proposal) -> str:
 
 def _on_yours(store: Store, agent: Agent) -> list[Evidence]:
     """The waiting proposals other curators filed on this curator's collection that it may answer, oldest first, as
-    the first run's round under way pinned them."""
-    named = cited(proposals(store))
+    the first run's discovery pinned them when it began."""
+    named = cited(proposals(store)) | for_a_person(store, proposals(store, "waiting"))
     rows = [p for p in pinned_waiting(store) if may_answer(agent, p, named)]
     items = [Item(f"proposal:{p.id}", f"- {p.id} {_asks(p)}, by {p.by.name}: {_why(store, p)}, {p.at[:10]}")
              for p in rows[:MAX_WAITING]]
@@ -2388,7 +2385,7 @@ def run_curator(agent: Agent, *, lookup: Lookup, store: Store, agent_run: AgentR
     if not curation.proposing:  # a curator in its own first run is shown nothing waiting
         waiting = _waiting(*waiting_rows(store, agent))
     news = has_news(store, agent, evidence, but=ACCEPTED.lower())
-    evidence = (_woke(curation.wake, accepted, news) + (_see_first(store) if curation.proposing else []) + decided
+    evidence = (_woke(curation.wake, accepted, news) + decided
                 + _deferred(store, agent, curation.extraction, curation.sources) + evidence
                 + _left_by_name(store, agent) + waiting)
     done.run = run_agent(agent, evidence, tools, agent_run=agent_run, store=store, ledger=ledger, model=model,

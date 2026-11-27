@@ -48,6 +48,7 @@ from .curate import (
     Curated,
     cited,
     decided,
+    for_a_person,
     may_answer,
     nothing_to_weigh,
     run_curator,
@@ -1088,14 +1089,14 @@ class Cerebro:
     def awaiting(self) -> int:
         """How many waiting proposals a person is asked about, as `review` lists them."""
         waiting = proposals(self.store, "waiting")
-        named = cited(waiting)
-        curators = [a for a in self.agents if a.role == "curator"]
-        return sum(p.id not in named and not any(may_answer(a, p, named) for a in curators) for p in waiting)
+        named, held = cited(waiting), {p.id for p in self.with_curators(waiting)}
+        return sum(p.id not in named and p.id not in held for p in waiting)
 
-    def with_curators(self) -> list[Proposal]:
-        """The waiting proposals another curator filed that their collection's curator may answer."""
-        waiting = proposals(self.store, "waiting")
-        named = cited(waiting)
+    def with_curators(self, waiting: list[Proposal] | None = None) -> list[Proposal]:
+        """The waiting proposals, of `waiting` when given, that another curator filed and their collection's curator
+        may answer: never one a person decides, as `for_a_person` gives them."""
+        waiting = proposals(self.store, "waiting") if waiting is None else waiting
+        named = cited(waiting) | for_a_person(self.store, waiting)
         curators = [a for a in self.agents if a.role == "curator"]
         return [p for p in waiting if any(may_answer(a, p, named) for a in curators)]
 

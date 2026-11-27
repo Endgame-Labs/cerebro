@@ -64,10 +64,16 @@ the first. Admit at most 50 a run.
   marks so is not on your side: never leave them out as perhaps on it.
 
 Admit each person with fields linked set to a list of the path of the account
-they are placed at. When a row with articles under bound gives an account
-other than the one that person links to, they have moved: link the article
-to the account article that holds the row's account, and take the old one
-off with unlinked.
+they are placed at. When that account has no article and nobody has proposed
+one, propose it beside the person: admit with collection set to accounts, by
+the account's record when a fetch returned it, else by the company's name and
+domain, under the person's group. When a row with articles under bound gives
+an account other than the one that person links to, they have moved: link the
+article to the account article that holds the row's account, and take the old
+one off with unlinked.
+
+What clearly matters first: a person with a role on an open deal, and a
+person on a call coming up.
 
 Admit people only: a company is no person. Each reason names the one account
 this person belongs to, and their role there.

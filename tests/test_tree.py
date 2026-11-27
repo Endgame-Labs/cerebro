@@ -124,48 +124,6 @@ def test_with_no_model_to_arrange_it_the_list_is_the_plain_tree_in_the_order_fil
     assert [item["name"] for item in asked[0]["items"]] == ["Alder Works", "Birch Yard"]  # every proposal, once
 
 
-def test_the_persons_words_reach_every_curator_of_the_first_run_and_the_call_that_arranges_its_list(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from test_first_run import ADMITS, Script, lay_out_workspace, open_it
-
-    from cerebro.agent import Agent
-    from cerebro.evidence import Evidence
-    from cerebro.fakes import every_item_ticked
-    from cerebro.first_run import Choices, run, see_first
-
-    asked: list[dict[str, Any]] = []
-
-    def ask(self: Cerebro, prompt: str, request: str, job: str = "extraction") -> str:
-        asked.append(json.loads(request))
-        return every_item_ticked(request)
-
-    monkeypatch.setattr(Cerebro, "ask_model", ask)
-    heard: list[str] = []
-
-    class Hearing(Script):
-        def run(self, agent: Agent, evidence: list[Evidence], tools: list[Any], budget: Any) -> Any:
-            heard.extend(line for entry in evidence for line in entry.lines if "wants to see this first" in line)
-            return super().run(agent, evidence, tools, budget)
-
-    with open_it(lay_out_workspace(tmp_path), Hearing({"things/curator": list(ADMITS)})) as workspace:
-        see_first(workspace, "Show me  everything about Birch Yard")
-        run(workspace, choose=Choices.starter)
-    assert heard == ["A caller wants to see this first: Show me everything about Birch Yard"]
-    assert asked[0]["instruction"] == "Show me everything about Birch Yard"
-
-
-def test_the_persons_words_are_kept_with_a_stored_secret_masked(tmp_path: Path) -> None:
-    from test_first_run import NOW, RECORDS, Script, lay_out_workspace
-
-    from cerebro.fakes import FakeConnector, FakeExtraction, FakeSecrets
-    from cerebro.first_run import KEY, see_first
-
-    with Cerebro(lay_out_workspace(tmp_path), agent_run=Script(), extraction=FakeExtraction(), clock=lambda: NOW,
-                 connectors=[FakeConnector("crm", list(RECORDS))], secrets=FakeSecrets({"gong": "gong-secret-77"})) as workspace:
-        see_first(workspace, "Alder first, key gong-secret-77")
-        assert "gong-secret-77" not in json.dumps(workspace.store.state(KEY))
-
-
 def test_a_row_ticked_on_its_own_stays_alone_and_unticking_a_row_unticks_what_sits_under_it_however_deep() -> None:
     from cerebro.checklist import Model
     from cerebro.first_run_list import checklist

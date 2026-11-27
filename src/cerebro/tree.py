@@ -2,8 +2,7 @@
 
 The rows are the proposals that wait, and the candidates a curator left out. Proposals that share a path are one
 item. One call to the writing model, on the bundled `first-list` prompt, puts together the items of one collection
-that are the same thing, orders the groups and says which to tick, with the person's own words, when they gave
-any, as their instruction. Code checks each group: none across collections, none that repeats an item, and none
+that are the same thing, orders the groups and says which to tick. Code checks each group: none across collections, none that repeats an item, and none
 whose members hold different values of one identity key. A group that fails stays separate items where it stood, no
 two of them ticked, and one line says so when its items may be other things. An id no item has is dropped, and an
 item the order leaves out comes last, unticked. A reply that is not the JSON asked for or orders no item, or no
@@ -195,16 +194,16 @@ def checked(text: str, found: list[list[Row]]) -> tuple[list[Group] | None, str]
                     KEPT_MORE.format(a=names[0], n=len(names) - 1))
 
 
-def arrange(workspace: Cerebro, rows: list[Row], line: str = "",
+def arrange(workspace: Cerebro, rows: list[Row],
             asking: Callable[[], None] = lambda: None) -> tuple[list[Group], str]:
-    """The groups of `rows` as the model arranges them, with the person's `line`, or the plain ones and why; `asking`
+    """The groups of `rows` as the model arranges them, or the plain ones and why; `asking`
     runs just before the model is asked. Only proposals that make an article go to the model: any other row keeps
     its place after them, a bind ticked as what it binds is."""
     found = items([row for row in rows if row.kind == "article.admit" and row.path and not row.left_out])
     rest = plain([row for row in rows if not (row.kind == "article.admit" and row.path) and not row.left_out])
     if not found:
         return rest, ""
-    request = json.dumps({"instruction": line, "items": _data(found)}, ensure_ascii=False)
+    request = json.dumps({"items": _data(found)}, ensure_ascii=False)
     asking()
     try:
         groups, why = checked(workspace.ask_model(PROMPT, request, job="compilation"), found)

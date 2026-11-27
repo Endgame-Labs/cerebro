@@ -7,7 +7,7 @@ evidence:
 heartbeat: [change, daily]
 budget:                    # sized for the longest held list a run is shown, 500 records, and the mandate's fetches
   tokens_per_run: 100000   # 30000 for the opening, the held list at about 50 tokens a record; 30000 for the mandate's fetches; the rest for the replies
-  tool_calls: 120          # about 15 for the mandate's fetches, about 100 for an admit for each line and a call for each proposal and each archive, and 5 kept for deciding
+  tool_calls: 150          # about 15 for the mandate's own fetches and 3 for each account of the working set, about 30 accounts; about 40 for the admits, proposals and archives, and 5 kept for deciding
 ---
 
 # Instructions
@@ -34,7 +34,13 @@ whose salesforce_id is the row's account id, the deal has moved: link it to
 that account, and take the old one off with unlinked. Admit any other row by
 its keys as given, with fields: its stage, amount, close_date, owner and
 is_closed as the row gives them, and linked set to a list of its account's
-path.
+path. When its account has no article and nobody has proposed one,
+propose the account beside the deal: admit with collection set to accounts,
+by the account's record when a fetch returned it, else by its name and domain
+as the row gives them, under the deal's group.
+
+What clearly matters first: a deal that closes soon, and a deal you or your
+reports own.
 
 - deals you own: ask your CRM for `opportunities_i_own`. Reason: an open
   deal you own.

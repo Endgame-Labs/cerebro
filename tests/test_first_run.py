@@ -136,7 +136,7 @@ def carry_out(store: Any, collection: str) -> list[tuple[str, dict[str, Any]]]:
 
 @pytest.fixture
 def every_curator_weighs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every curator is asked in every round, one that has nothing to weigh yet too, as a source that answers
+    """Every curator is asked on the first run, one that has nothing to weigh yet too, as a source that answers
     questions makes it, for a test that is not about who has something to weigh."""
     monkeypatch.setattr(FakeConnector, "questions", {"lookup": "a stand-in question"})
 
@@ -322,15 +322,6 @@ def test_yes_with_nothing_ticked_says_it_approved_nothing_and_advises_no_yes_aga
     assert not any(line.startswith("waiting") and "--yes" in line for line in out), done.output
 
 
-def test_see_first_past_the_first_run_says_in_one_line_it_was_not_used(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root, script = lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})
-    monkeypatch.setattr(cli, "open_workspace", lambda root: open_it(root, script))
-    CliRunner().invoke(main, ["serve", "--once", "--yes", "--workspace", str(root)])
-    again = CliRunner().invoke(main, ["serve", "--once", "--see-first", "Birch first", "--workspace", str(root)])
-    assert "note      --see-first applies to a workspace's first run only: it was not used" in again.output.splitlines()
-
-
 def test_off_a_terminal_nothing_is_approved_and_the_pass_says_how_many_wait_and_exits_2(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root, script = lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})
@@ -497,7 +488,7 @@ def test_the_cap_stops_discovery_and_a_run_after_it_stops_again_with_no_model_ca
         out = run(workspace, choose=None, say=say)
         assert out is not None and out.waits and script.ran == ["things/curator"]
         assert "stopped   topics/curator: budget reached for topics collection" in told
-        stop = ("Discovery stopped at its budget after 1 round; topics did not finish: raise budget.first_run_usd in "
+        stop = ("Discovery stopped at its budget; topics did not finish: raise budget.first_run_usd in "
                 "settings.yaml, or narrow what your source files under sources/ read, and run again.")
         assert out.lines[0] == stop and out.lines[1].startswith("the first run's list: 2 admit proposals")
         pile = LocalApproval(workspace).pile()
@@ -550,6 +541,24 @@ def test_a_late_curator_finds_nothing_before_the_first_facts_then_its_list_waits
         assert [listed.agent for listed in out.late.lists] == ["topics/curator"]
         assert out.lines == []  # the screen took the late list too
         assert "topics/renewals" in articles(workspace)  # approved, and the one more pass ran
+
+
+def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: Path) -> None:
+    class Moves(Script):  # a record about Alder Works comes in while the late curator runs
+        crm: Any = None
+
+        def run(self, agent: Agent, evidence: list[Evidence], tools: list[Any], budget: Budget) -> Run:
+            if agent.id == "topics/curator" and self.calls.get(agent.id):
+                self.crm.add(account("001D", "Alder Works", "alder.example", at="2026-11-18T08:00:00Z"))
+            return super().run(agent, evidence, tools, budget)
+
+    script = Moves({"things/curator": list(ADMITS), "topics/curator": list(TOPIC)})
+    with open_it(lay_out_workspace(tmp_path, knowledge=True), script) as workspace:
+        script.crm = workspace.connectors["crm"]
+        out = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
+        assert out is not None and out.late is not None and "topics/renewals" in articles(workspace)
+        runs = [row.data["target"] for row in workspace.store.rows("agent-runs") if row.data["agent"] == "things/article"]
+        assert runs.count("things/alder-works") == 1  # built once: its new record waits for a later pass
 
 
 def test_off_a_terminal_a_late_list_waits_with_the_line_that_names_the_review_command(tmp_path: Path) -> None:
@@ -686,33 +695,17 @@ def aimed_first_run(tmp_path: Path) -> tuple[Cerebro, Any]:
 
 
 @pytest.mark.usefixtures("every_curator_weighs")  # the visits curator holds no record of its own
-def test_an_admit_into_another_collection_is_counted_under_the_first_runs_list_not_listed(tmp_path: Path) -> None:
+def test_an_admit_into_another_collection_is_a_row_of_that_collections_list_and_is_built_once_ticked(
+        tmp_path: Path) -> None:
+    from cerebro.curate import working_set
+
     workspace, out = aimed_first_run(tmp_path)
     with workspace:
-        pile = LocalApproval(workspace).pile()
-        built = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
-    assert "Hooli" not in [row.name for row in pile.rows()]
-    assert out is not None and "1 proposal waits with its collection's curator" in out.lines[-2]
-    assert built is not None and "1 proposal waits with its collection's curator" in built.lines[-1]
-
-
-@pytest.mark.usefixtures("every_curator_weighs")  # the visits curator holds no record of its own
-@pytest.mark.parametrize("approve", [True, False])
-def test_a_first_run_list_declined_whole_while_a_curator_holds_a_proposal_ends_and_counts_it(
-        tmp_path: Path, approve: bool) -> None:
-    from cerebro.records import Decision
-
-    workspace, _ = aimed_first_run(tmp_path)
-    with workspace:
-        own = [p.id for p in proposals(workspace.store, "waiting") if p.by.name == "things/curator"]
-        workspace.decide(YOU, reject=[Decision(id, "not ours") for id in own])
-        if approve:  # approving what is left, nothing, declines the list
-            LocalApproval(workspace).apply(Choices())
-            assert workspace.store.state(KEY)["status"] == "declined"
-        else:
-            out = run(workspace, choose=None)
-            assert out is not None and out.lines[-2].startswith("Nothing approved")
-            assert "1 proposal waits with its collection's curator" in out.lines[-1]
+        things = next(listed for listed in LocalApproval(workspace).pile().lists if listed.collection == "things")
+        assert ("Hooli", "visits/curator") in [(row.name, row.agent) for row in things.proposed()]
+        assert out is not None and not any("waits with its collection's curator" in line for line in out.lines)
+        run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
+        assert "things/hooli" in [identity.id for identity in working_set(workspace.store)]
 
 
 def test_the_path_of_a_proposal_folded_into_an_accepted_row_under_another_name_leads_to_the_article_it_made(

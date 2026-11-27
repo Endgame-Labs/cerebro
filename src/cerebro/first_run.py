@@ -6,13 +6,13 @@ keeps holds an article, until its list is decided. Its session is kept in the st
 its status, the curators' runs whose spend counts toward its cap, each curator's state, and where a stop left it. A
 library call (`Cerebro.run_once`) never begins one: `serve --once` and the loop behind `serve` run it.
 
-- **Discover.** Every source is listed and every record held, none extracted. The curators then run in rounds, side
+- **Discover.** Every source is listed and every record held, none extracted. The curators then run once each, side
   by side, in proposal mode (`curate.proposing`): each admit waits for a person whatever its authority,
-  and each candidate a curator leaves out is a row of the `left-out` log. A round reads the proposals as they stood
-  when it began, the session's `pinned` ids, where a pending admit stands in for its article (`held.stand_ins`): so
-  every curator proposes in the first round, and weighs what the others proposed in the next. What each did lands in
-  id order, whichever finished first. A later round asks only a curator whose evidence moved, and the rounds end at
-  one that adds no proposal, after `MAX_ROUNDS`, or at the cap.
+  and each candidate a curator leaves out is a row of the `left-out` log. Each is told to propose what clearly
+  matters and stop, and its held list holds the records of the last `evidence.RECENT_DAYS` days. Each reads the
+  proposals as they stood when discovery began, the session's `pinned` ids, where a pending admit stands in for its
+  article (`held.stand_ins`), so none weighs what another proposes beside it. What each did lands in id order,
+  whichever finished first. A curator that fails is shown on the list, and runs again on a later pass of `serve`.
 - **The list.** The waiting admits are the list, with the candidates each curator left out. Shown to a person, it
   is a tree one model call arranges (`tree.arrange`): what is one thing is one line, the groups are ordered and
   ticked, and each sits under what its `linked` names. A group the checks refuse stays separate items. With no
@@ -26,7 +26,7 @@ library call (`Cerebro.run_once`) never begins one: `serve --once` and the loop 
   a pass with no curator reads the sources for the articles and compiles them. A curator still in its own first run after that, as one that reads facts and found
   none before they existed, runs once more in proposal mode: its list is late, and waits alone.
 - **The cap.** Discovery spends at most `budget.first_run_usd`, $10 when the key is left out, counted from the ledger
-  by the curators' run ids, and every model call of a round is metered against it: once it is reached the runs under
+  by the curators' run ids, and every model call of discovery is metered against it: once it is reached the runs under
   way stop at their next call. A run's spend lands whole when it ends, so the cap is checked before each curator
   starts. At a terminal the run asks whether to go on for about what the curators left would spend; otherwise it
   stops with the line that says what to raise. The late round counts toward it too, and a curator
@@ -62,6 +62,7 @@ from .curate import (
     yes_left,
 )
 from .errors import CerebroError
+from .evidence import IN_FIRST_BUILD, RECENT_DAYS, recent_since
 from .held import Held, _name, held_for, own_held, own_names, own_side, passed_first_run, same_name
 from .identity import redirects, working
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
@@ -79,7 +80,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "KEY",
-    "MAX_ROUNDS",
     "Applied",
     "Approval",
     "Choices",
@@ -103,9 +103,8 @@ __all__ = [
 
 KEY = FIRST_RUN_KEY
 NOT_WEIGHED = "not weighed"  # the reason of a held record its curator neither proposed nor left out
-SEE_FIRST = "see_first"  # the session's key for the person's words on what to see first
+OLDER = f"not weighed yet: older than {RECENT_DAYS} days"  # the reason of one the first run's held list did not show
 DECLINED = "declined"  # a session whose list a person declined whole: the next run begins a new one
-MAX_ROUNDS = 4  # rounds of discovery at most, so a chain of proposals that keeps waking curators still ends
 CLOSED_OVER = 10  # a group of more rows than this starts closed, and the plain list shows its first rows
 SHOWN_ROWS = 5  # rows the plain list shows of a closed group
 OWN_LISTED = 50  # own-side held records no curator weighed that one collection lists; the rest are counted
@@ -125,7 +124,7 @@ class FirstRunError(CerebroError):
     """A first run's list cannot be decided as asked."""
 
 
-# The screen a first run hands its events to, as `run` was given it: the sources read, each round's curators, the
+# The screen a first run hands its events to, as `run` was given it: the sources read, discovery's curators, the
 # approval and the build, each shown on a live step or in its progress region. None hands
 # nothing: every other caller of the steps below shows only the lines `say` is given.
 _ON: ContextVar[Callable[[Progress], None] | None] = ContextVar("first_run_on", default=None)
@@ -220,11 +219,11 @@ class Choices:
 
 
 def arranged(workspace: Cerebro, pile: Pile) -> Pile:
-    """The pile with its tree as the model arranges it, with the person's words for this first run when they gave
-    any, or the plain tree and why. A row left on an earlier list starts unticked."""
-    words, n = str((_state(workspace) or {}).get(SEE_FIRST) or ""), pile.waiting()
-    groups, pile.note = arrange(workspace, [row for row in pile.rows() if not row.left_out], words,
-                                lambda: _emit(workspace, "arrange", "start", total=n))
+    """The pile with its tree as the model arranges it, or the plain tree and why. A row left on an earlier list
+    starts unticked."""
+    n = pile.waiting()
+    groups, pile.note = arrange(workspace, [row for row in pile.rows() if not row.left_out],
+                                asking=lambda: _emit(workspace, "arrange", "start", total=n))
     _emit(workspace, "arrange", "end", total=n)
     for g in groups:
         g.tick = g.tick and not any(row.offered for row in g.rows)
@@ -235,22 +234,6 @@ def arranged(workspace: Cerebro, pile: Pile) -> Pile:
 def _articles(workspace: Cerebro) -> dict[str, str]:
     """The articles of the working set, id to title, that a group may sit under."""
     return {i.id: i.title or i.id for i in working_set(workspace.store)}
-
-
-def see_first(workspace: Cerebro, words: str) -> None:
-    """Keep the person's words on what to see first for the first run about to begin: every curator of it reads
-    them, and so does the call that arranges its list, as the person's instruction."""
-    session = _begin(workspace)
-    if session is not None and words.strip():
-        session[SEE_FIRST] = workspace.mask_every()(" ".join(words.split()))
-        _save(workspace, session)
-
-
-def begins(workspace: Cerebro) -> bool:
-    """Whether the next run begins a first run's discovery: none is under way, and the workspace is in its first
-    run or its last list was declined whole."""
-    session = _state(workspace)
-    return session.get("status") == DECLINED if session is not None else in_first_run(workspace)
 
 
 @dataclass(frozen=True)
@@ -357,9 +340,9 @@ class LocalApproval(Approval):
         return pile
 
     def _waiting(self, session: dict[str, Any]) -> list[dict[str, Any]]:
-        """The admits that are rows of this list, in the order the rounds kept them, the same whoever finished first,
-        then as they were filed: an admit a collection's own curator filed, and on a late list one by a curator it
-        was asked of."""
+        """The admits that are rows of this list, in the order discovery kept them, the same whoever finished first,
+        then as they were filed: every admit into a collection a curator keeps, whoever filed it, and on a late list
+        one by a curator it was asked of."""
         order = {id: n for n, id in enumerate(session.get("order") or [])}
         # the query gives the newest first; a stable sort keeps the filing order among the rest
         filed = self._query({"from": "proposals", "status": "waiting", "kind": "article.admit"})[::-1]
@@ -369,7 +352,7 @@ class LocalApproval(Approval):
         for p in sorted(filed, key=lambda p: order.get(str(p.get("id")), len(order))):
             by = str((p.get("by") or {}).get("name") or "")
             agent = keeper.get(_collection(p))
-            if agent is None or by != agent.id or self.late and by not in asked:
+            if agent is None or self.late and by not in asked:
                 continue
             out.append(p)
         return out
@@ -411,7 +394,7 @@ class LocalApproval(Approval):
     def _unweighed(self, agent: Agent, rows: list[Row], declined: list[Admit]) -> list[Row]:
         """The records held for the curator's collection that it neither proposed nor left out, each a left-out row,
         so no record it holds is on no list: under the reason an earlier run of the curator gave
-        it, else `not weighed`. A row or a declined admit that names a record speaks for that record; one by name alone
+        it, else `not weighed`, or `OLDER` when the first run's held list did not show it. A row or a declined admit that names a record speaks for that record; one by name alone
         speaks for one held record of that name: the one a value of its keys names, or an address at a domain it gives,
         and none when its keys name none, or with no keys the first nothing spoke for yet. Every held record is a row of its own, none folded or
         hidden, since the engine cannot tell one thing's records from another's. A row is named by its record's name,
@@ -452,9 +435,11 @@ class LocalApproval(Approval):
         for d in theirs:
             if not d.record:
                 pick(d.name, d.keys)
+        began = str((_state(self.workspace) or {}).get("at") or "")
+        since = recent_since(datetime.fromisoformat(began)) if began else ""
         return [Row(f"not-weighed:{h.source}:{h.id}", agent.id, agent.target,
                     h.name or (base := h.id.rpartition("/")[2]).rpartition(".")[0] or base,
-                    prior.get((h.source, h.id), NOT_WEIGHED), True, dict(h.keys),
+                    prior.get((h.source, h.id), OLDER if h.at and h.at[:10] < since else NOT_WEIGHED), True, dict(h.keys),
                     record={"source": h.source, "id": h.id}, unweighed=(h.source, h.id) not in prior)
                 for h in held if (h.source, h.id) not in taken]
 
@@ -813,7 +798,7 @@ def _begin(workspace: Cerebro) -> dict[str, Any] | None:
         return session if session.get("status") != "done" else None
     if session is None and not in_first_run(workspace):
         return None
-    session = {"status": "discovering", "at": stamp(workspace.clock()), "read": False, "rounds": 0, "todo": None,
+    session = {"status": "discovering", "at": stamp(workspace.clock()), "read": False, "todo": None,
                "runs": [], "lists": {}, "unfinished": [], "raised": 0.0, "stopped": "", "cut": []}
     _save(workspace, session)
     return session
@@ -827,10 +812,8 @@ def _spent(workspace: Cerebro, session: dict[str, Any]) -> float:
     return spent_by_runs(workspace.store, list(session.get("runs") or []))
 
 
-def _stop_line(session: dict[str, Any], collections: list[str]) -> str:
-    rounds = int(session.get("rounds") or 0)
-    after = f"after {_n(max(rounds, 1), 'round')}"
-    return (f"Discovery stopped at its budget {after}; {_and(collections)} did not finish: raise budget.first_run_usd in "
+def _stop_line(collections: list[str]) -> str:
+    return (f"Discovery stopped at its budget; {_and(collections)} did not finish: raise budget.first_run_usd in "
             "settings.yaml, or narrow what your source files under sources/ read, and run again.")
 
 
@@ -948,46 +931,30 @@ def _discover(workspace: Cerebro, session: dict[str, Any], tell: Callable[[str],
         tell(f"read      {_n(count, 'record')} from {_n(len(result.listed), 'source')}, held until you decide")
         session["read"] = True
         _save(workspace, session)
-    # Sorted by id, never by what one curator reads of another: every curator of a round reads the queue as it stood
-    # when the round began, so none weighs what another proposed in the same round, and they are asked side by side,
-    # as many at once as compile's concurrency allows; what each did is said and
-    # kept in this order, each once those before it are done, whichever finished first.
+    # Sorted by id, never by what one curator reads of another: every curator reads the queue as it stood when
+    # discovery began, so none weighs what another proposed beside it, and they are asked side by side, as many at
+    # once as compile's concurrency allows; what each did is said and kept in this order, each once those before it
+    # are done, whichever finished first.
     curators = {a.id: a for a in sorted(_curators(workspace), key=lambda a: a.id)}
     width = max(1, int((workspace.settings.get("compile") or {}).get("concurrency", 8)))
-    while session["rounds"] < MAX_ROUNDS:
-        todo = session.get("todo")
-        if todo is None:
-            todo = list(curators)
-            session["todo"] = todo
-            session["filed"] = len(proposals(workspace.store))  # every row, so one closed in the round still counts
-            session["pinned"] = sorted(p.id for p in proposals(workspace.store, "waiting"))
-            _save(workspace, session)  # the pin is read from the store by each curator's run
-        changed_only = session["rounds"] > 0
-        # a curator with nothing to weigh is not asked: no model call and no
-        # line, and its collection stays in its first run, so a later round or run asks it once it has something
-        unasked = [id for id in todo if id in curators and workspace.weighs_nothing(curators[id])]
-        for id in unasked:
-            session.setdefault("lists", {}).setdefault(id, {"state": "empty", "note": ""})
-        todo[:] = [id for id in todo if id in curators and id not in unasked]
-        if todo:  # the round's number over its steps, of the most there may be
-            _emit(workspace, "discover", "round", done=session["rounds"] + 1, total=MAX_ROUNDS)
-        if not changed_only:  # the round's line and a queued step for each curator it asks
-            _emit(workspace, "discover", "open", total=len(todo))
-            for id in todo:
-                _emit(workspace, "discover", "queue", id, text=curators[id].target)
-        with ThreadPoolExecutor(max_workers=width) as pool:
-            if _round(workspace, session, todo, curators, changed_only, width, pool, tell, ask_more):
-                return
-        if todo:  # the cap ended a later round
-            session.update(rounds=session["rounds"] + 1, todo=None)
-            break
-        session["rounds"] += 1
-        session["todo"] = None
-        added = len(proposals(workspace.store)) - int(session.get("filed") or 0)
-        _save(workspace, session)
-        if added <= 0:  # a round that adds no proposal is a standstill
-            break
-    session.update(status="waiting", pinned=None)
+    todo = session.get("todo")
+    if todo is None:
+        todo = session["todo"] = list(curators)
+        session["pinned"] = sorted(p.id for p in proposals(workspace.store, "waiting"))
+        _save(workspace, session)  # the pin is read from the store by each curator's run
+    # a curator with nothing to weigh is not asked: no model call and no line, and its collection stays in its
+    # first run, so a later run asks it once it has something
+    unasked = [id for id in todo if id in curators and workspace.weighs_nothing(curators[id])]
+    for id in unasked:
+        session.setdefault("lists", {}).setdefault(id, {"state": "empty", "note": ""})
+    todo[:] = [id for id in todo if id in curators and id not in unasked]
+    _emit(workspace, "discover", "open", total=len(todo))  # discovery's line and a queued step for each curator
+    for id in todo:
+        _emit(workspace, "discover", "queue", id, text=curators[id].target)
+    with ThreadPoolExecutor(max_workers=width) as pool:
+        if _round(workspace, session, todo, curators, width, pool, tell, ask_more):
+            return
+    session.update(status="waiting", todo=None, pinned=None)
     _save(workspace, session)
 
 
@@ -997,7 +964,7 @@ class RoundStopped(FirstRunError):
     finish are asked again on the next run."""
 
 
-def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curators: dict[str, Agent], changed_only: bool,
+def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curators: dict[str, Agent],
            width: int, pool: ThreadPoolExecutor, tell: Callable[[str], None],
            ask_more: Callable[[float, float], bool] | None) -> bool:
     """Ask the curators of `todo` side by side: each starts in the round's order once a slot is free, and lands, said
@@ -1041,16 +1008,13 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
                 if landed == len(order):
                     break
                 running = [f for f in started if not f.done()]
-                # a later round starts its curators at the cap too: one whose evidence has not moved skips with no
-                # model call, and one with something new is cut at its first, so the cap names only those it cut
-                if len(started) < len(order) and len(running) < width and not stop and (
-                        changed_only or not meter.reached()):
+                if len(started) < len(order) and len(running) < width and not stop and not meter.reached():
                     agent = curators[order[len(started)]]
                     _emit(workspace, "discover", "start", agent.id, text=agent.target)
-                    if not changed_only and agent.id not in said:  # a later round says only the curators it
-                        tell(_step(session, agent))  # ran, once they land
+                    if agent.id not in said:
+                        tell(f"stage     discover: reviewing sources for {agent.target} collection")
                         said.add(agent.id)
-                    started.append(pool.submit(_turn, workspace, session, agent, changed_only, meter, ended))
+                    started.append(pool.submit(_turn, workspace, agent, meter, ended))
                     continue
                 if not running:
                     break  # nothing runs, and none may start: the cap, or a stop
@@ -1074,7 +1038,7 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
             _save(workspace, session)
             raise RoundStopped(workspace.mask(f"discovery waits: {next(iter(waits.values()))}: nothing failed, and "
                                               "the curators that did not run are asked again on the next run"))
-        more = _more(workspace, todo)  # the cap cut the round, in any round
+        more = _more(workspace, todo)  # the cap cut the round
         if ask_more is not None and ask_more(_spent(workspace, session), more):
             _raise(workspace, session, more)
             meter.cap = _cap(workspace, session)
@@ -1084,14 +1048,6 @@ def _round(workspace: Cerebro, session: dict[str, Any], todo: list[str], curator
         return True
 
 
-def _step(session: dict[str, Any], agent: Agent) -> str:
-    """A curator's turn as a plain line: again once it ran before, and past the first round, the round's number as
-    a terminal's heading says it."""
-    again = " again" if ((session.get("lists") or {}).get(agent.id) or {}).get("passes") else ""
-    of = f", round {session['rounds'] + 1}" if session.get("rounds") else ""
-    return f"stage     discover: reviewing sources{again} for {agent.target} collection{of}"
-
-
 def _pending(workspace: Cerebro) -> int:
     """How many proposals wait, for a person or a curator."""
     return len(proposals(workspace.store, "waiting"))
@@ -1099,31 +1055,27 @@ def _pending(workspace: Cerebro) -> int:
 
 @dataclass
 class _Turn:
-    """One curator's turn in a round: what it had filed and weighed before, its pass, and what its run did."""
+    """One curator's turn in a round: what it had filed and weighed before, and what its run did."""
 
     agent: Agent
     before: set[str]
     weighed: int
-    passes: int
-    changed_only: bool
     result: PassResult
     capped: bool = False  # the round's cap cut its run
     stops: str = ""  # what stopped its run that would meet every curator of the round
     held: str = ""  # why it did not start: runs under way hold the room the day's cap has left
 
 
-def _turn(workspace: Cerebro, session: dict[str, Any], agent: Agent, changed_only: bool, meter: Meter,
-          ended: list[str]) -> _Turn:
+def _turn(workspace: Cerebro, agent: Agent, meter: Meter, ended: list[str]) -> _Turn:
     """Ask one curator, in proposal mode, beside the others of its round, under the round's meter: it changes nothing
     of the session, which `_landed` keeps in the round's order."""
     before = set(first_list(workspace, agent.id))
     weighed = len(workspace.store.rows(LEFT_OUT, {"agent": agent.id}))
-    passes = int(((session.get("lists") or {}).get(agent.id) or {}).get("passes") or 0) + 1
     result = PassResult()
     turn = meter.turn(agent.id)
     held = METER.set(turn)
     try:
-        run_curators(workspace, [agent], result, changed_only=changed_only)
+        run_curators(workspace, [agent], result)
     finally:
         METER.reset(held)
         ended += [run.id for run in result.runs if run.id]
@@ -1135,7 +1087,7 @@ def _turn(workspace: Cerebro, session: dict[str, Any], agent: Agent, changed_onl
     stops = (failed if failed.startswith(f"{BudgetSpent.__name__}:") else "") or (
         f"{BudgetSpent.__name__}: {paused}" if paused else "") or next(
         (f"{run.note or 'the provider refused the key'}" for run in result.runs if run.status == "refused"), "")
-    return _Turn(agent, before, weighed, passes, changed_only, result, capped=turn.cut, stops=stops,
+    return _Turn(agent, before, weighed, result, capped=turn.cut, stops=stops,
                  held="" if paused else result.held.get(agent.id, ""))
 
 
@@ -1149,30 +1101,23 @@ def _failure(result: PassResult, agent: str) -> str:
 
 def _landed(workspace: Cerebro, session: dict[str, Any], turn: _Turn, tell: Callable[[str], None]) -> None:
     """Say what one curator's turn did, and keep what became of it."""
-    agent, result, passes, weighed, before = turn.agent, turn.result, turn.passes, turn.weighed, turn.before
-    if turn.changed_only and agent.id not in result.skipped:  # a first round said it as it started
-        tell(_step(session, agent))
+    agent, result, weighed, before = turn.agent, turn.result, turn.weighed, turn.before
     session["runs"] = [*session.get("runs", []), *(run.id for run in result.runs if run.id)]
     new = [id for id in first_list(workspace, agent.id) if id not in before]
     session["order"] = [*(session.get("order") or []), *new]  # the curators' order, whichever finished first
     filed = len(new)
     left = len(workspace.store.rows(LEFT_OUT, {"agent": agent.id})) - weighed  # it weighed someone: it read something
     state = session.setdefault("lists", {}).setdefault(agent.id, {"state": "nothing", "note": ""})
-    if agent.id not in result.skipped:
-        state["passes"] = passes
+    state["passes"] = int(state.get("passes") or 0) + 1
     _keep_said(workspace, state, agent.id, result)
     what = _into(workspace, new, agent.target) if filed > 0 else f"nothing to {agent.target} collection"
-    said = (f"proposed  {what}" + (f" in round {session['rounds'] + 1}" if session.get("rounds") else "")
-            + (f" and left out {left}" if left > 0 else "") + f", by agents/{agent.id}.md")
+    said = f"proposed  {what}" + (f" and left out {left}" if left > 0 else "") + f", by agents/{agent.id}.md"
     if why := _failure(result, agent.id):
         note = workspace.mask_every()(f"discovery for {agent.target} collection did not finish: {why}")
         state.update(state="failed", note=note)
         tell(f"failed    {agent.id}: {note}")
         _emit(workspace, "discover", "end", agent.id, mark="failed",
               text=f"Discovery for {agent.target} collection did not finish", why=why)
-    elif agent.id in result.skipped:
-        _emit(workspace, "discover", "end", agent.id, mark="nothing")  # nothing moved: no model call, nothing new
-        return
     elif filed > 0 or state["state"] == "proposed":
         state.update(state="proposed", note="")
         tell(said)
@@ -1220,7 +1165,7 @@ def _stopped(workspace: Cerebro, session: dict[str, Any], todo: list[str], curat
         tell(f"stopped   {id}: budget reached for {curators[id].target} collection")
         _emit(workspace, "discover", "end", id, mark="budget", text=curators[id].target)
     session.update(status="stopped", unfinished=list(todo),
-                   stopped=_stop_line(session, [curators[id].target for id in todo]))
+                   stopped=_stop_line([curators[id].target for id in todo]))
     _save(workspace, session)
 
 
@@ -1348,12 +1293,13 @@ def _admitted(pile: Pile, choices: Choices, applied: Applied) -> dict[str, Any]:
             "why": "\n".join(f"{coll}: {_n(count[coll], 'article')}" for coll in sorted(count))}
 
 
-def _build(workspace: Cerebro, say: Callable[[str], None] | None, then: Callable[[], Any] | None = None) -> PassResult:
+def _build(workspace: Cerebro, say: Callable[[str], None] | None, then: Callable[[], Any] | None = None,
+           only: list[str] | None = None) -> PassResult:
     """Build, and run `then` after it, inside the build's progress."""
     _emit(workspace, "build", "start")
     result: PassResult | None = None
     try:
-        result = build(workspace, say=say)
+        result = build(workspace, say=say, only=only)
         if then is not None:
             then()
         return result
@@ -1363,19 +1309,26 @@ def _build(workspace: Cerebro, say: Callable[[str], None] | None, then: Callable
         _emit(workspace, "build", "end", why="\n".join(said))
 
 
-def build(workspace: Cerebro, *, say: Callable[[str], None] | None = None) -> PassResult:
+def build(workspace: Cerebro, *, say: Callable[[str], None] | None = None, only: list[str] | None = None) -> PassResult:
     """Build what the person approved, once nothing of the list waits: each curator makes the rows of its collection
     that were accepted, in as many runs as it takes while each carries out more, then a pass reads the sources for
-    the articles and compiles them, with no curator."""
+    the articles and compiles them, with no curator. With `only`, the ids of the proposals a late list accepted, the
+    pass compiles only the articles those made, so no article of the first build is built twice."""
     _done(workspace)
     told = None if say is None else (lambda line: say(workspace.mask_every()(line)))
     made = PassResult(say=told, on=_heard(workspace))
     left = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in _curators(workspace)}
-    while due := [agent for agent in _curators(workspace) if left.get(agent.id)]:
-        run_curators(workspace, due, made, changed_only=False)
-        now = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in due}
-        left = {id: n for id, n in now.items() if n < left[id]}  # a curator that carried out nothing more stops
-    result = run_pass(workspace, say=told, curators=False, on=_heard(workspace))
+    building = IN_FIRST_BUILD.set(True)  # its curators read held lists as discovery did, so no record a person never
+    try:  # saw is admitted under a curator's own authority before a later pass
+        while due := [agent for agent in _curators(workspace) if left.get(agent.id)]:
+            run_curators(workspace, due, made)
+            now = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in due}
+            left = {id: n for id, n in now.items() if n < left[id]}  # a curator that carried out nothing more stops
+    finally:
+        IN_FIRST_BUILD.reset(building)
+    made_by = None if only is None else {str(p.applied["article"]) for p in proposals(workspace.store, "accepted")
+                                         if p.id in only and p.applied.get("article")}
+    result = run_pass(workspace, say=told, curators=False, on=_heard(workspace), articles=made_by)
     _merge(made, result)
     return _masked(workspace, made)
 
@@ -1432,10 +1385,10 @@ def _merge(into: PassResult, more: PassResult) -> None:
 
 def late(workspace: Cerebro, *, say: Callable[[str], None] | None = None,
          ask_more: Callable[[float, float], bool] | None = None) -> tuple[Pile | None, list[str]]:
-    """Ask once more, in proposal mode, each curator that failed at discovery or had nothing to read then, as one
-    that reads facts and found none before they existed, and give the late list of those that proposed something,
-    or None, with the lines to end with. A curator that took part in discovery stays out: its list was decided. A
-    curator the cap cut is not asked: it runs when a person asks for it. The late runs count toward the first run's cap, checked before each: one the cap reaches runs only when
+    """Ask once more, in proposal mode, each curator that had nothing to read at discovery, as one that reads facts
+    and found none before they existed, and give the late list of those that proposed something, or None, with the
+    lines to end with. A curator that took part in discovery stays out: its list was decided. One that failed there
+    runs again on a later pass of `serve`, and a curator the cap cut runs when a person asks for it. The late runs count toward the first run's cap, checked before each: one the cap reaches runs only when
     `ask_more` says to continue, and is otherwise cut, with the line that says how to ask it later."""
     tell = say or (lambda line: None)
     session = _state(workspace)
@@ -1444,7 +1397,7 @@ def late(workspace: Cerebro, *, say: Callable[[str], None] | None = None,
     left = set(session.get("cut") or [])
     states = session.get("lists") or {}
     asked = [a for a in _curators(workspace)
-             if str((states.get(a.id) or {}).get("state") or "") in ("failed", "empty")
+             if str((states.get(a.id) or {}).get("state") or "") == "empty"
              and proposing(workspace.store, a.id) and not first_list(workspace, a.id) and a.id not in left
              and not workspace.weighs_nothing(a)]  # one with still nothing to weigh is not asked, nor named
     if not asked:
@@ -1465,7 +1418,7 @@ def late(workspace: Cerebro, *, say: Callable[[str], None] | None = None,
             _raise(workspace, session, more)
         result = PassResult(on=_heard(workspace))
         try:
-            run_curators(workspace, [agent], result, changed_only=False)
+            run_curators(workspace, [agent], result)
         finally:  # every run of a first run counts toward its cap
             session["runs"] = [*session.get("runs", []), *(run.id for run in result.runs if run.id)]
             _keep_said(workspace, session.setdefault("lists", {}).setdefault(agent.id, {}), agent.id, result, "late_said")
@@ -1515,7 +1468,7 @@ def _decide_late(workspace: Cerebro, out: Outcome, late: Pile, result: PassResul
         applied = _apply(workspace, LocalApproval(workspace, agents=asked, late=True), late, choices)
         out.applied.append(applied)
         if applied.accepted:  # one more pass compiles what the late list admitted
-            _merge(result, _build(workspace, say))
+            _merge(result, _build(workspace, say, only=applied.accepted))
     for listed in late.lists:
         if waiting := first_list(workspace, listed.agent):
             out.lines.append(first_list_line(listed.agent, len(waiting)))
@@ -1574,7 +1527,8 @@ def waiting_line(pile: Pile, chosen: bool = False) -> str:
 def rest_lines(workspace: Cerebro, rest: list[str], more: bool = True) -> list[str]:
     """What the first run says after its summary while rows of its list wait, by id in `rest`: how many, and where a
     person decides them; `more` once something was approved beside them."""
-    waiting = {p.id for p in proposals(workspace.store, "waiting")}
+    held = {p.id for p in workspace.with_curators()}  # counted apart, by the line that says they wait there
+    waiting = {p.id for p in proposals(workspace.store, "waiting") if p.id not in held}
     if not (count := sum(id in waiting for id in rest)):
         return []
     line = (f"{count}{' more' if more else ''} {'is' if count == 1 else 'are'} waiting. Run cerebro review, or ask your "
