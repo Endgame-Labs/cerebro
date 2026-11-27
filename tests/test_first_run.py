@@ -569,24 +569,27 @@ def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_howe
     older = account("001O", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z")
     ticked = account("001D", "Cedar Mill", "cedar.example", at="2026-09-01T09:00:00Z")  # older, and a person ticks it
     fields = replace(account("001R", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z"), extract="records")
+    own = account("001P", "Pine Row", "pine.example", at="2026-09-01T09:00:00Z")  # older, its curator admits it alone
     script, extraction, clock = Script({"things/curator": list(ADMITS)}), FakeExtraction(), [NOW]
     with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=extraction, clock=lambda: clock[0],
-                 connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older, ticked, fields])]) as workspace:
+                 connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older, ticked, fields, own])]) as workspace:
         script.store = workspace.store
         assert run(workspace, choose=None).waits  # off a terminal, the list waits
         clock[0] = NOW + timedelta(days=8)  # a person decides it a week later
         pile = LocalApproval(workspace).pile()
         LocalApproval(workspace).apply(Choices([[row.id] for row in pile.rows() if row.record and row.record["id"] in
                                                 {"001A", "001B", "001D"}]))
+        script.calls["things/curator"] = [("admit", {"record": {"source": "crm", "id": "001P"}, "name": "Pine Row",
+                                                     "reason": "Named in a fetched row."})]
         out = run(workspace, choose=None)  # the pass that builds
         assert {f.record for f in extraction.facts()} == {"001A", "001B", "001D", "001E"}
         held = {key.split(":")[2] for key in script.shown["things/curator"] if key.startswith("held:")}
         assert held == {"001A", "001B", "001C", "001E"}  # what its curator is shown: the same 14 days
-        assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 1 older record "
-                                          "over the next hours and rewrites the articles it changes.")
+        assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 2 older "
+                                          "records over the next hours and rewrites the articles they change.")
         clock[0] += timedelta(hours=5)
         workspace.run_once(scheduled=True)  # a pass of serve once the source is due
-        assert "001O" in {f.record for f in extraction.facts()}
+        assert {"001O", "001P"} <= {f.record for f in extraction.facts()}
 
 
 def test_off_a_terminal_a_late_list_waits_with_the_line_that_names_the_review_command(tmp_path: Path) -> None:
