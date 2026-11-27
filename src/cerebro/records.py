@@ -74,6 +74,7 @@ __all__ = [
     "Review",
     "TellResult",
     "decide",
+    "decided_by_caller",
     "extract_told",
     "instructions_on",
     "proposal_from",
@@ -423,26 +424,32 @@ UNDO = {"article.admit": "archive it to take it out of the working set again",
         "article.split": "merge the two articles again"}
 
 
-def retracted_records(store: Store) -> dict[str, str]:
-    """When the latest accepted `record.retract` of each record it names was decided, by record id."""
-    found: dict[str, str] = {}
+def decided_by_caller(proposal: Proposal) -> bool:
+    """Whether a caller decided `proposal`, and not a curator, an agent or an app."""
+    return (proposal.decided_by or proposal.by).kind == "person"
+
+
+def retracted_records(store: Store) -> dict[str, tuple[str, str]]:
+    """When the latest accepted `record.retract` of each record it names was decided, and when the latest a caller
+    decided was, or "" when no caller decided one, by record id."""
+    found: dict[str, tuple[str, str]] = {}
     for p in proposals(store, ACCEPTED):
         if p.kind == "record.retract":
-            found[p.target] = max(found.get(p.target, ""), p.decided_at)
+            latest, by_caller = found.get(p.target, ("", ""))
+            found[p.target] = (max(latest, p.decided_at), max(by_caller, p.decided_at if decided_by_caller(p) else ""))
     return found
 
 
-def _taken_back(by: Caller, kept: str, decided: str) -> bool:
-    """Whether a retract decided at `decided` takes back what `by` kept at `kept`: all but a caller's later word, since
-    a caller's decision outranks an app's. Times go to the second, so what is kept in the retract's own second is
-    taken back."""
-    return by.kind != "person" or kept <= decided
+def _taken_back(by: Caller | None, kept: str, latest: str, by_caller: str) -> bool:
+    """Whether a record's retracts take back what `by` kept at `kept`: what was kept at or before the latest of them,
+    and, once a caller retracted the record, all that no caller made, since a caller's decision outranks an app's or
+    an agent's. Times go to the second, so what is kept in a retract's own second is taken back."""
+    return kept <= latest or (bool(by_caller) and (by is None or by.kind != "person"))
 
 
-def was_retracted(record: Record, retracted: dict[str, str]) -> bool:
-    """Whether a retract of `retracted_records` took back this revision of `record`: all but one a caller kept after
-    it."""
-    return record.id in retracted and _taken_back(record.by, record.at, retracted[record.id])  # type: ignore[arg-type]
+def was_retracted(record: Record, retracted: dict[str, tuple[str, str]]) -> bool:
+    """Whether the retracts `retracted_records` gives took back this revision of `record`, as `_taken_back` says."""
+    return record.id in retracted and _taken_back(record.by, record.at, *retracted[record.id])
 
 
 def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str, Caller | None]:
@@ -482,7 +489,7 @@ def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) 
         propose(store, proposal)  # filed before its facts are read: a pass that saves them later sees it as it checks
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
-        if _taken_back(by, fact.at, at):  # type: ignore[arg-type]  # a kept record's fact has its revision's time
+        if _taken_back(by, fact.at, at, at if decided_by_caller(proposal) else ""):  # it has its revision's time
             extraction.retract(fact.id)  # type: ignore[union-attr]
             withdrew.append(fact.id)
     stands: list[str] = []

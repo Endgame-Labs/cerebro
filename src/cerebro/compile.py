@@ -83,7 +83,7 @@ from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_f
 from .identity import in_working_set
 from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
-from .records import RETRACTS, proposals
+from .records import RETRACTS, decided_by_caller, proposals, retracted_records, was_retracted
 from .reply import outside
 from .run import (
     FAILED_AFTER,
@@ -629,14 +629,16 @@ class _Grounding:
         return self.lookup.read(Caller("compile", "agent"), [self.article]).facts
 
     def withdrawn(self, citations: list[Citation]) -> set[str]:
-        """Of what `citations` name, what was taken back since: a fact or a record a caller retracted, and each
-        retracted fact of a record its source removed, which leaves the record no fact and no retract row. A fact of
-        an earlier save, and one a curator, an agent or an app took back, are neither."""
+        """Of what `citations` name, what was taken back since: a fact a caller retracted, a record a caller
+        retracted whose revision now is one `was_retracted` says was taken back, and each retracted fact of a record
+        its source removed, which leaves the record no fact and no retract row. A fact of an earlier save, and one a
+        curator, an agent or an app took back, are neither."""
         store = getattr(self.lookup, "store", None)
         rows = [p for p in proposals(store, "accepted") if p.kind in RETRACTS] if store else []
-        by_caller = {p.target for p in rows if (p.decided_by or p.by).kind == "person"}
-        named = {p.target for p in rows}
-        gone = {c.id for c in citations if c.id in by_caller}
+        by_caller = {p.target for p in rows if decided_by_caller(p)}
+        named, taken = {p.target for p in rows}, retracted_records(store) if store else {}
+        gone = {c.id for c in citations if c.id in by_caller
+                and ((record := store.record(c.id)) is None or was_retracted(record, taken))}
         ids = list(dict.fromkeys(c.id for c in citations if c.kind == "fact"))
         extraction = self.lookup.extraction
         if not ids or extraction is None:

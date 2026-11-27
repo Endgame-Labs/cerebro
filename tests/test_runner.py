@@ -842,10 +842,13 @@ def kept_notes(tmp_path: Path, extraction: FakeExtraction, clock: Clock | None =
                    agent_run=ScriptedRun(lambda prompt: {}))
 
 
-def test_a_kept_record_a_caller_retracted_is_never_read_until_a_caller_keeps_a_new_revision(tmp_path: Path) -> None:
+@pytest.mark.parametrize("taker", ["person", "app", "agent"])
+def test_a_later_revision_of_a_retracted_kept_record_is_read_unless_a_caller_retracted_one_no_caller_made(
+        tmp_path: Path, taker: str) -> None:
     from cerebro.caller import Caller
 
     you, app, sent = Caller("you", "person"), Caller("notes", "app"), []
+    takes = {"person": you, "app": app, "agent": Caller("things/curator", "agent")}[taker]
 
     class Reading(FakeExtraction):
         def extract(self, record: Record) -> Any:
@@ -857,7 +860,7 @@ def test_a_kept_record_a_caller_retracted_is_never_read_until_a_caller_keeps_a_n
     kept = cerebro.handle.keep(you, "note", "The east gate opens at nine.", {"collection": "notes"})
     own = cerebro.handle.keep(app, "note", "The west gate opens at nine.", {"collection": "notes"})
     assert kept.id in cerebro.retract(you, kept.id, "reworded").withdrew
-    assert own.id in cerebro.retract(you, own.id, "wrong").withdrew
+    assert own.id in cerebro.retract(takes, own.id, "wrong").withdrew
     cerebro.run_once()
     hands.move(minutes=5)
     cerebro.handle.keep(you, "note", "The east gate opens at ten.", {"collection": "notes"}, id=kept.id)
@@ -867,7 +870,7 @@ def test_a_kept_record_a_caller_retracted_is_never_read_until_a_caller_keeps_a_n
     cerebro.handle.keep(you, "note", "The east gate opens at noon.", {"collection": "notes"}, id=kept.id)
     cerebro.handle.keep(app, "note", "The west gate opens at noon.", {"collection": "notes"}, id=own.id)
     cerebro.run_once()
-    assert sent == ["The east gate opens at noon."]
+    assert sent == ["The east gate opens at noon.", *(["The west gate opens at noon."] if taker != "person" else [])]
     assert [f.text for f in extraction.facts(record=kept.id)] == ["The east gate opens at noon."]
 
 
