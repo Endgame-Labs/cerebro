@@ -1,0 +1,5 @@
+system_id,name,model,serial_number,installed_on,warranty_until,location,updated_on
+sys-boiler,Hydronic Boiler and Basement Zones,"Weil-McLain CGA-4 (100,000 BTU cast-iron)",CP-7824190,2018-10-14,2028-10-14,Basement mechanical alcove (north wall),2026-11-18
+sys-panel,Main Electrical Panel,Square D QO 200A 40-Space Load Center,SD-2024-88412,2024-09-20,2034-09-20,Basement stair landing (west wall),2026-11-10
+sys-solar,Rooftop Solar Array,17x REC Alpha Pure 400W + Enphase IQ8M (6.8 kW),ENP-6800-4419,2025-05-11,2050-05-11,South gable roof pitch,2026-11-05
+sys-envelope,Exterior Envelope and Paint Schedule,1924 Old-Growth Cedar Clapboard and Fir Sash,ORIG-1924,1924-06-01,2028-10-20,"Full exterior siding, trim, and gutters",2026-11-12

@@ -1,0 +1,5 @@
+month,read_on,system_id,reading_label,solar_generated_kwh,grid_exported_kwh,gas_used_therms,reading_note
+2026-08,2026-09-01,sys-solar,Rooftop Solar Array (August 2026),945,512,9,Peak summer output across all 17 microinverters
+2026-09,2026-10-01,sys-solar,Rooftop Solar Array (September 2026),698,310,14,Panel #11 dropped 18% during afternoon readings from fir limb shading
+2026-10,2026-11-01,sys-solar,Rooftop Solar Array (October 2026),428,124,41,Panel #11 returned to parity after Douglas fir limb was pruned on 2026-10-14
+2026-11,2026-11-24,sys-solar,Rooftop Solar Array (November 2026),215,34,76,Early November cold snap drove higher Zone 1 and Zone 2 boiler demand

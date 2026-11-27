@@ -1,0 +1,9 @@
+# The models by job, the daily budget, and the time zone. AGENTS.md says what the rest of the folder is.
+id: home-stewardship-3e6431   # opens this workspace's secrets store, as cerebro secrets set uses it; one id, one folder
+models:
+  extraction: { provider: fireworks, model: glm-5p3-flash, effort: low }
+  decision: { provider: typesafe, model: jev-1.13.0 }
+  compilation: { provider: fireworks, model: glm-5p3, effort: high }
+budget:
+  daily_usd: 5   # model calls stop for the day past this
+timezone: America/Los_Angeles
