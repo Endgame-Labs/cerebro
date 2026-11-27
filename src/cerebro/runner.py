@@ -2500,12 +2500,12 @@ def _shown(compiled: Any) -> Run | None:
 
 
 def failure(run: Run, agent: str) -> str:
-    """Why a compile wrote nothing, as its `failed` line says it: the run, its agent when that is not `agent`, and
+    """Why a compile failed, as its `failed` line says it: the run, its agent when that is not `agent`, and
     what it ended with; or for a composed article's run that failed as a whole, which has no run id of its own, why
     and the subagent's run that failed it."""
     if not run.id:
         return run.note
-    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f" wrote nothing: {run.status}"
+    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f": {run.status}"
             + (f": {run.note}" if run.note else ""))
 
 
@@ -2522,7 +2522,7 @@ def _compiled_line(workspace: Cerebro, key: str, compiled: Any) -> str:
         return (f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, "
                 f"{_usd(workspace, runs, compiled.checks)}")
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
-    return f"ran       {key}: wrote nothing, {said}, {_usd(workspace, runs, compiled.checks)}"
+    return f"ran       {key}: {said}, {_usd(workspace, runs, compiled.checks)}"
 
 
 def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
@@ -2538,7 +2538,7 @@ def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
         return {"mark": "ran", "text": f"ran and wrote nothing: {run.note or 'it handed in nothing'}"}
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
     who = agent.id if run is None or run.agent == agent.id else run.agent
-    return {"mark": "failed", "why": f"{who} wrote nothing: {said}"}
+    return {"mark": "failed", "why": f"{who}: {said}"}
 
 
 def _n(n: int, noun: str) -> str:
@@ -2556,7 +2556,7 @@ def unmoved(workspace: Cerebro, agent: Agent, articles: list[str]) -> str:
     again = f"cerebro agents run {agent.id} runs it again now"
     if not any(written(workspace, agent, article) for article in articles):
         return f"nothing it reads has moved since its last run, which wrote nothing: {again}"
-    return f"nothing it reads has moved since its last write: {again}, whether or not anything moved"
+    return f"nothing it reads has moved since its last run: {again}, whether or not anything moved"
 
 
 def _render(workspace: Cerebro, result: PassResult) -> None:

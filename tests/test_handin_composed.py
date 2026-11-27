@@ -342,7 +342,7 @@ def test_a_composer_whose_own_run_fails_lands_nothing_is_counted_failed_and_wait
     told = w.cli("agents", "run", "things/article")
     assert told.exit_code == 1, told.output
     assert not any(line.startswith("wrote") for line in told.output.splitlines()), told.output
-    assert told.stderr.strip() == "Error: things/article: run run_article wrote nothing: failed: a model error", \
+    assert told.stderr.strip() == "Error: things/article: run run_article: failed: a model error", \
         told.stderr
     assert w.article("things/alpha") == before and w.stored("things/alpha") == parts
     waits = w.cli("serve", "--once", "--plain")  # within the wait after a failure: no run, and no wrote
@@ -352,7 +352,7 @@ def test_a_composer_whose_own_run_fails_lands_nothing_is_counted_failed_and_wait
     w.at[0] = w.at[0].replace(hour=11)  # past the wait: it runs again, and fails again
     again = w.cli("serve", "--once", "--plain")
     lines = again.output.splitlines()
-    assert "failed    things/article on things/alpha: run run_article wrote nothing: failed: a model error" in lines, \
+    assert "failed    things/article on things/alpha: run run_article: failed: a model error" in lines, \
         lines
     assert lines[-1] == "Done: 1 failed.", lines
     assert again.exit_code == 1, again.output

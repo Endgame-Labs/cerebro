@@ -17,10 +17,10 @@ The file follows the parts of a run:
   with the mark. The first hand-in is held while the model is told, once, what `REVIEW` says of it, when it says
   anything: grounding's scores of each sentence under its floor, and each number in brackets that cites nothing,
   which takes one retry of its own. A reply that hands in nothing is asked once to hand in. With nothing to land, a
-  normal end wrote nothing, which is no failure, and a run whose room or calls were spent, or whose reply was cut at
-  its output limit, fails, so it runs again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
-  content standing. An error on any request fails the run, once its tries are spent: a held hand-in lands however
-  the run ends after it. A request to a provider is
+  decline, or a subagent's normal end, wrote nothing, which is no failure, and any other end fails, so it runs again.
+  A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents' content
+  standing. An error on any request fails the run, once its tries are spent: a held hand-in lands however the run
+  ends after it. A request to a provider is
   streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with
   nothing new, and a timeout, a rate limit or a server error is tried again up to the model's `retries`, each try
   again checked first against the cap of the run's meter, and each failed try counted in what the run spent.
@@ -569,9 +569,9 @@ class _Candidates:
 
     def ended(self, run: Run, mask: Callable[[str], str] | None, cut: bool = False, error: str = "") -> None:
         """End the run on its replies that handed in nothing: it lands its latest candidate that carries the mark,
-        else a hand-in it holds. With none, a reply cut at its output limit, or a first such reply whose request
-        offered no tools, fails, so it runs again, but a curator's ends with what it decided; any other ran and wrote
-        nothing."""
+        else a hand-in it holds. With none, the run fails, so it runs again, but a curator's ends with what it
+        decided, a composer's leaves its subagents' content standing, and a subagent's normal end wrote nothing, so
+        its part stands."""
         cut = cut or any(reply.cut for reply in self.replies)
         last = CUT_NOTHING if cut else "" if not self.replies or self.replies[0].offered else SPENT_NOTHING
         if (got := self.latest()) is not None:
@@ -582,9 +582,9 @@ class _Candidates:
             run.status, run.note = WROTE_NOTHING, STANDS
         elif not self.writes and last:  # an empty verdict is no failure
             run.note = DECIDED_CUT if cut else DECIDED_SPENT
-        elif not last:  # no failure: its inputs are recorded, so it runs again only once one moves
+        elif not last:  # a subagent's failure fails its whole article, so its part stands instead
             said = self.writes and any(reply.text for reply in self.replies)
-            run.status = WROTE_NOTHING
+            run.status = "failed" if self.writes and self.agent.role != "subagent" else WROTE_NOTHING
             run.note = f"{HANDED_NOTHING}, and {UNMARKED}" if said else HANDED_NOTHING if self.writes \
                 else DECIDED_EMPTY
             logging.getLogger(__name__).debug("%s handed in nothing, also after the turn that asked: %s",
@@ -1451,10 +1451,11 @@ class PydanticRun(AgentRun):
                 result.status, result.note = "cut", str(error)
             except (UsageLimitExceeded, _OverBudget) as error:
                 answer = next((m for m in reversed(messages) if isinstance(m, ModelResponse)), None)
-                if isinstance(error, _OverBudget) and writes and answer is not None and not _calls(answer) and any(
-                        reply.text and not reply.calls for reply in takes.replies):
-                    takes.ended(result, self._mask())  # the budget stopped the ask to hand in, after a reply in plain text
-                else:
+                plain = isinstance(error, _OverBudget) and writes and answer is not None and not _calls(answer) \
+                    and any(reply.text and not reply.calls for reply in takes.replies)
+                if plain:  # the budget stopped the ask to hand in, after a reply in plain text
+                    takes.ended(result, self._mask())
+                if not plain or result.status == "failed":  # with nothing to land, the budget is why
                     takes.spent(result, str(error))
             except Exception as error:  # noqa: BLE001 - any model or loop error ends the run, and what it spent counts
                 self._failed(result, error)

@@ -61,9 +61,9 @@ def _text(run: Any) -> str | None:
 # -- a remark to the person is never the article and never replaces one
 
 
-def test_a_remark_then_done_takes_nothing() -> None:
+def test_a_remark_then_done_takes_nothing_and_fails() -> None:
     run = _run(REMARK, "Done.")
-    assert run.result is None and run.status == WROTE_NOTHING, (run.status, _text(run))
+    assert run.result is None and run.status == "failed", (run.status, _text(run))
 
 
 class _Hands:
@@ -127,7 +127,7 @@ def test_in_a_pass_a_remark_leaves_the_article_byte_for_byte(tmp_path: Path) -> 
     hands.at += timedelta(hours=2)
     second = cerebro.run_once()
     assert article.read_bytes() == before, article.read_text()
-    assert UNMARKED in second.ran.get("things/article on things/first", ""), second.ran  # counted ran, not written
+    assert UNMARKED in second.failed.get("things/article on things/first", ""), second.failed
     assert not second.compiled, second.compiled
 
 

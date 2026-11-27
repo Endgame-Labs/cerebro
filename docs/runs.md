@@ -54,7 +54,7 @@ Done: 2 written.
 When an agent doesn't run, the pass says why, and how to run it anyway:
 
 ```text
-skipped   projects/atlas: nothing it reads has moved since its last write: cerebro agents run projects/atlas runs it again now, whether or not anything moved
+skipped   projects/atlas: nothing it reads has moved since its last run: cerebro agents run projects/atlas runs it again now, whether or not anything moved
 ```
 
 `cerebro status` shows the state of the whole workspace: each source's last check, what the wiki holds, each agent's last run, and what today cost.
