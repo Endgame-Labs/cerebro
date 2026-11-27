@@ -99,6 +99,14 @@ Done: 15 written.
 9 more are waiting. Run cerebro review, or ask your agent what is waiting.
 ```
 
+What you approve is written once, from the same 14 days and from any older line you tick. When older records wait, a line says how many:
+
+```text
+notice    The wiki starts from the last 14 days. cerebro serve reads 30 older records on its next passes and rewrites the articles they change.
+```
+
+Leave `cerebro serve` running and the wiki fills in.
+
 Your agent can list and decide what waits, as you can. Off a terminal, the whole list waits:
 
 ```text
