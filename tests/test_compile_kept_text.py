@@ -221,8 +221,10 @@ VALVE = "The valve in hall three leaked on Tuesday."
 
 
 class Drafts(Citing):
-    """A subagent cites every current fact its evidence shows, one sentence each; a composer cites the first as its
-    verdict, or, once `quiet`, hands in nothing."""
+    """A subagent cites every current fact its evidence shows, one sentence each, then says `again` when it has
+    something to say; a composer cites the first as its verdict, or, once `quiet`, hands in nothing."""
+
+    again = ""
 
     def run(self, agent: Any, evidence: Any, tools: Any, budget: Budget) -> Run:
         def write(prompt: str) -> str:
@@ -230,7 +232,7 @@ class Drafts(Citing):
             said = {f.id: f.text for fs in self.extraction.by_record.values() for f in fs}
             if agent.role == "composer":
                 return "" if self.quiet or not ids else f"Verdict: {said[ids[0]][:-1]} [^{ids[0]}]."
-            return " ".join(f"{said[i][:-1]} [^{i}]." for i in ids if i in said)
+            return " ".join(f"{said[i][:-1]} [^{i}]." for i in ids if i in said) + (self.again if ids else "")
 
         return ScriptedRun(write).run(agent, evidence, tools, budget)
 
@@ -247,3 +249,18 @@ def test_a_composer_that_adds_nothing_lands_its_subagents_new_draft_in_place_of_
     assert "Verdict:" not in space.text()  # its last whole body gives way to the drafts
     again = space.workspace.run_once()
     assert VALVE[:-1] in space.text(), again.warnings
+
+
+def test_a_draft_that_stood_while_another_lands_loses_a_line_whose_fact_its_source_took_back(tmp_path: Path) -> None:
+    pump_only = EVIDENCE.replace("window: last_365_days", "record: n0")  # it has nothing new to say once n0 goes
+    files = {"briefs/article.md": BRIEF, "briefs/subagents/risks.md": pump_only + "# Instructions\n\nDraft it.\n\n"
+             "# Output\n\n## Risks\n", "briefs/subagents/people.md": RISKS.replace("## Risks", "## People")}
+    space = Facts(tmp_path, files, "briefs/alder", run=Drafts)
+    pump = next(f.id for fs in space.extraction.by_record.values() for f in fs if f.text == PUMP)
+    space.run.quiet, space.run.again = True, f"\n{PUMP[:-1]} [^{pump}]."  # the composer hands in nothing
+    space.notes.remove("n0")
+    space.notes.add(Record(id="n1", source="notes", revision="1", at="2026-11-15T09:00:00Z", body=VALVE))
+    result = space.workspace.run_once()
+    parts = dict(_texts(space.store, "briefs/alder"))
+    assert "Risks" not in parts and VALVE[:-1] in parts["People"], result.warnings
+    assert PUMP[:-1] in parts["People"]  # what a writer just handed in is never cut: its editor scores it

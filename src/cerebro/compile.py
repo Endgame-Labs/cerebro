@@ -506,9 +506,9 @@ NONE_LEFT = "nothing of the run landed, and each line of its earlier text cited 
 def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[str]) -> list[str]:
     """Take out of each part `writers` wrote on `article`, each standing from before as none of them rewrote it in
     this run, each line whose every citation names what was taken back since, as `_Grounding.withdrawn` reads it, and
-    nothing else: the article stays as it was, but a claim whose fact was taken back does not stay for good. A part left with no text, only headings
-    or nothing, goes. Gives a line for each line taken out. The text cites a fact by the label the store wrote, so
-    each label is read back as its citation's id."""
+    nothing else: the article stays as it was, but a claim whose fact was taken back does not stay for good. A part
+    left with no text, only headings or nothing, goes. Gives a line for each line taken out. The text cites a fact by
+    the label the store wrote, so each label is read back as its citation's id."""
     current = store.article(article)
     mine = [s for s in current.compilations if s.by in writers] if current is not None else []
     by_label = {label(c.id): c.id for s in mine for c in s.citations}
@@ -516,7 +516,9 @@ def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[
     def cited(text: str) -> list[str]:
         return [by_label.get(found, found) for found in CITE.findall(unmarked(text))]
 
-    gone = grounding.withdrawn([c for s in mine for c in s.citations])
+    # a kept part lands citing only what its writer can cite now, so what it cites is read from its text too
+    gone = grounding.withdrawn([*(c for s in mine for c in s.citations),
+                                *(Citation("fact", id) for s in mine for id in cited(s.text))])
     if not gone:
         return []
     said: list[str] = []
@@ -1633,6 +1635,8 @@ class _Composing:
             compiled.notes += noted
         except _LeftAlone as left:
             return replace(compiled, article=store.article(article), skipped=True, waiting=str(left), left_alone=str(left))
+        if stood := [p.by for p in plan if p.by not in self.stood]:  # a part its writer left as it was, not text new
+            compiled.dropped += _withdrawn(c.grounding, store, article, stood)  # to this run, which the editor scored
         return _finish(store, article, c.root, compiled, c.grounding)
 
 
