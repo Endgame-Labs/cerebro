@@ -161,8 +161,8 @@ def test_one_pass_on_the_real_pieces_compiles_an_article_an_outside_agent_reads_
             ("compilation", run.id, "glm-5p3")]
         assert sorted(r["run"] for r in spent if r["layer"] == "extraction") == [
             "local/budget.md", "local/kickoff.md", "mail/newsletter.md"]
-        assert [(r.data["agent"], r.data["model"]) for r in workspace.store.rows("agent-runs")] == [
-            ("reports/weekly", "glm-5p3")]
+        assert list(dict.fromkeys((r.data["run"], r.data["agent"], r.data["model"])
+                                  for r in workspace.store.rows("agent-runs"))) == [(run.id, "reports/weekly", "glm-5p3")]
         assert workspace.query(Caller("you", "person"), "spend", {"layer": "compilation"}).count == 1
 
         names, find, window, read, about, query = anyio.run(over_mcp, workspace)

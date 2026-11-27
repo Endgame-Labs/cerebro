@@ -262,7 +262,8 @@ def test_each_command_runs_on_a_new_workspace(tmp_path: Path, stand_ins: None) -
     assert distilled.exit_code == 0 and "agents    none" not in distilled.output  # it runs none, and has one
 
     ran = run("agents", "run", "reports/weekly", "--workspace", workspace)
-    assert ran.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md"], ran.output
+    unscored = "grounding reports/weekly: left 2 sentences unscored"  # it has no decision model
+    assert ran.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md", unscored], ran.output
     again = run("compile", "--article", "reports/weekly", "--workspace", workspace)  # a rebuild now runs whatever moved
     assert again.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md"], again.output
 

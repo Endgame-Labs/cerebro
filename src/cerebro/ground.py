@@ -18,8 +18,8 @@ it, at its indent, and a fence left open, which holds the rest of the text, gets
 still revise. `marked` gives the text as it lands: `[^unsupported]` after each sentence under the floor, which the
 article defines once, as `UNSUPPORTED` reads. A passage scored once keeps its scores, by its heading and its text, as
 does one `seed` hands back with the scores it was given, so neither is asked about again; each reader marks them by
-its own floor. One with a sentence unscored, or an id not found, is asked about again. With no decision model, past the cap, or once a call fails, a sentence is unscored, and `scores` says
-why.
+its own floor. One with a sentence unscored, or an id not found, is asked about again. With no decision model, past
+the cap, or once a call fails, a sentence is unscored, and `scores` says why.
 """
 
 from __future__ import annotations
@@ -557,7 +557,7 @@ class Judge:
 
     def __init__(self, decider: Decider | None, article: str = "", context: str = "", today: str = ""):
         self.decider, self.article, self.context, self.today = decider, article, context, today
-        self.unscored = ""  # why a unit is unscored: with no decision model, nothing to say
+        self.unscored = "unscored: no decision model is set"  # why a unit is unscored
 
     def score(self, heading: str, units: list[_Unit], found: Mapping[str, dict[str, Any]]) -> list[tuple[float | None, str]]:
         """Each unit's score and reason, in order."""
@@ -613,8 +613,7 @@ class Editor:
     editor of one compile, so a passage another run handed in already is not scored again, and each editor marks it
     by its own floor. A passage with a sentence left unscored, or an id not found, is not held there. Text before any heading is read under `heading`, as a part is under the heading the article
     shows above it. `scores` keeps a line for each sentence of the text it marked, with its score and why, for the
-    run's log, and `tally` how many it marked and how many it left unscored. With no decision model it says nothing
-    of a sentence."""
+    run's log, and `tally` how many it marked and how many it left unscored."""
 
     def __init__(self, judge: Judge, found: Found, floor: float = FLOOR,
                  known: dict[tuple[str, str], list[Verdict]] | None = None, heading: str = ""):
@@ -667,12 +666,11 @@ class Editor:
                 if verdict.weak and unit.end is not None:
                     out += [plain[at:unit.end], unit.mark]
                     at = unit.end
-                if verdict.reason:  # with no decision model, nothing is said of it
-                    said, why = (f"{verdict.score:.2f}", verdict.reason) if verdict.score is not None else \
-                        verdict.reason.split(": ", 1)
-                    self.scores.append(f'{passage.heading or BEFORE_ANY}: {said} "{unit.shown}": {why}')
-                    self.tally.update(kind for kind, said_so in (("marked", verdict.weak), ("unscored", said == "unscored"))
-                                      if said_so)
+                said, why = (f"{verdict.score:.2f}", verdict.reason) if verdict.score is not None else \
+                    verdict.reason.split(": ", 1)
+                self.scores.append(f'{passage.heading or BEFORE_ANY}: {said} "{unit.shown}": {why}')
+                self.tally.update(kind for kind, said_so in (("marked", verdict.weak), ("unscored", said == "unscored"))
+                                  if said_so)
         return "".join(out) + plain[at:]
 
     def review(self, text: str) -> str:

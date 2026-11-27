@@ -175,7 +175,8 @@ def test_agents_run_runs_every_article_says_each_failure_and_exits_1_with_the_co
     assert ran.exit_code == 1
     assert ran.output.splitlines() == [
         "failed   things/article on things/a: run run_x wrote nothing: failed: the model broke",
-        "wrote    things/b  articles/things/b.md", "wrote    things/c  articles/things/c.md",
+        "wrote    things/b  articles/things/b.md", "grounding things/article on things/b: left 1 sentence unscored",
+        "wrote    things/c  articles/things/c.md", "grounding things/article on things/c: left 1 sentence unscored",
         "Error: things/article: 1 of 3 runs failed"]
 
 
@@ -476,4 +477,5 @@ def test_an_article_every_part_of_which_is_held_by_hand_gets_one_held_line(
     assert ran.exit_code == 0, ran.output
     said = (f"held     {COMPOSER} on things/b: held for room under the cap, runs at its writer's next scheduled run, "
             "from 2026-11-20 00:00")
-    assert ran.output.splitlines() == ["wrote    things/a  articles/things/a.md", said], ran.output
+    assert ran.output.splitlines() == ["wrote    things/a  articles/things/a.md",
+                                       "grounding things/article on things/a: left 1 sentence unscored", said], ran.output

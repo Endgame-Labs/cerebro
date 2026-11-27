@@ -182,7 +182,9 @@ def test_a_run_by_hand_on_one_named_article_writes_that_one_alone(tmp_path: Path
     w = Workspace(tmp_path, monkeypatch, note("n1", "The launch moved to March 3."))
     w.model = Records(w.hands, tmp_path)
     ran = w.run("agents", "run", "things/article", "beta")
-    assert ran.exit_code == 0 and ran.output.splitlines() == ["wrote    things/beta  articles/things/beta.md"], ran.output
+    assert ran.exit_code == 0 and ran.output.splitlines() == [
+        "wrote    things/beta  articles/things/beta.md",
+        "grounding things/article on things/beta: left 1 sentence unscored"], ran.output  # it has no decision model
     curator = w.run("agents", "run", "things/curator", "beta")
     assert curator.exit_code == 1 and "give no article" in curator.output, curator.output
 

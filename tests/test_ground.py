@@ -154,11 +154,11 @@ class Spent(FakeDecider):
         raise BudgetSpent("compilation spent its cap")
 
 
-def test_with_no_decision_model_or_past_the_cap_a_sentence_is_unscored_and_lands_unmarked() -> None:
+def test_with_no_decision_model_or_past_the_cap_a_sentence_is_unscored_says_why_and_lands_unmarked() -> None:
     quiet, spent = editor(None), editor(Spent())
     text = "Alder signs for ten years [^f_1].\n\n## Next\n\nAlder renews in March [^f_1]."
     assert quiet.marked(text) == spent.marked(text) == text
-    assert quiet.scores == [] and quiet.tally == {}
+    assert quiet.tally == {"unscored": 2} and all(line.endswith("no decision model is set") for line in quiet.scores)
     assert [line.split('"')[0] for line in spent.scores] == ["(before the first heading): unscored ", "Next: unscored "]
     assert spent.scores[0].endswith("compilation spent its cap") and spent.tally["unscored"] == 2
 

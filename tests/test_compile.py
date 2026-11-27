@@ -928,7 +928,7 @@ def test_a_summary_whose_heading_no_part_carries_loads_the_first_part_and_says_s
     said = "summary: articles/things/alder.md has no part headed Overview, so its first part loaded in its place"
     assert "Alder renews." in seen[0] and "It holds." not in seen[0]
     assert said in compiled.notes and said in compiled.run.note and compiled.run.status == "done"
-    assert [r.data.get("note") for r in store.rows("agent-runs")] == [said]
+    assert {r.data.get("note") for r in store.rows("agent-runs")} == {said}
 
 
 def _with_material(tmp_path: Path) -> tuple[dict[str, Any], MemoryStore, dict[str, Any], ByAgent]:

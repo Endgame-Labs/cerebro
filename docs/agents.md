@@ -233,7 +233,7 @@ The floor is 0.6. Set `min_grounding` in an agent's front matter to change it fo
 min_grounding: 0.8   # this agent's sentences are marked under 0.8
 ```
 
-The run counts what it marked, as `grounding projects/atlas: marked 1 sentence not fully backed`. Each sentence's score and why stay on its run's row of the `agent-runs` log: `query { "from": "agent-runs", "run": "run_4f2a9c1e7b3d" }` reads them. With no decision model, no sentence is scored or marked.
+The run counts what it marked, as `grounding projects/atlas: marked 1 sentence not fully backed`. Each sentence's score and why stay on its run's row of the `agent-runs` log: `query { "from": "agent-runs", "run": "run_4f2a9c1e7b3d" }` reads them. With no decision model, no sentence is scored or marked, and the run says how many it left unscored.
 
 ## Kinds of fact
 

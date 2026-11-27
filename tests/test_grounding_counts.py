@@ -158,15 +158,16 @@ def test_a_note_is_kept_whole_and_one_runs_notes_are_bounded(tmp_path: Path, mon
 def test_what_landing_made_safe_is_counted_per_article_and_each_line_kept_on_its_runs_line(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runs = count(1)  # each run hands in new text, so each lands and is cleaned
-    root = saying(tmp_path, monkeypatch, lambda ids: {  # no decision model: only landing changes the text
+    root = saying(tmp_path, monkeypatch, lambda ids: {  # no decision model: each sentence is unscored
         "Summary": f"The review moved <script>alert({next(runs)})</script> to March 3 [^{ids[0]}].",
         "Detail": f"The review moved to March 3 [^{ids[0]}].\n\n```yaml\nmoved: March 3\u200b [^{ids[0]}]\n```"})
     events: list[Progress] = []
     with cli.open_workspace(root) as workspace:
         result = workspace.run_once(on=events.append)
         passed = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data
-    assert not result.grounding and [line for line in passed["notes"] if "escaped raw HTML" in line], passed
-    assert [e.text for e in events if e.kind == "note"] == ["made 2 safety edits"]  # under the article's row
+    assert result.grounding == {"digests/weekly": {"unscored": 3}}
+    assert [line for line in passed["notes"] if "escaped raw HTML" in line], passed
+    assert [e.text for e in events if e.kind == "note"] == ["left 3 sentences unscored, made 2 safety edits"]
     cli._print(result)
     printed = capsys.readouterr().out
     assert "cleaned   digests/weekly: made 2 safety edits" in printed.splitlines(), printed
@@ -176,13 +177,16 @@ def test_what_landing_made_safe_is_counted_per_article_and_each_line_kept_on_its
     with cli.open_workspace(root) as workspace:
         kept = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data  # the run by hand's line
     assert "cleaned  digests/weekly: made 2 safety edits" in by_hand.output.splitlines(), by_hand.output
-    assert "escaped raw HTML" not in by_hand.output and kept.get("notes") == passed["notes"], kept
+    def edits(row: dict[str, Any]) -> list[str]:  # what landing made safe: each run's scores name its own text
+        return [line for line in row["notes"] if " unscored " not in line]
+
+    assert "escaped raw HTML" not in by_hand.output and edits(kept) == edits(passed), kept
     assert "kept invisible characters" in by_hand.output
     by_article = CliRunner().invoke(cli.main, ["compile", "--article", "digests/weekly", "--workspace", str(root)])
     with cli.open_workspace(root) as workspace:
         kept = workspace.store.rows("agent-runs", {"agent": "digests/weekly"})[-1].data
     assert "cleaned  digests/weekly: made 2 safety edits" in by_article.output.splitlines(), by_article.output
-    assert kept.get("notes") == passed["notes"], kept
+    assert edits(kept) == edits(passed), kept
 
 
 def test_off_a_terminal_and_in_status_the_counts_are_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
