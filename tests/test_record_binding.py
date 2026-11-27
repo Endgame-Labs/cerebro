@@ -89,6 +89,11 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
     assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["2"]
     assert link(store, Fact("f2", "It ships Friday.", "", "fact", "", "src", other.id), other) == []  # read all the same
     assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # a thing of its own
+    gone = store.article("parts/unit-7-2").identity
+    gone.status = "archived"
+    store.set_identity(gone)
+    _hold(store, "src", replace(other, revision="2"))
+    assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # back by its own record: no merge asked
 
 
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:
