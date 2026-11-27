@@ -188,7 +188,7 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
 
 
 @pytest.mark.parametrize(("road", "said"), [
-    ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400"),
+    ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check the model id and the request"),
     ("facts layer", ": check the extraction model; the record is tried again next pass"),
 ])
 def test_a_400_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(

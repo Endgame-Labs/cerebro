@@ -208,16 +208,20 @@ def test_a_reply_that_does_not_fit_its_questions_is_refused(break_it: Any) -> No
         Network(change=break_it).decider().decide("text", QUESTIONS)
 
 
-def test_a_rate_limit_is_tried_again_and_a_refused_key_is_not() -> None:
+@pytest.mark.parametrize(("refusal", "said", "busy"), [(401, "check the fireworks key", 500),
+                                                       (402, "payment is due at the provider", 429),
+                                                       (404, "check the model id and the request", 408)])
+def test_a_rate_limit_is_tried_again_and_a_refusal_is_not(refusal: int, said: str, busy: int) -> None:
     net = Network(429, 503)
     assert net.decider().decide("text", {"a": YesNo("A?")}).answers["a"].yes == 0.9
     assert len(net.sent) == 3 and net.slept == [3.0, 2.0]
-    refused = Network(401)
-    with pytest.raises(DecisionError, match="HTTP 401: check the fireworks key"):
+    refused = Network(refusal)
+    with pytest.raises(DecisionError, match=f"^rune answered HTTP {refusal}: {said}$"):
         refused.decider().decide("text", {"a": YesNo("A?")})
     assert len(refused.sent) == 1
-    gone = Network(500, 500, 500, 500)
-    with pytest.raises(DecisionError, match="HTTP 500"):
+    gone = Network(busy, busy, busy, busy)
+    with pytest.raises(DecisionError, match=f"^rune answered HTTP {busy}: the provider is busy or down, so try again "
+                                            "later$"):
         gone.decider().decide("text", {"a": YesNo("A?")})
     assert len(gone.sent) == 4
 

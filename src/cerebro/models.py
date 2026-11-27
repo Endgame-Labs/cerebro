@@ -580,13 +580,19 @@ class HttpDecider(Decider):
                 raise DecisionError(f"{self.spec.model} at {self.url} answered with a redirect (HTTP {status}), which "
                                     "is not followed so the key stays with its host: check the decision URL")
             if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
+                at = ""
                 if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
                     self.route.refused(status, self.call)
-                    keyed = ": check providers in settings.yaml" if status in (401, 403) else ""
-                    raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}{keyed}")
-                hint = (f"check the {self.spec.key_name} key" if status in (401, 403)
-                        else "check the model id and the request")
-                raise DecisionError(f"{self.spec.model} answered HTTP {status}: {hint}")
+                    at = f" at {self.url}"
+                if status in (401, 403):
+                    hint = "check providers in settings.yaml" if at else f"check the {self.spec.key_name} key"
+                elif status == 402:
+                    hint = "payment is due at the provider"
+                elif status in (408, 429) or status >= 500:  # tried as many times as it may be already
+                    hint = "the provider is busy or down, so try again later"
+                else:
+                    hint = "check the model id and the request"
+                raise DecisionError(f"{self.spec.model}{at} answered HTTP {status}: {hint}")
             try:
                 reply = json.loads(body)
             except ValueError:
