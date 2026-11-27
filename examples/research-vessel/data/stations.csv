@@ -1,0 +1,7 @@
+station_id,name,region,latitude,longitude,depth_m,sea_state,cast_status,updated_at
+NA-09,Station NA-09: Grand Banks Shelf,Grand Banks,46.82N,48.15W,340,3,completed,2026-11-05T14:20:00Z
+NA-11,Station NA-11: Orphan Knoll,Orphan Basin,50.45N,46.30W,2680,4,completed,2026-11-18T19:45:00Z
+NA-12,Station NA-12: Flemish Pass,Flemish Pass,47.60N,46.85W,1180,5,aborted,2026-11-24T16:10:00Z
+NA-13,Station NA-13: East Flemish Slope,Flemish Cap,47.22N,44.60W,3120,4,completed_suspect,2026-11-25T20:30:00Z
+NA-14,Station NA-14: Flemish Cap,Flemish Cap,47.05N,43.90W,4000,5,scheduled,2026-11-26T15:00:00Z
+NA-17,Station NA-17: Labrador Slope,Labrador Basin,52.10N,49.40W,3450,6,deferred,2026-11-26T17:30:00Z
