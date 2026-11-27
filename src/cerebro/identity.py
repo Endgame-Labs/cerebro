@@ -185,17 +185,15 @@ def _bound(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str
 
 
 def _apart(store: Store, record: Record, article: str | Mapping[str, Iterable[object]]) -> bool:
-    """Whether `record` and `article`, an id or the keys of one, are two things whatever name they share: a key that
-    names one thing, one the workspace's weights put above 0, holds values on both, among those that name the record,
-    and none of them is on both. A key the record only carries, or one no source declares, tells nothing apart."""
-    from .curate import key_weights  # curate reads this module
+    """Whether `record` and `article`, an id or the keys of one, are two things whatever name they share, as
+    `curate.same_thing` reads the keys that name the record against the article's by the workspace's weights. A key
+    the record only carries, or one no source declares, tells nothing apart."""
+    from .curate import same_thing, weights_of  # curate reads this module
 
-    weights = store.weights if store.weights is not None else key_weights()
-    mine = {k: {str(v).strip().lower() for v in vs} for k, vs in naming_keys(record).items()
-            if vs and weights.get(k, 0) > 0}
-    theirs = _keys_of(store, article) if mine else {}
-    return any(k in mine and (held := {str(v).strip().lower() for v in vs}) and not held & mine[k]
-               for k, vs in theirs.items())
+    naming, weights = naming_keys(record), weights_of(store)
+    if not any(weights.get(k, 0) > 0 for k in naming):
+        return False  # no key names the record as one thing, so no article need be read
+    return same_thing(naming, _keys_of(store, article), weights) is False
 
 
 def would_bind(store: Store, keys: dict[str, list[object]], title: str, record: Record) -> bool:

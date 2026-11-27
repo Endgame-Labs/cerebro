@@ -503,15 +503,26 @@ def one_thing(one: Mapping[str, Any], other: Mapping[str, Any]) -> bool:
         return (str(ref.get("source")), str(ref.get("id"))) if isinstance(ref, dict) else None
 
     weights = key_weights()
-    mine, theirs = ({k: _lower(vs) for k, vs in dict(p.get("keys") or {}).items() if weights.get(k, 0) > 0 and vs}
-                    for p in (one, other))
-    if both := [k for k in mine if k in theirs]:  # the strongest key both carry decides: a weaker one shared, as a
-        top = max(weights[k] for k in both)  # domain, makes no two things one
-        return any(same_event(mine[k], theirs[k]) if k == "calendar_event_id" else mine[k] & theirs[k]
-                   for k in both if weights[k] == top)
-    if mine and theirs:
+    keys = [dict(p.get("keys") or {}) for p in (one, other)]
+    if (same := same_thing(*keys, weights)) is not None:
+        return same
+    if all(any(weights.get(k, 0) > 0 and vs for k, vs in held.items()) for held in keys):
         return False
     return not (record(one) and record(other) and record(one) != record(other))
+
+
+def same_thing(one: Mapping[str, Iterable[Any]], other: Mapping[str, Iterable[Any]],
+               weights: Mapping[str, int]) -> bool | None:
+    """Whether two sets of keys name one thing, by the strongest key that names one thing, one `weights` puts above 0,
+    which both carry: one when they share a value of it, as an event and its recording do, and two when they share
+    none. None when they carry no such key in common. A weaker key shared, as a domain, makes no two things one."""
+    mine, theirs = ({k: _lower(list(vs)) for k, vs in keys.items() if weights.get(k, 0) > 0 and vs}
+                    for keys in (one, other))
+    if not (both := [k for k in mine if k in theirs]):
+        return None
+    top = max(weights[k] for k in both)
+    return any(same_event(mine[k], theirs[k]) if k == "calendar_event_id" else bool(mine[k] & theirs[k])
+               for k in both if weights[k] == top)
 
 
 def free_path(store: Store, base: str) -> str:
@@ -643,10 +654,16 @@ def workspace_weights(connectors: Iterable[Connector]) -> dict[str, int]:
     return {**{key: weights.pop() for key, weights in said.items() if len(weights) == 1}, **built}
 
 
+def weights_of(store: Store) -> Mapping[str, int]:
+    """How strong each key is as an identity in a workspace: as the app set it on the store from its sources, else
+    the table every kind of source declares."""
+    return store.weights if store.weights is not None else key_weights()
+
+
 def holder(store: Store, collection: str, key: str, value: str, but: str = "") -> str | None:
     """The article of `collection`, but `but`, that holds a key value, or None. One value binds one article only where
     its key names the thing: a key a source issues at weight 0 is shared, and may sit on many."""
-    if (store.weights if store.weights is not None else key_weights()).get(key) == 0:
+    if weights_of(store).get(key) == 0:
         return None
     return next((id for id in store.bound(key, value) if id != but and id.startswith(collection + "/")), None)
 
