@@ -452,7 +452,8 @@ class DatabaseConnector(Connector):
 
     def folded(self, query: str) -> str:
         """The query as its rows' ids read it: as `check_query` gives it, each run of spacing outside its quotes, as
-        this source's engine reads them, one space. Spaced apart, a query keeps its ids, and no other gets them."""
+        this source's engine reads them, one space. Two queries read the same only when that spacing is all they
+        differ in."""
         query = check_query(query, self.engine.dialect)
         out, at = [], 0
         for start, end in [*_scan(query, self.engine.dialect)[2], (len(query), len(query))]:

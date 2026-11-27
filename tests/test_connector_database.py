@@ -23,7 +23,6 @@ from cerebro.connectors.database import (
     DatabaseError,
     Limits,
     QueryRefused,
-    Rows,
     SqliteEngine,
     check_query,
     open_read_only,
@@ -113,11 +112,10 @@ def test_an_agent_file_with_a_sql_line_gathers_its_rows_as_cited_data_and_the_fi
 
 
 def test_a_sql_rows_ids_follow_its_query_and_never_its_spacing_outside_quotes(root: Path) -> None:
-    class Echo(PostgresEngine):  # Postgres with no server: one row for any query its check lets through
-        def _read(self, query: str, limits: Limits) -> Rows:
-            return Rows(["n"], [[1]])
+    from test_connector_postgres import DSN, Server  # its stand-in server gives the same rows to any query
 
-    postgres = DatabaseConnector(read_source(root / "sources" / "warehouse.yaml"), root, engine=Echo(lambda: "", "pg"))
+    engine = PostgresEngine(lambda: DSN, "sources/warehouse.yaml", connect=Server().connect, ticks=lambda: 0.0)
+    postgres = DatabaseConnector(read_source(root / "sources" / "warehouse.yaml"), root, engine=engine)
     for source, alike in [(warehouse(root), ["select 1 as [it's], 'x  y' as v", "select 1 as [it's], 'x y' as v",
                                              "select 1 as\u00a0n", "select 1 as n"]),  # a space past ASCII names
                           (postgres, ["select $$one  two$$ as name", "select $$one two$$ as name"])]:
