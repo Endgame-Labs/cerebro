@@ -122,6 +122,18 @@ def test_a_run_whose_budget_ran_out_lands_the_text_it_handed_in_and_runs_again_n
     assert not again.skipped and body(again.article) == "done [^r0]"  # not marked read: it runs again
 
 
+def test_a_passage_over_what_the_judge_reads_in_one_request_lands_unscored_and_the_run_is_done(tmp_path: Path) -> None:
+    from cerebro.models import DEFAULTS, HttpDecider
+
+    store, items, _, common = setup(tmp_path)
+    items[0] = "word " * 6000  # with its fact, the one sentence is over the bound of a decision request
+    decider = HttpDecider(DEFAULTS["decision"], key=lambda: "unused", send=lambda *_: pytest.fail("it was sent"))
+    compiled = compile_article(AGENT, agent_run=ScriptedRun(lambda p: "One shipped [^r0]."), decider=decider, **common)
+    assert compiled.run.status == "done" and body(compiled.article) == "One shipped [^r0]."
+    notes = [r.data for r in store.rows("agent-runs") if r.data.get("run") == compiled.run.id][-1]["notes"]
+    assert any("unscored" in line and "more than the judge reads" in line for line in notes), notes
+
+
 def test_a_sentence_scored_under_min_grounding_lands_whole_with_its_mark_and_the_article_defines_it_once(
         tmp_path: Path) -> None:
     from cerebro.article import UNSUPPORTED, markdown
