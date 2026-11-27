@@ -176,7 +176,7 @@ def test_the_first_hand_in_is_held_while_the_run_is_told_once_what_the_editor_sa
     assert said == [turns[0][0][1]["text"]] * 3 + [turns[1][0][1]["text"], turns[0][0][1]["text"]]  # each first, once
 
 
-def test_once_the_editor_spoke_a_reply_in_text_or_a_broken_hand_in_is_still_asked_again_and_its_next_hand_in_lands(
+def test_a_reply_in_text_and_a_broken_hand_in_are_each_asked_again_before_and_after_the_editor_spoke_and_the_next_lands(
         ) -> None:
     from suites.agent_run import citing_nothing
 
@@ -186,12 +186,35 @@ def test_once_the_editor_spoke_a_reply_in_text_or_a_broken_hand_in_is_still_aske
     broken = [("write_article", {"words": "Cited [^f_1]."})]
     reviewing = REVIEW.set(citing_nothing)
     try:
-        talked, mended = (PydanticRun(_talker(turns, [])).run(AGENT, EVIDENCE, [], Budget()) for turns in (
-            [uncited, "I will cite it.", cited], [uncited, broken, cited]))
+        talked, mended, early, again = (PydanticRun(_talker(turns, [])).run(AGENT, EVIDENCE, [], Budget())
+                                        for turns in ([uncited, "I will cite it.", cited], [uncited, broken, cited],
+                                                      ["I will write it.", broken, cited], [broken, broken, cited]))
     finally:
         REVIEW.reset(reviewing)
     assert talked.result is not None and talked.result.text == "Cited [^f_1]."
     assert mended.result is not None and mended.result.text == "Cited [^f_1]."
+    assert early.status == "done" and early.result is not None and early.result.text == "Cited [^f_1]."
+    assert again.status == "failed" and again.result is None  # a broken hand-in is asked again once, as text is
+
+
+def test_a_held_hand_in_that_lands_after_the_run_failed_says_in_plain_words_that_it_failed_and_why() -> None:
+    from suites.agent_run import citing_nothing, held_then_refused
+
+    from cerebro.run import REVIEW
+
+    uncited, broken = [("write_article", {"text": "Uncited."})], [("write_article", {"words": "Cited [^f_1]."})]
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        malformed = PydanticRun(_talker([uncited, broken, broken], [])).run(AGENT, EVIDENCE, [], Budget())
+        refused = held_then_refused("Uncited.").run(AGENT, EVIDENCE, [], Budget())
+    finally:
+        REVIEW.reset(reviewing)
+    for run in (malformed, refused):
+        assert run.status == "done" and run.result is not None and run.result.text == "Uncited."
+    assert malformed.note == ("it failed after its first hand-in (its hand-in was malformed, also after the turn that "
+                              "asked for it again), so the text it handed in lands")  # not the library's words
+    assert refused.note.startswith("it failed after its first hand-in (the provider refused the call, for its key or "
+                                   "for payment due: ") and "status_code: 401" in refused.note
 
 
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_fails() -> None:
