@@ -59,6 +59,7 @@ from .clock import Clock, stamp, system_clock
 from .errors import ArgumentsRefused
 from .evidence import CITE, Evidence
 from .file import File
+from .gateway import STOP
 from .ground import RewriteFailed, Rewriter
 from .models import RETRIES, WAIT_MOST, ModelSpec, cost, wire_id
 
@@ -150,7 +151,6 @@ class AgentRun:
 
 FIRST_BYTE = 600.0  # seconds a request may wait for its reply to start, as a model that reasons unseen may take
 STALL = 60.0  # seconds a reply under way may go with nothing new before its request counts as failed
-REFUSALS = (401, 402, 403)  # a provider's answer that refuses the key itself, which no retry helps
 AGENT_CALL = "agent_run"  # what `{call}` holds in a header of an agent run's model calls
 
 
@@ -1437,7 +1437,7 @@ class PydanticRun(AgentRun):
                 self._failed(result, error)
                 if route is not None and isinstance(status := getattr(error, "status_code", None), int):
                     route.refused(status, AGENT_CALL)
-                if getattr(error, "status_code", None) in REFUSALS:  # the provider refuses the key: no retry helps
+                if getattr(error, "status_code", None) in STOP:  # a refused key or payment due: no retry helps
                     result.status = "refused"
             except BaseException as error:  # an interrupt: what the turns made spent counts, then it goes on up
                 result.status, result.note = "stopped", f"stopped by {type(error).__name__}"
