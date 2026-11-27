@@ -132,6 +132,7 @@ def test_a_fact_that_mentions_its_records_own_name_ties_to_no_article_the_record
     said = Fact("f3", "Birch thanked Ann Lee.", "Birch", "fact", "", "src", "2",
                 mentions=[Mention("Birch", "subject"), Mention("Ann Lee")])
     assert ties(store, said, other) == []
+    assert ties(store, said, replace(other, carried=["name"])) == [("things/ann-lee", "mentions")]  # not its own
 
 
 @pytest.mark.parametrize("body, names", [("Ann Lee moved to Birch.", ["Ann Lee"]),
@@ -229,7 +230,7 @@ def test_a_notes_facts_stay_on_the_article_its_header_names_when_that_articles_k
     (root / "sources" / "notes.yaml").write_text('kind: files\nselect:\n  - glob: "notes/*.md"\n    extract: facts\n')
     (root / "notes").mkdir()
     (root / "notes" / "call.md").write_text(  # a party's address, carried: it tells the note apart from nothing
-        "Parent: Alder Works\nWith: Bo <bo@birch.example>\nDate: 2026-11-02\n\nThe order is signed.\n")
+        "Parent: Alder Works\nWith: Bo <bo@birch.example>\nDate: 2026-11-02\n\nThe shelf is full.\n")
     with Cerebro(root, extraction=FakeExtraction()) as workspace:
         workspace.store.create(Identity("things/alder", "things", "Alder Works", {"domain": ["alder.example"]}, "active"))
         workspace.run_once(agents=False)
