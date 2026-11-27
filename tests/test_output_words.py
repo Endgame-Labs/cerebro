@@ -642,6 +642,7 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
         tmp_path: Path, monkeypatch: Any) -> None:
     from cerebro import cli
     from cerebro.fakes import FakeExtraction
+    from cerebro.records import Proposal, propose
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     root = tmp_path / "w"
@@ -657,7 +658,14 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
 
     seen = [run("--reject-from", "agents/projects/article.md"), run("--accept-from", "agents/projects/curator.md"),
             run("--reject-from", "agents/projects/curator.md,projects/curator"), run("--accept", "p_nothing")]
+    (root / "agents" / "places").mkdir()
+    (root / "agents" / "places" / "curator.md").write_text((root / "agents" / "projects" / "curator.md").read_text())
+    with Cerebro(root, extraction=FakeExtraction()) as workspace:  # one curator with an admit waiting, one with none
+        propose(workspace.store, Proposal("p_east00000001", "article.admit", "places/east", Caller("places/curator",
+                                          "agent"), "2026-11-18T09:00:00Z", payload={"name": "East"}, reason="Named."))
+    seen.append(run("--accept-from", "agents/projects/curator.md,agents/places/curator.md"))
     assert any("curates no collection" in line for line in seen), seen
+    assert "skipped   no admit from agents/projects/curator.md is awaiting your review" in seen[-1], seen
     assert any("no admit from agents/projects/curator.md is awaiting your review" in line for line in seen), seen
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 

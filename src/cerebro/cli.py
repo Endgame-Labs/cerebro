@@ -1435,6 +1435,7 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
         firsts: list[tuple[str, str, str]] = []
         named: set[str] = set()
         taken: dict[str, list[str]] = {"--accept-from": [], "--reject-from": []}
+        empty: list[tuple[str, list[str]]] = []  # each file with no admit waiting, and its newer proposals
         for flag, files in (("--accept-from", accept_from), ("--reject-from", reject_from)):
             for file in files:  # what the first run's list showed, when its stamp is at hand, and no newer row
                 agent = reviewing.agent_named(workspace, file, flag)
@@ -1448,17 +1449,20 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
                 until = first_run.shown_at(workspace, agent)
                 # a curator's flag decides its admits alone: its other proposals wait
                 shown = [id for id in reviewing.filed_by(workspace, YOU, file, until=until, flag=flag) if id in admits]
-                if not shown:  # a curator with no admit waiting is refused, exit 1
-                    later = _newer_than(workspace, file, flag, until)
-                    raise CerebroError(f"no admit from {file} is awaiting your review" + (
-                        f" that the first run's list showed, so nothing was decided: {_newer(later)}" if later else
-                        ", so nothing was decided: cerebro review lists what is"))
+                if not shown:  # each file is decided on its own: one with nothing waiting is said below
+                    empty.append((file, _newer_than(workspace, file, flag, until)))
+                    continue
                 if until:
                     firsts.append((file, flag, until))
                 taken[flag] += shown
         # an id --accept or --reject names stands as named: the ids are decided before the curators'
         accept = tuple(dict.fromkeys([*accept, *(id for id in taken["--accept-from"] if id not in reject)]))
         reject = tuple(dict.fromkeys([*reject, *(id for id in taken["--reject-from"] if id not in accept)]))
+        if empty and not (accept or reject):  # nothing at all to decide: refused, exit 1
+            file, later = empty[0]
+            raise CerebroError(f"no admit from {file} is awaiting your review" + (
+                f" that the first run's list showed, so nothing was decided: {_newer(later)}" if later else
+                ", so nothing was decided: cerebro review lists what is"))
         if accept or reject:
             from .records import DecideResult
 
@@ -1480,6 +1484,9 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
             else:
                 for line in reviewing.result_lines(result, stood):
                     _echo(line)
+                for file, later in empty:
+                    _echo(f"skipped   no admit from {file} is awaiting your review" + (
+                        f" that the first run's list showed: {_newer(later)}" if later else ""))
                 newer = list(dict.fromkeys(id for file, flag, until in firsts
                                            for id in _newer_than(workspace, file, flag, until)))
                 if newer:
