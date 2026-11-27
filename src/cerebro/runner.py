@@ -1342,7 +1342,8 @@ class Decision:
 class Ahead:
     """What a pass reads of one source before it decides its records: the ids its listing says are gone, whether the
     first run holds what was held before, the collections a curator keeps, the ids held before, and, while a first
-    run's build runs, the first day it reads and the records an admit a person accepted names, by source and id."""
+    run's build runs, the first day it reads, the records an admit a person accepted names, by source and id, and the
+    articles those admits made."""
 
     gone: Collection[str]
     discovering: bool
@@ -1350,29 +1351,33 @@ class Ahead:
     first: Collection[str] = ()
     since: str = ""
     asked: Collection[tuple[str, str]] = ()
+    approved: Collection[str] = ()
 
 
 def ahead_of(workspace: Cerebro) -> Ahead:
     """What a pass reads once before it decides any record: whether the first run holds what was held before, as it
     does while a first-run session is stored and not done, the collections a curator keeps, and, while a first run's
-    build runs, the first day it reads and the records a person asked for."""
+    build runs, the first day it reads, the records a person asked for and the articles a person approved."""
     session = workspace.store.state(FIRST_RUN_KEY)
     since = first_run_since(workspace.store) if IN_FIRST_BUILD.get() else ""
-    asked = {(str(ref.get("source")), str(ref.get("id"))) for p in (proposals(workspace.store, ACCEPTED) if since else [])
-             if p.kind == "article.admit" and p.decided_by is not None and p.decided_by.kind == "person"
-             and isinstance(ref := p.payload.get("record"), dict)}
+    yes = [p for p in (proposals(workspace.store, ACCEPTED) if since else [])
+           if p.kind == "article.admit" and p.decided_by is not None and p.decided_by.kind == "person"]
+    asked = {(str(ref.get("source")), str(ref.get("id"))) for p in yes
+             if isinstance(ref := p.payload.get("record"), dict)}
+    approved = {str(p.applied["article"]) for p in yes if p.applied.get("article")}
     return Ahead((), isinstance(session, dict) and session.get("status") != "done",
                  {agent.target for agent in workspace.agents if agent.role == "curator"} | {
                      id.split("/")[0] for id in refused_ids(workspace.refused) if id.count("/") == 1 and id.endswith("/curator")},
-                 since=since, asked=asked)
+                 since=since, asked=asked, approved=approved)
 
 
 def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None) -> Decision:
     """What a pass does with one record, changing nothing. Anything but a record is the id of one the last pass left to try again: dropped
     when its source says it is gone, else got and read. A record listed, or held before, is held while the first run
     holds it or while it is out of scope, lands only its fields when its source reads it for that or for nothing,
-    is held while a first run's build runs when it is dated before the first day the build reads and no admit a
-    person accepted names it, and is got and read otherwise. With no `ahead` the record is one the pass got whole: its source reads it for nothing,
+    is held while a first run's build runs when it is dated before the first day the build reads, no admit a
+    person accepted names it and it binds no article of its own collection such an admit made, and is got and read
+    otherwise. With no `ahead` the record is one the pass got whole: its source reads it for nothing,
     the extraction cap refuses it, or it is read into facts."""
     if not isinstance(record, Record):
         return Decision(DROP) if ahead is not None and record in ahead.gone else Decision(TAKE)
@@ -1391,7 +1396,8 @@ def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None)
                         f"no article binds it, so it waits for the curator of {record.into}")
     if record.extract in ("records", "none"):
         return Decision(NOTHING, f"its source extracts it into {record.extract}")
-    if before_cut(record.at, ahead.since) and (record.source, record.id) not in ahead.asked:
+    if before_cut(record.at, ahead.since) and (record.source, record.id) not in ahead.asked and not (
+            record.into and any(id in ahead.approved for id in own_articles(workspace.store, record))):
         return Decision(HOLD, OLDER_HOLD)
     return Decision(TAKE)
 
