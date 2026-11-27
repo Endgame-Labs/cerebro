@@ -358,7 +358,7 @@ def test_the_decision_judge_asks_once_per_passage_and_keeps_its_scores() -> None
     assert len(decider.asked) == 1 and [p["text"] for p in decider.asked[0][0]["passages"]] == ["first", "second"]
     assert judge.score("the status", two[:2]).cached == 2 and len(decider.asked) == 1
     judge.score("another instruction", two[:1])
-    assert len(decider.asked) == 2 and judge.calls == 2
+    assert len(decider.asked) == 2
     clock.now += timedelta(days=31)
     judge.score("the status", [Passage("c", "s", "third")])  # a score is dropped 30 days after it was scored
     assert judge.score("the status", two[:1]).cached == 0 and len(decider.asked) == 4
@@ -451,7 +451,7 @@ def test_with_the_compilation_cap_spent_the_judge_asks_nothing_and_the_entry_loa
     decider = FakeDecider()
     judge = DecisionKeepJudge(decider, store, Clock(), Ledger(store, Caps(compilation=0.0)), DEFAULTS["decision"])
     text = render([gather(reader(), StoreLookup(store), {}, judge=judge)[0]])
-    assert decider.asked == [] and judge.calls == 0
+    assert decider.asked == []
     assert "PR 412" in text and "Refactor" in text and "so this entry loaded as it would without keep: compilation " \
         "spent $0.00 of its $0 cap" in text
 
@@ -619,11 +619,11 @@ def test_a_passage_scored_under_the_bar_is_asked_once_more_alone_and_keeps_the_h
     judge = DecisionKeepJudge(decider, store)
     passages = [Passage("a", "s", "one"), Passage("b", "s", "two"), Passage("c", "s", "three")]
     got = judge.score("the status", passages)
-    assert got.scores == [0.83, 0.04, 0.9] and judge.calls == 2
+    assert got.scores == [0.83, 0.04, 0.9] and len(decider.asked) == 2
     assert [p["article"] for p in decider.asked[1][0]["passages"]] == ["b", "a"]  # the low ones alone, the other order
-    assert judge.score("the status", passages).cached == 3 and judge.calls == 2  # a cached score is not asked again
-    once = DecisionKeepJudge(ByArticle({"a": [0.02, 0.83]}), again=False)
-    assert once.score("the status", passages[:1]).scores == [0.02] and once.calls == 1
+    assert judge.score("the status", passages).cached == 3 and len(decider.asked) == 2  # a cached score is not asked again
+    once = DecisionKeepJudge(alone := ByArticle({"a": [0.02, 0.83]}), again=False)
+    assert once.score("the status", passages[:1]).scores == [0.02] and len(alone.asked) == 1
     high = DecisionKeepJudge(ByArticle({"a": [0.3, 0.9]}))
     assert high.score("the status", passages[:1], bar=0.5).scores == [0.9]  # under a line's own bar, asked again
 

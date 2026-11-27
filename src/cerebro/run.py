@@ -61,7 +61,7 @@ from .clock import Clock, stamp, system_clock
 from .errors import ArgumentsRefused, CerebroError
 from .evidence import Evidence
 from .file import File
-from .models import RETRIES, WAIT_MOST, ModelSpec, TokenCount, cost, wire_id
+from .models import RETRIES, WAIT_MOST, ModelSpec, TokenCount, Tried, cost, wire_id
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import BinaryContent, ModelMessage, ModelResponse
@@ -186,7 +186,7 @@ def model_settings(block: dict[str, Any]) -> dict[str, Any]:
     return settings
 
 
-def _provided(model: Any, key: Callable[[str], str] | None, route: Any, tries: _Tries | None = None) -> Any:
+def _provided(model: Any, key: Callable[[str], str] | None, route: Any, tries: Tried | None = None) -> Any:
     """`model`, an id such as `fireworks:glm-5p3`, as a model that streams each request (see `_streamed`), on the
     provider's key that `key` reads and on `route`'s host, or on Pydantic AI's own lookup of its key when none is read,
     its tries held to `tries`. A model that is no id is as it is."""
@@ -228,7 +228,7 @@ def _streamed() -> type:
     passing = (ModelConnectionError, ModelRateLimitError, ModelServerError, ModelUnavailableError)
 
     class Streamed(WrapperModel):
-        def __init__(self, wrapped: Any, tries: _Tries | None):
+        def __init__(self, wrapped: Any, tries: Tried | None):
             super().__init__(wrapped)
             self.tries = tries
 
@@ -247,7 +247,7 @@ def _streamed() -> type:
                     wait = 2.0 ** attempt if error.retry_after is None else error.retry_after
                     await anyio.sleep(min(wait, WAIT_MOST))
                     if self.tries is not None:
-                        self.tries.before()
+                        self.tries.again()
                     attempt += 1
 
         async def _try(self, messages: Any, settings: Any, model_request_parameters: Any) -> Any:
@@ -1187,22 +1187,22 @@ class _Cut(Exception):
 
 
 class _Tries:
-    """A run's tries of its requests to a provider: each try again is checked against its meter's cap before it
-    starts, and each try that failed is held as spent, at what its stream counted, or with no count, at what the run
-    holds, as the provider bills what it read."""
+    """A run's tries of its requests to a provider, as `models.Tried` is told of them: each try again is checked
+    against its meter's cap before it starts, and each try that failed is held as spent, at what its stream counted,
+    or with no count, at what the run holds, as the provider bills what it read."""
 
     def __init__(self, metered: MeterTurn | None, name: str, room: _Room):
         self.metered, self.name, self.room = metered, name, room
         self.failed: list[Any] = []
 
-    def before(self) -> None:
+    def again(self) -> None:
         if self.metered is not None:
             self.metered.before()
 
-    def spent(self, usage: Any) -> None:
+    def spent(self, tokens: Any) -> None:
         from pydantic_ai.usage import RequestUsage
 
-        usage = usage or RequestUsage()
+        usage = tokens or RequestUsage()
         self.failed.append(usage if usage.input_tokens else replace(usage, input_tokens=self.room.held))
         if self.metered is not None:
             provider, _, wire = self.name.partition(":")

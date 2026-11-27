@@ -7,17 +7,17 @@ import json
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from cerebro import Record
-from cerebro.budget import LOG, BudgetSpent, Caps, Ledger, Metered
-from cerebro.compile import _Held
+from cerebro.budget import LOG, BudgetSpent, Caps, Held, Ledger, Metered
 from cerebro.evidence import DecisionKeepJudge, Passage, estimate_tokens
 from cerebro.facts import Extracted
 from cerebro.fakes import FakeExtraction
-from cerebro.models import Answer, Decision, ModelSpec, TokenCount
+from cerebro.models import DEFAULTS, Answer, Decision, ModelSpec, TokenCount
 from cerebro.rerank import DecisionReranker
 from cerebro.search import FACT, Hit
 from cerebro.store import OWN, SQLiteStore
@@ -93,7 +93,7 @@ def _keep(ledger: Ledger) -> tuple[Callable[[int], Any], Callable[[], int]]:
 
 def _ground(ledger: Ledger) -> tuple[Callable[[int], Any], Callable[[], int]]:
     decider = StandIn()
-    held = _Held(decider, ledger, RUNE, lambda: NOW, "ground x")  # type: ignore[arg-type]
+    held = Held(decider, ledger, "compilation", RUNE, lambda: NOW, "ground x")  # type: ignore[arg-type]
     return lambda n: held.decide({"sentence": "a sentence " * 40}, {"q": "is it grounded?"}), lambda: decider.calls
 
 
@@ -172,13 +172,11 @@ def test_a_metered_call_waiting_behind_one_under_way_is_checked_when_it_starts()
     assert handler.calls == 1, "a call checked before the one under way met the cap still started after it"
 
 
-def test_each_try_of_a_grounding_judge_call_is_checked_against_the_cap_before_it_starts_and_a_failed_try_counts(
-        ) -> None:
+def test_a_try_that_failed_counts_whether_its_connection_dropped_or_the_server_erred() -> None:
     from test_models import Network
 
     from cerebro.models import HttpDecider, YesNo
 
-    state, questions = {"passage": "a sentence " * 400}, {"q": YesNo("Is it backed?")}
     store, net, sent = SQLiteStore(), Network(), []
     drops: list[Any] = [503, ConnectionResetError()]  # a dropped connection, then a server error, then the answer
 
@@ -192,12 +190,103 @@ def test_each_try_of_a_grounding_judge_call_is_checked_against_the_cap_before_it
         return net.send(url, headers, data)
 
     decider = HttpDecider(RUNE, key=lambda: "k", send=flaky, sleep=lambda _: None)
-    _Held(decider, Ledger(store, Caps(compilation=10.0)), RUNE, lambda: NOW, "ground x").decide(state, questions)
+    Held(decider, Ledger(store, Caps(compilation=10.0)), "compilation", RUNE, lambda: NOW, "ground x").decide(
+        {"passage": "a sentence " * 400}, {"q": YesNo("Is it backed?")})
     rows = store.rows(LOG, {"layer": "compilation"})
-    assert len(sent) == 3 and len(rows) == 3 and all(r.data["usd"] > 0 for r in rows)  # each failed try counts
-    one = rows[0].data["usd"]  # what a failed try is held to have spent
-    store, net = SQLiteStore(), Network(503, 503)
-    with pytest.raises(BudgetSpent):  # the first failed try meets the cap, so no try again starts
-        _Held(net.decider(), Ledger(store, Caps(compilation=one / 2)), RUNE, lambda: NOW, "ground x").decide(
-            state, questions)
-    assert len(net.sent) == 1 and len(store.rows(LOG, {"layer": "compilation"})) == 1
+    assert len(sent) == 3 and len(rows) == 3 and all(r.data["usd"] > 0 for r in rows)
+
+
+def _grounding_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    from cerebro.agent import Agent
+    from cerebro.article import Citation
+    from cerebro.compile import _Grounding
+    from cerebro.evidence import Evidence
+    from cerebro.fakes import MemoryStore
+    from cerebro.lookup import StoreLookup
+
+    agent = Agent(id="things/a", path=tmp_path / "a.md", role="writer", target="things/a", prompt="Write it.")
+    reads = [Evidence("Facts", ["- [^f_1] A thing moved."], [Citation("fact", "f_1", "r", "A thing moved.")])]
+    grounding = _Grounding("things/a", lookup=StoreLookup(MemoryStore()), root=tmp_path, ledger=Ledger(store, CAPS),
+                           clock=lambda: NOW, decider=decider, decision=RUNE, zone=UTC, floor=0.6)
+    grounding.editor(agent, lambda: reads).marked("A thing moved [^f_1].")
+
+
+def _keep_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    DecisionKeepJudge(decider, None, lambda: NOW, Ledger(store, CAPS), RUNE, None, again=False).score(
+        "what matters", [Passage("things/a", "Part", "A thing moved.")])
+
+
+def _sort_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    from cerebro.caller import Caller
+    from cerebro.records import tell
+
+    tell(store, None, Caller("you", "person"), "A thing moved on Monday.", decider=decider,
+         ledger=Ledger(store, CAPS), clock=lambda: NOW, decision_model=RUNE)
+
+
+def _near_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    from cerebro.app import Cerebro
+    from cerebro.article import Identity
+    from cerebro.fakes import FakeConnector, FakeExtraction
+
+    record = Record(id="n1", source="notes", revision="1", at="2026-11-10T09:00:00Z", body="It renewed.",
+                    fields={"subject": "the Alder deal"})
+    (tmp_path / "settings.yaml").write_text("budget: { extraction_daily_usd: 1 }\n")
+    store.create(Identity("things/alder", "things", "Alder"))
+    Cerebro(tmp_path, store=store, extraction=FakeExtraction(), clock=lambda: NOW, decider=decider,
+            connectors=[FakeConnector("notes", [record])]).run_once()
+
+
+def _eval_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    from cerebro import evals
+
+    fact = {"id": "f_1", "text": "A thing moved.", "subject": "a thing", "at": "2026-11-03", "source": "local/a.md"}
+    (tmp_path / "corpus.json").write_text(json.dumps({"facts": [fact], "cases": [
+        {"id": "c1", "sentence": "A thing moved [^f_1].", "label": "supported-in-other-words"}]}))
+    evals.run(None, evals.load(tmp_path / "corpus.json"), decider=decider, model=RUNE, ledger=Ledger(store, CAPS),
+              cap_usd=1.0, clock=lambda: NOW)
+
+
+def _proof_road(tmp_path: Path, decider: Any, store: Any) -> None:
+    from cerebro import scaffold
+    from cerebro.app import Cerebro
+
+    root = scaffold.init(tmp_path / "wiki", daily_usd=None, timezone="UTC", environ={}).root
+    workspace = Cerebro(root, store=store, clock=lambda: NOW, trusted=True)  # left open: the test reads its store
+    workspace.ledger = Ledger(store, CAPS)
+    workspace.prove_key("decision", RUNE, "k-proof")
+
+
+CAPS = Caps(extraction=1.0, compilation=1.0, evaluation=1.0)
+# Each decision caller that tries a call again, by the layer it spends, as it builds and holds its decider.
+TRIED = {"grounding judge": ("compilation", _grounding_road), "keep judge": ("compilation", _keep_road),
+         "tell sort": ("extraction", _sort_road), "near-match judge": ("extraction", _near_road),
+         "eval judge": ("evaluation", _eval_road), "key proof": ("compilation", _proof_road)}
+
+
+@pytest.mark.parametrize("road", list(TRIED))
+def test_each_try_of_a_decision_call_is_checked_against_the_cap_before_it_starts_and_a_failed_try_counts(
+        road: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from test_models import Network
+
+    from cerebro.models import HttpDecider
+
+    layer, make = TRIED[road]
+    store, net = SQLiteStore(), Network(503)
+
+    def meet(_: float) -> None:  # while the first try waits to go again, calls side by side meet every cap
+        for spent in ("extraction", "compilation", "evaluation"):
+            Ledger(store, CAPS).record(spent, NOW, RUNE, TokenCount(input_tokens=10**9), "side by side")
+
+    def flaky(spec: ModelSpec, **kw: Any) -> HttpDecider:
+        return HttpDecider(spec, **{**kw, "key": lambda: "k"}, send=net.send, sleep=meet)
+
+    monkeypatch.setattr("cerebro.app.HttpDecider", flaky)  # the key proof makes its own client
+    try:
+        make(tmp_path, flaky(RUNE), store)
+    except BudgetSpent:
+        pass
+    assert len(net.sent) == 1, f"{len(net.sent)} tries started; the second after the cap was met"
+    paid = [r for r in store.rows(LOG, {"layer": layer}) if r.data["run"] != "side by side"
+            and r.data["model"] in (RUNE.model, DEFAULTS["decision"].model)]
+    assert len(paid) == 1, [r.data for r in store.rows(LOG)]  # the try that failed counts

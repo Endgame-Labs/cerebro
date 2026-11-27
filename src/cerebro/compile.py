@@ -56,7 +56,7 @@ from .article import (
     pieces,
     protected,
 )
-from .budget import LOG, BudgetSpent, HeldForRoom, Ledger, Stopped, stopping, under
+from .budget import LOG, BudgetSpent, Held, HeldForRoom, Ledger, Stopped, stopping, under
 from .caller import Caller
 from .clean import label, land_heading, underlined_as_atx, unlabeled
 from .clock import Clock, stamp, system_clock
@@ -81,7 +81,7 @@ from .facts import Fact
 from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, tallied
 from .identity import in_working_set
 from .lookup import LINKED, MAX_READ, Lookup
-from .models import TRIES, Decider, ModelSpec, TokenCount, cost, price_of, read_model
+from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
 from .records import proposals
 from .reply import outside
 from .run import REVIEW, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
@@ -640,7 +640,7 @@ class _Grounding:
         gives what the run has read when the editor is asked, so what it read by its tools is found too."""
         decider = self.decider
         if decider is not None and self.ledger is not None and self.decision is not None:
-            decider = _Held(decider, self.ledger, self.decision, self.clock, f"{RUN_SPEND} {agent.id}")
+            decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, f"{RUN_SPEND} {agent.id}")
         judge = Judge(decider, self.article, _workspace(self.root), f"{self.clock().astimezone(self.zone):%Y-%m-%d}")
 
         def found(ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -660,31 +660,6 @@ class _Grounding:
 
         floor = agent.min_grounding if agent.min_grounding is not None else self.floor
         return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "")
-
-
-class _Held(Decider):
-    """A decider held to the compilation cap call by call and try by try: each call, and each try of it again, is
-    checked against the ledger before it starts, and what each spent is recorded right after it, a try that failed
-    at what it sent, so a later call that fails or a grounding that raises loses none of it."""
-
-    def __init__(self, inner: Decider, ledger: Ledger, model: ModelSpec, clock: Clock, run: str):
-        self.inner, self.ledger, self.model, self.clock, self.run = inner, ledger, model, clock, run
-
-    def decide(self, state: Any, questions: Mapping[str, Any]) -> Any:
-        self.ledger.check("compilation", self.clock(), self.model)
-        tried = TRIES.set(self)
-        try:
-            decision = self.inner.decide(state, questions)  # a call that raises gives no count of what it spent
-        finally:
-            TRIES.reset(tried)
-        self.ledger.record("compilation", self.clock(), self.model, decision.usage, self.run)
-        return decision
-
-    def again(self) -> None:
-        self.ledger.check("compilation", self.clock(), self.model)
-
-    def failed(self, spent: TokenCount) -> None:
-        self.ledger.record("compilation", self.clock(), self.model, spent, self.run)
 
 
 def _workspace(root: Path) -> str:

@@ -31,7 +31,7 @@ import json
 import math
 import re
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -41,13 +41,13 @@ import yaml
 
 from . import prompts
 from .article import Article, fields, passages
-from .budget import EVALUATION_DAILY_USD, BudgetSpent, Ledger
+from .budget import EVALUATION_DAILY_USD, BudgetSpent, Held, Ledger
 from .caller import Caller
 from .clock import Clock, seconds, system_clock
 from .errors import CerebroError
 from .facts import Fact, Quote
 from .ground import FLOOR, Editor, Judge, fields_of
-from .models import Decider, Decision, DecisionError, DecisionTooLarge, ModelSpec, Question, TokenCount, YesNo
+from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, TokenCount, YesNo
 
 __all__ = [
     "DAILY_USD", "EVAL_CALLER", "KINDS", "LAYER", "Case", "Check", "EvalError", "Group", "Probe", "Report", "Scored",
@@ -343,37 +343,19 @@ class _Spend:
             return str(error)
         return ""
 
-    def record(self, usage: TokenCount, calls: int, run: str) -> float:
-        """Keep what calls cost under the evaluation layer, priced on the model asked, and give the dollars."""
-        usd = float(self.ledger.record(LAYER, self.clock(), self.model, usage, run)["usd"])
+    def held(self, decider: Decider, run: str) -> Held:
+        """`decider` as one case asks it, under `run`, each call and each try of it held to the cap."""
+        return Held(decider, self.ledger, LAYER, self.model, self.clock, run)
+
+    def add(self, held: Held) -> float:
+        """Add what a case's calls spent to the run's totals, and give its dollars."""
         with self._lock:
-            self.usd += usd
-            self.calls += calls
-            self.tokens = TokenCount(self.tokens.input_tokens + usage.input_tokens,
-                                     self.tokens.output_tokens + usage.output_tokens,
-                                     self.tokens.cache_read_tokens + usage.cache_read_tokens,
-                                     self.tokens.cache_write_tokens + usage.cache_write_tokens)
-        return usd
-
-
-class _Recording(Decider):
-    """A decider that keeps the answers and the usage of each call, for one case."""
-
-    def __init__(self, inner: Decider):
-        self.inner = inner
-        self.answers: dict[str, Any] = {}
-        self.usage = TokenCount()
-        self.calls = 0
-
-    def decide(self, state: Any, questions: Mapping[str, Question]) -> Decision:
-        self.calls += 1  # a call that fails still counts, and is kept with what it is known to have spent
-        decision = self.inner.decide(state, questions)
-        self.answers.update(decision.answers)
-        u = decision.usage
-        self.usage = TokenCount(self.usage.input_tokens + u.input_tokens, self.usage.output_tokens + u.output_tokens,
-                                self.usage.cache_read_tokens + u.cache_read_tokens,
-                                self.usage.cache_write_tokens + u.cache_write_tokens)
-        return decision
+            u, t = held.usage, self.tokens
+            self.usd += held.usd
+            self.calls += held.calls
+            self.tokens = TokenCount(t.input_tokens + u.input_tokens, t.output_tokens + u.output_tokens,
+                                     t.cache_read_tokens + u.cache_read_tokens, t.cache_write_tokens + u.cache_write_tokens)
+        return held.usd
 
 
 # -- one question -----------------------------------------------------------------------------------------------------
@@ -513,10 +495,10 @@ def _judge(probe: Probe, articles: list[Article], nothing: str, ctx: _Run) -> tu
         return Check("judge", None, "no decision model: run with one to judge"), 0.0, 0
     if why := ctx.spend.refused():
         return Check("judge", None, why), 0.0, 0
-    return _judged(probe, articles, ctx, _Recording(ctx.decider))
+    return _judged(probe, articles, ctx, ctx.spend.held(ctx.decider, f"eval {probe.id}"))
 
 
-def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: _Recording) -> tuple[Check, float, int]:
+def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: Held) -> tuple[Check, float, int]:
     assert ctx.spend is not None
     shown, cut = list(articles), 0
     while True:  # a find or a query that read many articles is judged on as many as the model takes, first first
@@ -531,12 +513,14 @@ def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: _Record
                 shown = shown[:len(shown) // 2]
                 continue
             answer, failed = None, f"the first article read is over what the decision model takes: {error}"
+        except BudgetSpent as error:  # a try again refused at the cap
+            answer, failed = None, ctx.spend.refused() or str(error)
         except DecisionError as error:
             answer, failed = None, f"the decision call failed: {error}"
         else:
             failed = "" if answer is not None and answer.yes is not None else "the decision model gave no yes or no"
         break
-    usd = ctx.spend.record(recording.usage, recording.calls, f"eval {probe.id}") if recording.calls else 0.0
+    usd = ctx.spend.add(recording)
     if failed:
         return Check("judge", None, failed), usd, recording.calls
     yes = float(answer.yes)  # type: ignore[union-attr,arg-type]
@@ -553,7 +537,8 @@ def _ground_case(suite: Suite, case: Case, ctx: _Run) -> Scored:
     if ctx.spend is not None and (why := ctx.spend.refused()):
         return Scored(case.id, None, [Check("scores as labelled", None, why)], case.group,
                       seconds=ctx.timer() - started, label=case.label)
-    recording = _Recording(ctx.decider) if ctx.decider is not None else None
+    recording = ctx.spend.held(ctx.decider, f"eval {case.id}") if ctx.spend is not None and ctx.decider is not None \
+        else None
 
     def found(ids: list[str]) -> dict[str, dict[str, Any]]:
         return {id: fields_of(id, None, suite.facts[id], stale=suite.stale.get(id, "")) or {"text": ""}
@@ -561,8 +546,7 @@ def _ground_case(suite: Suite, case: Case, ctx: _Run) -> Scored:
 
     verdicts = Editor(Judge(recording, GROUND_ARTICLE, suite.context, suite.today), found, heading="Case").judged(
         case.sentence)
-    usd = ctx.spend.record(recording.usage, recording.calls, f"eval {case.id}") \
-        if ctx.spend is not None and recording is not None and recording.calls else 0.0
+    usd = ctx.spend.add(recording) if ctx.spend is not None and recording is not None else 0.0
     calls = recording.calls if recording is not None else 0
     verdict = min(verdicts, key=lambda v: -1.0 if v.score is None else v.score, default=None)  # its weakest
     if verdict is None or verdict.score is None:

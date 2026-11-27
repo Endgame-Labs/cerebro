@@ -49,7 +49,7 @@ from typing import Any
 from .connector import Record
 from .errors import CerebroError
 from .facts import Extracted, Extraction, ExtractionFailed, Fact
-from .models import ModelSpec, TokenCount, Tokens, cost, price_of
+from .models import TRIES, Decider, Decision, ModelSpec, TokenCount, Tokens, cost, price_of
 from .store import Store
 
 __all__ = [
@@ -65,6 +65,7 @@ __all__ = [
     "BudgetSpent",
     "CallRefused",
     "Caps",
+    "Held",
     "HeldForRoom",
     "Ledger",
     "Meter",
@@ -552,6 +553,42 @@ class Ledger:
             rows.insert(0, (model, rest))
         for spec, usage in rows:
             self.record("extraction", at, spec, usage, run)
+
+
+class Held(Decider):
+    """A decider held to `layer`'s cap call by call and try by try: each call, and each try of it again, is checked
+    against the ledger before it starts, and what each try spent is recorded right after it under `run`, a try that
+    failed at what it sent. `calls`, `usage` and `usd` total what it was asked and spent."""
+
+    def __init__(self, inner: Decider, ledger: Ledger, layer: str, model: ModelSpec, clock: Callable[[], datetime],
+                 run: str):
+        self.inner, self.ledger, self.layer, self.model, self.clock, self.run = inner, ledger, layer, model, clock, run
+        self.calls, self.usage, self.usd = 0, TokenCount(), 0.0
+        self._lock = threading.Lock()
+
+    def decide(self, state: Any, questions: Mapping[str, Any]) -> Decision:
+        self.again()
+        with self._lock:
+            self.calls += 1
+        tried = TRIES.set(self)
+        try:
+            decision = self.inner.decide(state, questions)  # a call that raises gives no count of what it spent
+        finally:
+            TRIES.reset(tried)
+        self.spent(decision.usage)
+        return decision
+
+    def again(self) -> None:
+        self.ledger.check(self.layer, self.clock(), self.model)
+
+    def spent(self, tokens: Tokens) -> None:
+        usd = float(self.ledger.record(self.layer, self.clock(), self.model, tokens, self.run)["usd"])
+        with self._lock:
+            u = self.usage
+            self.usd += usd
+            self.usage = TokenCount(u.input_tokens + tokens.input_tokens, u.output_tokens + tokens.output_tokens,
+                                    u.cache_read_tokens + tokens.cache_read_tokens,
+                                    u.cache_write_tokens + tokens.cache_write_tokens)
 
 
 class Metered(Extraction):

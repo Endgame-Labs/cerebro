@@ -601,30 +601,6 @@ def test_an_agent_files_min_grounding_takes_the_place_of_the_workspaces_and_the_
         assert ("[^unsupported]" in body(compiled.article)) == marked, (floor, own)
 
 
-def test_grounding_past_the_cap_asks_no_model_and_leaves_each_sentence_unscored(tmp_path: Path) -> None:
-    from datetime import UTC, datetime
-
-    from cerebro.budget import BudgetSpent
-    from cerebro.compile import _Grounding
-    from cerebro.fakes import FakeDecider
-    from cerebro.models import DEFAULTS
-
-    class Spent:
-        def check(self, *args: Any) -> None:
-            raise BudgetSpent("compilation spent its cap")
-
-    _, _, _, common = setup(tmp_path)
-    decider = FakeDecider({"s1": 0})
-    grounding = _Grounding("reports/weekly", lookup=common["lookup"], root=tmp_path, ledger=Spent(),
-                           clock=lambda: datetime(2026, 11, 17, tzinfo=UTC), decider=decider,
-                           decision=DEFAULTS["decision"], zone=UTC, floor=0.6)
-    editor = grounding.editor(AGENT, list)
-    assert editor.marked("One [^r0].") == "One [^r0]." and decider.asked == []
-    [line] = editor.scores
-    assert line == '(before the first heading): unscored "One [^r0].": compilation spent its cap; it cites [^r0], not ' \
-        'found in what was read'
-
-
 def test_grounding_reads_more_than_twenty_cited_facts_in_more_than_one_call(tmp_path: Path) -> None:
     from cerebro.compile import _Grounding
     from cerebro.lookup import MAX_READ
@@ -678,15 +654,6 @@ def test_grounding_records_each_judge_call_as_it_returns_so_a_later_call_that_fa
     assert editor.marked(TWO_PASSAGES) == TWO_PASSAGES
     assert ledger.spent(datetime(2026, 11, 17, tzinfo=UTC), "compilation") == pytest.approx(0.042)
     assert "unscored" in editor.scores[1] and "the model went away" in editor.scores[1]
-
-
-def test_grounding_checks_the_cap_before_each_judge_call_and_asks_nothing_once_it_is_spent(
-        tmp_path: Path) -> None:
-    decider = _CostlyThenFails()  # its one call spends past the cap, so the second passage asks no model
-    grounding, _ = _held_grounding(tmp_path, decider, cap=0.01)
-    editor = grounding.editor(AGENT, list)
-    assert editor.marked(TWO_PASSAGES) == TWO_PASSAGES and decider.calls == 1
-    assert "unscored" in editor.scores[1] and "cap" in editor.scores[1]
 
 
 def test_a_run_that_lands_nothing_leaves_the_text_it_wrote_before_as_it_was_though_its_evidence_went(

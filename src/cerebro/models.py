@@ -412,12 +412,12 @@ class Decider:
 
 
 class Tried(Protocol):
-    """What a caller that holds decision calls to a cap is told of each try: `again` before each try after the
-    first, which raises to stop it, and `failed` with what a try that failed is held to have spent."""
+    """What a caller that holds model calls to a cap is told of each try: `again` before each try after the first,
+    which raises to stop it, and `spent` with what a try that failed is held to have spent."""
 
     def again(self) -> None: ...
 
-    def failed(self, spent: TokenCount) -> None: ...
+    def spent(self, tokens: Tokens) -> None: ...
 
 
 # The `Tried` the decision call under way tells of its tries, when its caller sets one.
@@ -563,7 +563,7 @@ class HttpDecider(Decider):
                 status, reply_headers, body = self._send(self.url, headers, data)
             except OSError as error:
                 if tried is not None:
-                    tried.failed(sent)
+                    tried.spent(sent)
                 if last:
                     raise DecisionError(f"{self.spec.model} at {self.url} did not answer ({type(error).__name__}): "
                                         "check the network, then try again") from None
@@ -571,7 +571,7 @@ class HttpDecider(Decider):
                 attempt += 1
                 continue
             if (status in (408, 429) or status >= 500) and tried is not None:
-                tried.failed(sent)
+                tried.spent(sent)
             if (status in (408, 429) or status >= 500) and not last:
                 self._sleep(_retry_after(reply_headers) or min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1

@@ -35,7 +35,7 @@ from . import prompts, runner
 from .agent import Agent, load_agents, refuse_unknown_kinds, refuse_unknown_tools
 from .apps import App, Exposed, bind, check_apps, collect
 from .article import pending
-from .budget import Ledger, Metered
+from .budget import Held, Ledger, Metered
 from .caller import Caller
 from .clock import Clock, system_clock
 from .compile import Compiled, _workspace, compile_article
@@ -919,9 +919,8 @@ class Cerebro:
         self.ledger.check(layer, self.clock(), spec)
         if self.asker is None and spec.job == "decision" and PROVIDERS[spec.provider].decision_url:
             asked = HttpDecider(spec, key=lambda: value, route=self.gateway.route(spec.provider), call=PROOF)
-            decided = asked.decide(
+            Held(asked, self.ledger, layer, spec, self.clock, PROOF).decide(
                 "The sky is above the ground.", {"proof": YesNo("Is the sky above the ground?")})
-            self.ledger.record(layer, self.clock(), spec, decided.usage, PROOF)
             return
         asker = self.asker or PydanticRewriter.from_spec(spec, key=lambda provider: value, masks=self.mask_every,
                                                          what=PROOF, gateway=self.gateway)

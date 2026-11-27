@@ -7,8 +7,7 @@ from cerebro.article import Identity
 from cerebro.connector import Record
 from cerebro.facts import Fact, Mention
 from cerebro.fakes import FakeDecider, MemoryStore
-from cerebro.identity import DecisionJudge, Judged, link, link_ties, link_to, ties
-from cerebro.models import TokenCount
+from cerebro.identity import DecisionJudge, link, link_ties, link_to, ties
 
 
 def fact(subject: str) -> Fact:
@@ -53,23 +52,13 @@ def test_a_near_match_is_judged_only_when_a_judge_is_given_and_links_when_one_ca
     near = fact("Alder Works's security review")
     assert link(store, near) == []
     decider = FakeDecider({"things/alder": 0.9, "things/alder-co": 0.2})
-    spent: list[Judged] = []
-    assert link_ties(store, near.id, ties(store, near, judge=DecisionJudge(decider), spent=spent)) == ["things/alder"]
+    assert link_ties(store, near.id, ties(store, near, judge=DecisionJudge(decider))) == ["things/alder"]
     state, questions = decider.asked[0]
     assert sorted(questions) == ["things/alder", "things/alder-co"] and state["fact"] == "x"
-    assert spent == [Judged(["things/alder"], TokenCount(), "fake")]
 
     both = FakeDecider({"things/alder": 0.9, "things/alder-co": 0.8})
     assert ties(store, fact("Alder Works's security review"), judge=DecisionJudge(both)) == []
     assert ties(store, fact("Vega"), judge=DecisionJudge(both)) == [("projects/vega", "subject")] and len(both.asked) == 1
-
-    class Costly(DecisionJudge):
-        def judge(self, fact: Fact, candidates: list[Identity]) -> Judged:
-            return Judged([candidates[0].id], TokenCount(input_tokens=120, output_tokens=4), "glm")
-
-    spent.clear()
-    assert ties(store, fact("the Alder deal"), judge=Costly(decider), spent=spent) == [("things/alder-co", "subject")]
-    assert spent[0].usage.input_tokens == 120
 
 
 def test_a_record_binds_to_each_article_any_of_its_keys_or_header_names_binds() -> None:

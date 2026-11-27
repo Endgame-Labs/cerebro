@@ -66,6 +66,7 @@ from .budget import (
     BudgetError,
     BudgetSpent,
     Caps,
+    Held,
     HeldForRoom,
     Stopped,
     UnpricedModel,
@@ -109,7 +110,6 @@ from .ground import TALLY, counted
 from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
 from .identity import (
     DecisionJudge,
-    Judged,
     follow,
     link,
     link_ties,
@@ -1800,38 +1800,28 @@ LINKED = own_key("linked", "articles")  # each article every current fact was li
 def _link(workspace: Cerebro, landed: list[tuple[Fact, Record]], result: PassResult) -> None:
     """Link each fact to its articles, in order, on this thread. The ties of up to `compile.concurrency` facts are
     worked out at once, so their judge calls wait side by side. With a decision model, a near match goes to its judge,
-    held to the extraction cap before each fact's ties start and each call's cost kept at the fact's turn, priced on
-    the decision model. The working set is read once for every near match. Results match one fact at a time only
-    while `ties` reads nothing `link_ties` writes, and linking changes no article."""
+    each call held to the extraction cap as `budget.Held` holds it, under the fact's id, priced on the decision
+    model. The working set is read once for every near match. Results match one fact at a time only while `ties`
+    reads nothing `link_ties` writes, and linking changes no article."""
     learned, model = stamp(workspace.clock()), workspace.models["decision"]
     width = max(1, int((workspace.settings.get("compile") or {}).get("concurrency") or 8))
     waiting, among = iter(landed), near_pool(workspace.store) if workspace.decider is not None else []
-    asked: deque[tuple[Fact, list[Judged], Future[list[tuple[str, str]]]]] = deque()
+    asked: deque[tuple[Fact, Future[list[tuple[str, str]]]]] = deque()
 
-    def ask(fact: Fact, record: Record) -> tuple[Fact, list[Judged], Future[list[tuple[str, str]]]]:
-        spent: list[Judged] = []
-        judge = (DecisionJudge(workspace.decider) if workspace.decider is not None
-                 and workspace.ledger.may_spend("extraction", workspace.clock(), model) else None)
-        return fact, spent, pool.submit(ties, workspace.store, fact, record, judge, spent=spent, among=among)
+    def ask(fact: Fact, record: Record) -> tuple[Fact, Future[list[tuple[str, str]]]]:
+        judge = None if workspace.decider is None else DecisionJudge(
+            Held(workspace.decider, workspace.ledger, "extraction", model, workspace.clock, fact.id))
+        return fact, pool.submit(ties, workspace.store, fact, record, judge, among=among)
 
-    def book(fact: Fact, spent: list[Judged], _: Any = None) -> None:
-        for judged in spent:
-            workspace.ledger.record("extraction", workspace.clock(), model, judged.usage, fact.id)
-
-    try:
-        with ThreadPoolExecutor(max_workers=width) as pool:
-            asked.extend(ask(*pair) for pair in islice(waiting, width))
-            while asked:
-                fact, _, made = asked[0]
-                try:
-                    result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
-                except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
-                    result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
-                book(*asked.popleft())
-                asked.extend(ask(*pair) for pair in islice(waiting, 1))
-    finally:  # the pool has let every call end: those whose turn never came are paid for all the same
-        for left in asked:
-            book(*left)
+    with ThreadPoolExecutor(max_workers=width) as pool:
+        asked.extend(ask(*pair) for pair in islice(waiting, width))
+        while asked:
+            fact, made = asked.popleft()
+            try:
+                result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
+            except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
+                result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
+            asked.extend(ask(*pair) for pair in islice(waiting, 1))
     own_facts(workspace, landed)
 
 

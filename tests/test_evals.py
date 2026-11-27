@@ -471,11 +471,11 @@ def test_a_grounding_case_reads_its_facts_its_day_and_its_context_and_says_what_
     case = report.scored[0]
     assert case.calls == len(decider.asked) == report.calls and case.usd == pytest.approx(report.usd) and report.usd > 0
     assert (case.id, case.group, case.label) == ("r01", "rows", "truly-unsupported")
-    failed = run(None, sliced, decider=Raising(), model=RUNE, ledger=(kept := ledger()), clock=lambda: NOW)
+    failed = run(None, sliced, decider=Raising(), model=RUNE, ledger=ledger(), clock=lambda: NOW)
     assert failed.unscored[0].checks[0].why == "the decision model gave no answer: ask again"
     assert (failed.unscored[0].id, failed.unscored[0].group, failed.unscored[0].label) == ("r01", "rows",
                                                                                          "truly-unsupported")
-    assert failed.calls == failed.unscored[0].calls == 1 and len(kept.store.rows(LOG)) == 1
+    assert failed.calls == failed.unscored[0].calls == 1
 
 
 @pytest.mark.parametrize(("question", "line"), [
@@ -653,8 +653,12 @@ def test_two_workers_recording_at_once_each_keep_their_calls_tokens_and_dollars(
 
     spend = evals._Spend(ledger(), RUNE, None, lambda: NOW)
     spend.usd = Meeting(0.0)
+    cases = [spend.held(FakeDecider(), f"eval {n}") for n in range(2)]
+    for case in cases:
+        case.spent(SPENT)
+        case.calls = Calls(1)
     monkeypatch.setattr(evals, "TokenCount", Tokens)
-    workers = [threading.Thread(target=spend.record, args=(SPENT, Calls(1), f"eval {n}")) for n in range(2)]
+    workers = [threading.Thread(target=spend.add, args=(case,)) for case in cases]
     for worker in workers:
         worker.start()
     for worker in workers:

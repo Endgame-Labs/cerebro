@@ -55,7 +55,7 @@ from .agent import Agent, Budget, EvidenceLine
 from .apps import bind
 from .article import Article, Citation, cut, fields
 from .article import passages as passages_of
-from .budget import BudgetSpent, Ledger
+from .budget import BudgetSpent, Held, Ledger
 from .caller import Caller
 from .clock import Clock, seconds, system_clock
 from .connector import NOBODY, Connector, Record, one_line
@@ -65,7 +65,7 @@ from .facts import FIELD_KIND, Fact, superseded
 from .file import File
 from .identity import follow, held_by, redirects, tied
 from .lookup import Lookup, QueryResult
-from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, TokenCount, YesNo, wire_id
+from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, YesNo, wire_id
 from .records import WAITING, proposal_from
 from .rendered import MARK
 from .shown import shown
@@ -539,9 +539,9 @@ class DecisionKeepJudge(KeepJudge):
     """The keep judge on the decision model: many passages to a call, a yes or no for each, its probability of yes
     the passage's score. A passage two entries share is asked about once. Its `bar` is the one `keep_bar` gives its
     decision model, and its words are the bundled prompt `keep-judge`, or the workspace's own copy at
-    `prompts/keep-judge.md` under `root`. `calls` and `usage` total what it spent. With a `ledger`, each call is
-    checked against the compilation cap before it starts and recorded after it, priced on `decision`: with the cap
-    spent, it scores nothing, and the entry loads whole with the note that says why.
+    `prompts/keep-judge.md` under `root`. With a `ledger`, each call is held to the compilation cap as `budget.Held`
+    holds it, priced on `decision`: with the cap spent, it scores nothing, and the entry loads whole with the note
+    that says why.
 
     With a `store`, each score is cached in its state by the decision model, the instruction and the judge's words,
     and by the passage's article, heading and text. So a passage whose text has not moved is not scored again for
@@ -559,11 +559,10 @@ class DecisionKeepJudge(KeepJudge):
                  ledger: Ledger | None = None, decision: ModelSpec | None = None, root: Path | None = None,
                  again: bool = True):
         self.again = again
-        self.decider, self.store, self.clock = decider, store, clock
-        self.ledger, self.decision, self.root = ledger, decision, root
-        self.calls, self.usage = 0, TokenCount()
+        self.store, self.clock, self.decision, self.root = store, clock, decision, root
+        self.decider = decider if ledger is None or decision is None else \
+            Held(decider, ledger, "compilation", decision, clock, "keep judge")
         self.bar = keep_bar(decision)
-        self._lock = threading.Lock()
 
     def score(self, instruction: str, passages: list[Passage], bar: float | None = None) -> KeepScores:
         bar = self.bar if bar is None else bar
@@ -627,7 +626,7 @@ class DecisionKeepJudge(KeepJudge):
             {"id": id, "article": p.article, "heading": p.heading,
              "text": scrub(p.text).encode()[:KEEP_PASSAGE_BYTES].decode("utf-8", "ignore")} for id, p in zip(ids, batch)]}
         try:
-            decision = self._decide(state, {id: YesNo(KEEP_QUESTION.format(id=id)) for id in ids})
+            decision = self.decider.decide(state, {id: YesNo(KEEP_QUESTION.format(id=id)) for id in ids})
         except BudgetSpent as error:
             out.wait = str(error)
             return [None] * len(batch)
@@ -651,23 +650,6 @@ class DecisionKeepJudge(KeepJudge):
             else:
                 scores.append(float(yes))
         return scores
-
-    def _decide(self, state: dict[str, Any], questions: dict[str, YesNo]) -> Any:
-        """One call, checked against the compilation cap before it starts, as compile's held decider is, and
-        recorded after it."""
-        if self.ledger is not None:
-            self.ledger.check("compilation", self.clock(), self.decision)
-        decision = self.decider.decide(state, questions)
-        with self._lock:
-            u = decision.usage
-            self.calls += 1
-            self.usage = TokenCount(self.usage.input_tokens + u.input_tokens,
-                                    self.usage.output_tokens + u.output_tokens,
-                                    self.usage.cache_read_tokens + u.cache_read_tokens,
-                                    self.usage.cache_write_tokens + u.cache_write_tokens)
-        if self.ledger is not None and self.decision is not None:
-            self.ledger.record("compilation", self.clock(), self.decision, decision.usage, "keep judge")
-        return decision
 
 
 def blocks(body: str) -> list[str]:
