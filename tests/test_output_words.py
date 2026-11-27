@@ -902,30 +902,39 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
 
 def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_status_say_no_section_brain_or_page(
         tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
     from factoid.models import ModelError
     from suites.extraction import MEMO
     from test_facts import on_factoid
 
     from cerebro.facts import ExtractionFailed
-    from cerebro.gateway import Route
+    from cerebro.gateway import Gateway, Route
     from cerebro.models import DecisionError, HttpDecider, ModelSpec, YesNo
+
+    def through(provider: str) -> Gateway:  # a gateway, which holds the line that stops the pass
+        return Gateway({provider: Route(provider, "http://gateway.example.internal:8769")},
+                       lambda: datetime(2026, 11, 18, 9, tzinfo=UTC), UTC)
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     seen: list[str] = []
-    for status in (401, 402, 404, 429):  # through a gateway
-        decider = HttpDecider(ModelSpec("typesafe", "jev-1.13.0", job="decision", retries=0), key=lambda: "k",
-                              send=lambda url, headers, data, status=status: (status, {}, b""),
-                              route=Route("typesafe", "http://gateway.example.internal:8769"))
-        with pytest.raises(DecisionError) as refused:
-            decider.decide("The sky is blue.", {"q": YesNo("Is the sky blue?")})
-        seen.append(str(refused.value))
-    handler, models = on_factoid(tmp_path)
-    for status in (401, 400):
-        models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
-        with pytest.raises(ExtractionFailed) as failed:
-            handler.extract(MEMO)
-        seen.append(str(failed.value))
-    handler.close()
+    for status in (401, 402, 404, 503):  # direct, and through a gateway
+        for gateway in (None, through("typesafe")):
+            decider = HttpDecider(ModelSpec("typesafe", "jev-1.13.0", job="decision", retries=0), key=lambda: "k",
+                                  send=lambda url, headers, data, status=status: (status, {}, b""),
+                                  route=gateway.route("typesafe") if gateway else None)
+            with pytest.raises(DecisionError) as refused:
+                decider.decide("The sky is blue.", {"q": YesNo("Is the sky blue?")})
+            seen += [str(refused.value), gateway.said if gateway else ""]
+    for n, gateway in enumerate((None, through("fireworks"))):
+        (tmp_path / str(n)).mkdir()
+        handler, models = on_factoid(tmp_path / str(n), gateway)
+        for status in (401, 402, 408, 400):
+            models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
+            with pytest.raises(ExtractionFailed) as failed:
+                handler.extract(MEMO)
+            seen.append(str(failed.value))
+        handler.close()
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
 

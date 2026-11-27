@@ -32,6 +32,7 @@ from cerebro.facts import (
     load_kinds,
 )
 from cerebro.fakes import FakeExtraction
+from cerebro.gateway import Gateway
 from cerebro.models import ModelSpec
 from cerebro.store import SQLiteStore
 
@@ -92,9 +93,10 @@ class ScriptedModels:
         return None
 
 
-def on_factoid(root: Path) -> tuple[FactoidExtraction, ScriptedModels]:
+def on_factoid(root: Path, gateway: Gateway | None = None) -> tuple[FactoidExtraction, ScriptedModels]:
     models = ScriptedModels()
-    return FactoidExtraction(root, ModelSpec("fireworks", "glm-5p3-flash", "low"), client=models), models
+    return FactoidExtraction(root, ModelSpec("fireworks", "glm-5p3-flash", "low"), client=models,
+                             gateway=gateway), models
 
 
 @pytest.fixture(params=["fake", "factoid", "factoid keeping earlier saves"])
