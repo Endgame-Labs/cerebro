@@ -306,10 +306,11 @@ def kept_off(store: Store, fact: Fact, record: Record,
              among: list[tuple[Identity, list[str]]]) -> list[tuple[str, str]]:
     """The ties the rule in `ties` does not make for a fact as the store stands, each an article and how: each that one
     of its record's own names finds, by a title, a mention's keys or a near match of the subject among `among`, to an
-    article `_apart` tells the record from. No judge is asked: a near match is read as found."""
+    article `_apart` tells the record from. No judge is asked: each near match is read as found, alone."""
     found: list[tuple[str, str]] = []
-    near = _Found() if _tokens(fact.subject) in _record_names(record) else None  # only its own name keeps it off
-    ties(store, fact, record, near, among=among, dropped=found)
+    near = _close(fact, among) if _tokens(fact.subject) in _record_names(record) else []  # another name drops none
+    for pool in [[each] for each in near] or [[]]:
+        ties(store, fact, record, _Found(), among=pool, dropped=found)
     return found
 
 
@@ -420,8 +421,7 @@ def near_pool(store: Store) -> list[tuple[Identity, list[str]]]:
 
 def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]]) -> list[str]:
     """The one article a near match of the subject names, as the judge settles it, or none."""
-    subject = _tokens(fact.subject)
-    candidates = [who for who, title in among if _holds(subject, title) or _holds(title, subject)]
+    candidates = [who for who, _ in _close(fact, among)]
     if not candidates or len(candidates) > MAX_CANDIDATES:
         return []
     try:
@@ -430,6 +430,12 @@ def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]]) -> 
         return []  # a judge refused at the cap or failed links nothing by a near match; the fact's other links stand
     passed = [id for id in judged if id in {c.id for c in candidates}]
     return passed if len(passed) == 1 else []
+
+
+def _close(fact: Fact, among: list[tuple[Identity, list[str]]]) -> list[tuple[Identity, list[str]]]:
+    """Those of `among` whose title holds the subject's words, or is held in them: its near matches."""
+    subject = _tokens(fact.subject)
+    return [(who, title) for who, title in among if _holds(subject, title) or _holds(title, subject)]
 
 
 def _listed_names(record: Record | None) -> set[str]:

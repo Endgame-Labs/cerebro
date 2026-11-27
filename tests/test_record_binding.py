@@ -151,6 +151,7 @@ def test_a_fact_tied_by_its_records_own_name_comes_off_an_article_once_a_key_tel
     workspace.run_once(agents=False)  # nothing tells the two apart yet: the record binds it by its name
     facts = [f.id for f in workspace.extraction.facts(record="2")]
     assert facts and workspace.store.facts_of("things/ann-lee") == facts
+    workspace.store.create(Identity("things/yard", "things", "Ann Lee Yard", {}, "active"))  # a second near match
     ann = workspace.store.article("things/ann-lee").identity
     ann.keys = {**ann.keys, "email": ["ann@alder.example"]}  # as a link adds a key: now they are two things
     workspace.store.set_identity(ann)
