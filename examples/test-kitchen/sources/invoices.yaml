@@ -1,0 +1,9 @@
+# Supplier invoice lines, one record per row of the JSON Lines export.
+kind: files
+window: { behind: all }
+select:
+  - glob: "invoices/*.jsonl"
+    rows: jsonl
+    id: "{row.line}"
+    at: "{row.date}"
+    extract: facts
