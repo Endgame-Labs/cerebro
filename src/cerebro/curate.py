@@ -515,9 +515,10 @@ def same_thing(one: Mapping[str, Iterable[Any]], other: Mapping[str, Iterable[An
                weights: Mapping[str, int]) -> bool | None:
     """Whether two sets of keys name one thing, by the strongest key that names one thing, one `weights` puts above 0,
     which both carry: one when they share a value of it, as an event and its recording do, and two when they share
-    none. None when they carry no such key in common. A weaker key shared, as a domain, makes no two things one."""
-    mine, theirs = ({k: _lower(list(vs)) for k, vs in keys.items() if weights.get(k, 0) > 0 and vs}
-                    for keys in (one, other))
+    none. None when they carry no such key in common. A weaker key shared, as a domain, makes no two things one.
+    Values are read as an admit writes them, so `www.alder.example` is `alder.example`."""
+    mine, theirs = ({k: _lower(vs) for k, vs in address_form({k: list(vs) for k, vs in keys.items()}).items()
+                     if weights.get(k, 0) > 0} for keys in (one, other))
     if not (both := [k for k in mine if k in theirs]):
         return None
     top = max(weights[k] for k in both)

@@ -71,6 +71,8 @@ def test_a_record_binds_to_each_article_any_of_its_keys_or_header_names_binds() 
     record = Record(id="m1", source="mail", revision="1",
                     keys={"domain": ["alder.example"], "email": ["ann@birch.example"], "project": ["Apollo"]})
     assert sorted(bound_to(store, record)) == ["people/ann", "projects/apollo", "things/alder"]
+    named = Record(id="r1", source="rows", revision="1", keys={"name": ["Alder Works"], "domain": ["www.alder.example"]})
+    assert bound_to(store, named) == ["things/alder"]  # its domain read as an admit writes one
 
 
 def test_a_header_line_of_several_names_links_a_fact_only_to_those_it_names() -> None:
