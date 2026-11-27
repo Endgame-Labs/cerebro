@@ -301,20 +301,20 @@ def test_serve_takes_a_cap_out_only_once_two_wakes_read_it_gone_and_keeps_its_ca
 
 
 
-def test_agents_run_fails_an_article_whose_cut_run_handed_in_text_that_did_not_stand(
+def test_agents_run_fails_an_article_whose_cut_run_handed_in_nothing(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     space = collection(tmp_path, ("a", "b"))
     space.clock.at = DAY + timedelta(hours=1)
 
-    class Dropped(Logged):
+    class Cut(Logged):
         def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
             done = super().run(agent, evidence, tools, budget)
             if agent.target == "things/a":
                 done.status, done.note = "budget spent", "the run holds 41000 tokens, its budget of 40000"
-                done.result.text = "## Summary\n\nA claim citing nothing it read [^no_such_fact]."
+                done.result = None
             return done
 
-    monkeypatch.setattr(space, "open", opener(space, Dropped(space)))
+    monkeypatch.setattr(space, "open", opener(space, Cut(space)))
     ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
     assert ran.exit_code == 1, ran.output
     assert [line for line in ran.output.splitlines() if line.startswith("failed   things/article on things/a: run ")]
@@ -356,9 +356,8 @@ def test_agents_run_runs_an_article_with_nothing_to_cite_once(
     run = Logged(space)
     monkeypatch.setattr(space, "open", opener(space, run))
     ran = space.cli(monkeypatch, "agents", "run", "things/article")
-    # nothing to cite: the writer is asked once, writes nothing, and the run is no failure
+    # nothing to cite: the writer is asked once, and the run is no failure
     assert ran.exit_code == 0 and run.n == 1 and "runs failed" not in ran.output, ran.output
-    assert ran.output.splitlines()[0].startswith("ran      things/article on things/a: wrote nothing: "), ran.output
 
 
 def test_a_cap_taken_out_needs_two_reads_in_a_row_with_no_error_between(tmp_path: Path) -> None:

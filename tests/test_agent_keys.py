@@ -176,6 +176,7 @@ REFUSED = [
     ("reports/a.md", "model: { provider: fireworks, model: x, 1: a, z: b }\n", "line 2: model: has '1', which is not a key"),
     ("reports/a.md", "evidence:\n  - script: [scripts/a.sh]\n", "line 3: evidence 1, script takes run, the script's path"),
     ("reports/a.md", "evidence:\n  - facts: {}\n  - script:\n", "line 4: evidence 2, script takes run, the script's path"),
+    ("reports/a.md", "min_grounding: high\n", "line 2: min_grounding is 'high': write a number from 0 to 1"),
 ]
 
 

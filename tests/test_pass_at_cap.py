@@ -19,7 +19,7 @@ from cerebro import Cerebro, Record, cli
 from cerebro.article import Identity
 from cerebro.budget import HeldForRoom
 from cerebro.cli import main
-from cerebro.fakes import FakeConnector, FakeExtraction, FakeSecrets, MemoryStore, ScriptedRun
+from cerebro.fakes import FakeConnector, FakeDecider, FakeExtraction, FakeSecrets, MemoryStore, ScriptedRun
 from cerebro.store import Store
 
 DAY = datetime(2026, 11, 19, 10, 0, tzinfo=UTC)
@@ -606,6 +606,7 @@ def test_serve_says_a_stop_once_beside_an_article_grounding_changed(
     space.primed()
     (space.root / "agents" / "reports" / "weekly.md").write_text(WEEKLY.replace("[daily]", "[hourly]"))
     workspace = opener(space, ScriptedRun(lambda prompt: {"Summary": cited(prompt)["Summary"] + " Uncited."}))()
+    workspace.decider = FakeDecider({"s1": 0})  # a judge that marks its sentence
     workspace.run_once()  # the writer's run of this hour
     space.spent("2026-11-19T10:01:00Z", "extraction", 6.0)
     space.things.add(Record(id="t5", source="things", revision="1", at="2026-11-19T10:00:00Z", body="Thing 5."))

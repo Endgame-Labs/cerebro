@@ -16,10 +16,10 @@ import pytest
 from pydantic_ai.exceptions import ContentFilterError, UnexpectedModelBehavior
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
-from suites.agent_run import AGENT, EVIDENCE
+from suites.agent_run import AGENT, EVIDENCE, citing_nothing
 
 from cerebro.agent import Agent, Budget
-from cerebro.run import UNMARKED, WROTE_NOTHING, PydanticRun, hand_in
+from cerebro.run import REVIEW, UNMARKED, WROTE_NOTHING, PydanticRun, hand_in
 
 ARTICLE = "## Summary\n\nThe review moved to March [^f_1].\n\n## Next\n\nWatch March [^f_1]."
 REMARK = "The evidence holds nothing new about this article."
@@ -43,7 +43,13 @@ def _hand(text: str, agent: Agent = AGENT) -> list[Any]:
 
 
 def _run(*replies: Any, agent: Agent = AGENT, budget: Budget | None = None) -> Any:
-    return PydanticRun(_scripted(*replies)).run(agent, EVIDENCE, [lookup], budget or Budget())
+    """A run on `replies`, its first hand-in shown to a stand-in editor that has something to say of one citing
+    nothing."""
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        return PydanticRun(_scripted(*replies)).run(agent, EVIDENCE, [lookup], budget or Budget())
+    finally:
+        REVIEW.reset(reviewing)
 
 
 def lookup(id: str) -> str:
@@ -165,7 +171,7 @@ def test_a_preamble_a_lookup_then_the_article_lands_the_article() -> None:
     assert run.status == "done" and _text(run) == ARTICLE, (run.status, _text(run))
 
 
-# -- a held hand-in that cites nothing gives way to a later candidate; a remark handed in never replaces one
+# -- a held hand-in gives way to a later candidate; a remark handed in never replaces one
 
 
 def test_a_held_hand_in_then_the_article_lands_the_article() -> None:
@@ -272,13 +278,13 @@ def test_a_curator_run_that_spent_its_call_with_nothing_decided_ends_with_nothin
 # -- the transcript keeps what the run told the model
 
 
-def test_the_transcript_keeps_the_ask_and_the_line_that_a_hand_in_cites_nothing() -> None:
-    from cerebro.run import UNCITED, unwritten
+def test_the_transcript_keeps_the_ask_and_what_the_editor_said_of_the_first_hand_in() -> None:
+    from cerebro.run import unwritten
 
     run = _run(ARTICLE, _hand("The review moved to March."), _hand(ARTICLE))
     told = [e.text for e in run.transcript if e.role == "tool"]
     assert any(unwritten(AGENT).split(". ")[0] in text for text in told), told
-    assert any(UNCITED.split(". ")[0] in text for text in told), told
+    assert any(citing_nothing("").split(": ")[0] in text for text in told), told
 
 
 # -- a hand-in that cites, under none of the listed headings, gives way to the article written under them

@@ -193,7 +193,7 @@ def test_a_change_to_workspace_md_runs_at_once(tmp_path: Path) -> None:
 def test_a_change_to_an_ejected_prompt_runs_at_once(tmp_path: Path) -> None:
     cerebro, _, _ = started(tmp_path)
     (tmp_path / "prompts").mkdir()
-    (tmp_path / "prompts" / "repair.md").write_text("Repair it.\n")
+    (tmp_path / "prompts" / "rules.md").write_text("Write it.\n")
     assert cerebro.run_once(scheduled=True).compiled == ["things/first"]
 
 

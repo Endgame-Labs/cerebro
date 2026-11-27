@@ -1,7 +1,6 @@
 """Kept text: a case for each way a body or a part is kept, and for a fact a person or a source takes back.
 
-A part written whole is kept as it stands, less each line that cites only facts withdrawn since. Any other part is
-grounded again against what this run read, and goes when nothing of it grounds."""
+A part is kept as it stands, less each line that cites only facts withdrawn since."""
 
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from test_compile import AGENT, BRIEF, JOINED, ByAgent, briefs, part, setup, workspace
+from test_compile import AGENT, BRIEF, JOINED, ByAgent, briefs, setup
 
 from cerebro import Cerebro
 from cerebro.agent import Budget
@@ -47,9 +46,9 @@ def test_a_retract_by_an_agent_or_a_source_drops_a_kept_citation(tmp_path: Path)
     held = {f.id: f for f in (fact("f_you", "retracted"), fact("f_agent", "retracted"),
                               fact("f_source", "superseded"), fact("f_kept", "current"))}
     extraction = SimpleNamespace(facts=lambda ids: [held[id] for id in ids if id in held])
-    grounding = _Grounding(lambda *a: None, "things/alder", lookup=SimpleNamespace(extraction=extraction),
+    grounding = _Grounding("things/alder", lookup=SimpleNamespace(extraction=extraction),  # type: ignore[arg-type]
                            root=tmp_path, ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,
-                           zone=UTC)
+                           zone=UTC, floor=0.6)
     cites = [Citation("fact", id) for id in ("f_you", "f_agent", "f_source", "f_gone", "f_kept")]
     cites.append(Citation("record", "r0"))
     retired, retracted = grounding.withdrawn(cites)
@@ -64,20 +63,11 @@ def test_a_kept_body_drops_a_line_citing_only_a_record_taken_back(tmp_path: Path
     told = tell(store, extraction, you, "The pump in hall two failed on Monday.", as_="fact").record
     kept_record = tell(store, extraction, you, "The valve in hall one was mended.", as_="fact").record
     retract(store, extraction, you, told, "the wrong pump")
-    grounding = _Grounding(lambda *a: None, "things/alder", lookup=StoreLookup(store, extraction), root=tmp_path,
-                           ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None, zone=UTC)
+    grounding = _Grounding("things/alder", lookup=StoreLookup(store, extraction), root=tmp_path,
+                           ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None, zone=UTC,
+                           floor=0.6)
     gone = set().union(*grounding.withdrawn([Citation("record", told), Citation("record", kept_record)]))
     assert told in gone and kept_record not in gone
-
-
-@pytest.mark.parametrize(("text", "why"), [("## Risks\n", "empty"), ("| Name | Date |\n|---|---|\n", "empty"),
-                                           ("1.\n2.\n", "empty"), ("> \n- \n", "empty"), ("<!-- a note -->", "empty"),
-                                           ("The pump is fine.", "grounded to nothing"),
-                                           ("| Name |\n|---|\n| Ann |", "grounded to nothing")])
-def test_a_part_left_with_no_sentence_is_empty(text: str, why: str) -> None:
-    from cerebro.compile import _empty_or
-
-    assert _empty_or(text) == why
 
 
 def test_compile_converges_a_run_that_returns_nothing_for_an_agent_that_never_wrote(tmp_path: Path) -> None:
@@ -88,7 +78,6 @@ def test_compile_converges_a_run_that_returns_nothing_for_an_agent_that_never_wr
 
 def test_a_writer_that_returns_nothing_keeps_its_body_as_it_stands_and_settles(tmp_path: Path) -> None:
     store, items, _, common = setup(tmp_path)
-    common.pop("grounder")  # the grounder a workspace runs
     items[:] = ["The pump in hall two failed on Monday."]
     article = compile_article(AGENT, agent_run=ScriptedRun(lambda p: WROTE), **common).article.identity.id
     before = _texts(store, article)
@@ -105,7 +94,6 @@ def test_a_writer_that_returns_nothing_keeps_its_body_as_it_stands_and_settles(t
 
 def _joined(tmp_path: Path) -> tuple[Any, Any, list[str], dict[str, Any]]:
     agents, store, items, common = briefs(tmp_path, JOINED)
-    common.pop("grounder")
     items[:] = ["The pump in hall two failed on Monday."]
     return agents["briefs/article"], store, items, common
 
@@ -129,59 +117,18 @@ def test_compile_converges_a_run_that_leaves_out_a_part_it_wrote_before(tmp_path
     assert compile_article(composer, agent_run=run, this="briefs/alder", **common).skipped  # converges
 
 
-@pytest.mark.parametrize(("body", "why"), [("", "empty"), ("  \n\n\t\n", "empty"),
-                                           ("<!-- written by briefs/subagents/risks -->\n", "empty"),
-                                           ("The pump is thriving and expanding everywhere.\n", "grounded to nothing")],
-                         ids=["empty", "white space", "only a provenance line", "grounding empties it"])
-def test_empty_output_keeps_text(tmp_path: Path, body: str, why: str) -> None:
+@pytest.mark.parametrize("body", ["", "  \n\n\t\n", "<!-- written by briefs/subagents/risks -->\n"],
+                         ids=["empty", "white space", "only a provenance line"])
+def test_empty_output_keeps_text(tmp_path: Path, body: str) -> None:
     composer, store, items, common = _joined(tmp_path)
     _first(composer, common)
     items.append("The valve in hall one was mended.")  # its evidence moved: it runs again
     run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: body),
                    "briefs/subagents/people": ScriptedRun(lambda p: "People: " + WROTE)})
     compiled = compile_article(composer, agent_run=run, this="briefs/alder", **common)
-    assert f"Risks: {why}, so it kept what it wrote last" in compiled.notes
+    assert "Risks: empty, so it kept what it wrote last" in compiled.notes
     assert "Risks: The pump in hall two failed on Monday" in dict(_texts(store, "briefs/alder"))["Risks"]
     assert compile_article(composer, agent_run=run, this="briefs/alder", **common).skipped  # converges
-
-
-def test_a_part_nothing_grounds_goes_on_an_article_no_composer_composes(tmp_path: Path) -> None:
-    composer, store, items, common = _joined(tmp_path)
-    _first(composer, common)
-    items.clear()  # the run reads nothing, so nothing of what it wrote grounds
-    run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: ""),
-                   "briefs/subagents/people": ScriptedRun(lambda p: "")})
-    compiled = compile_article(composer, agent_run=run, this="briefs/alder", **common)
-    assert "Risks: empty, and nothing it wrote grounds now, so it waits for the next run" in compiled.notes
-    assert "## Risks" not in _body(store, "briefs/alder")  # the heading and its text leave together
-
-
-def test_a_part_not_returned_keeps_no_text_nothing_grounds(tmp_path: Path) -> None:
-    later_items = ["The valve in hall one was mended."]
-    composer_text = "---\nsubagents: [overview, later, last]\n---\n\nAn article.\n"
-    later = "---\nevidence:\n  - later_items: {}\n---\n\n# Instructions\n\nDraft it.\n\n# Output\n\n## Later\n"
-    agents = workspace(tmp_path, {"briefs/article.md": composer_text, "briefs/subagents/overview.md": part("Overview"),
-                              "briefs/subagents/later.md": later, "briefs/subagents/last.md": part("Last")})
-    store, items, _, common = setup(tmp_path)
-    common.pop("grounder")
-    common["functions"]["later_items"] = lambda: [{"id": f"v{n}", "text": t} for n, t in enumerate(later_items)]
-    items[:] = ["The pump in hall two failed on Monday."]
-    store.create(Identity("briefs/alder", "briefs", "Alder"))
-    composer = agents["briefs/article"]
-    writes = {"briefs/subagents/overview": ScriptedRun(lambda p: "Overview: " + WROTE),
-              "briefs/subagents/later": ScriptedRun(lambda p: "The valve in hall one was mended [^v0]."),
-              "briefs/subagents/last": ScriptedRun(lambda p: "Last: " + WROTE)}
-    compile_article(composer, agent_run=ByAgent(writes), this="briefs/alder", **common)
-    assert [h for h, _ in _texts(store, "briefs/alder")] == ["Overview", "Later", "Last"]
-    later_items.clear()  # the later part's run reads nothing, and returns nothing
-    silent = ByAgent({**writes, "briefs/subagents/later": ScriptedRun(lambda p: "")})
-    compiled = compile_article(composer, agent_run=silent, this="briefs/alder", **common)
-    assert "Later: empty, and nothing it wrote grounds now, so it waits for the next run" in compiled.notes
-    assert not any("Later: empty, so it kept" in note for note in compiled.notes)
-    assert [h for h, _ in _texts(store, "briefs/alder")] == ["Overview", "Last"]
-    before = _texts(store, "briefs/alder")
-    assert compile_article(composer, agent_run=silent, this="briefs/alder", **common).skipped
-    assert _texts(store, "briefs/alder") == before  # a compile with nothing new leaves the article as it is
 
 
 # -- kept text, and facts a person or a source takes back ------------------------------------------------------------

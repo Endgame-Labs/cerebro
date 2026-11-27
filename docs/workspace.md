@@ -50,7 +50,7 @@ Each model has one job:
 |---|---|
 | `extraction` | Turns your records into facts |
 | `compilation` | Writes articles |
-| `decision` | Checks each sentence against its facts, and answers small yes or no questions |
+| `decision` | Scores each sentence against its facts, and answers small yes or no questions |
 
 Extraction and compilation can also run on OpenAI or Anthropic. Change that job's `provider` and `model`, then keep the key with `cerebro secrets set openai` or `cerebro secrets set anthropic`. The decision job runs on Typesafe or Fireworks.
 
@@ -64,6 +64,12 @@ models:
 ```
 
 An agent's reply may take 10 minutes to start, as a model that thinks first can be silent. Once it starts, it counts as timed out only when nothing new arrives for a minute, so a long reply that keeps coming finishes.
+
+The decision model scores each sentence an agent writes from 0 to 1. A sentence under 0.6 lands marked as not fully backed by the facts it cites. To change that floor for every agent, set `min_grounding`. An agent's own `min_grounding` takes its place, as [agents](agents.md#how-cerebro-checks-what-an-agent-writes) shows.
+
+```yaml
+min_grounding: 0.7
+```
 
 ### Model calls through a gateway
 
@@ -97,7 +103,7 @@ Cerebro fills three placeholders on each call. A placeholder with nothing to fil
 
 | Placeholder | Holds |
 |---|---|
-| `{call}` | The kind of call: `agent_run`, `decision`, `repair`, `key_proof`, `extraction`, `embedding`, `extraction_decision`, or the name of the prompt a source asks with |
+| `{call}` | The kind of call: `agent_run`, `decision`, `key_proof`, `extraction`, `embedding`, `extraction_decision`, or the name of the prompt a source asks with |
 | `{agent}` | The agent's id, on an agent run only |
 | `{run}` | The run's id, on an agent run only |
 

@@ -123,7 +123,8 @@ UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 # The keys checked here. Of their readers, cli.py, runner.py, mcp.py and app.py declare none of their own.
 SETTINGS_KEYS: dict[str, Any] = {
     "id": None, "port": None, "timezone": None, "schedule": dict.fromkeys(SCHEDULE_KEYS),
-    "compile": {"concurrency": None, "repair": None}, "serve": dict.fromkeys(("host", "port", "interval", *SERVE_LIMITS)),
+    "compile": {"concurrency": None}, "serve": dict.fromkeys(("host", "port", "interval", *SERVE_LIMITS)),
+    "min_grounding": None,
 }
 
 
@@ -648,7 +649,7 @@ TEXT_KEYS = {("schedule", key) for key in ("sources", "settle", "articles")} | {
     ("models", job, part) for job in JOBS for part in ("provider", "model", "effort")}
 NOT_EMPTY = {("timezone",)} | {("models", job, part) for job in JOBS
                                for part in ("provider", "model", "effort")}  # an empty string is unset
-FLAGS = {("compile", "repair"), ("search", "rerank")}
+FLAGS = {("search", "rerank")}
 NODES_KEPT = {("budget", "daily_usd"), ("budget", "first_run_usd"), ("compile", "concurrency")}  # read
 # from the node itself, so a value tagged !!null is unset whatever it says
 
@@ -993,11 +994,21 @@ def _facts(settings: dict[str, Any]) -> None:
 
 def _compile(settings: dict[str, Any]) -> None:
     if settings.get("compile") is not None and not isinstance(settings["compile"], dict):
-        raise WorkspaceError("settings.yaml compile is not a map: write compile: then concurrency: or repair: under it")
+        raise WorkspaceError("settings.yaml compile is not a map: write compile: then concurrency: under it")
     _number(settings, "compile", "concurrency", whole=True, low=1, high=64)
-    repair = (settings.get("compile") or {}).get("repair")
-    if repair is not None and not isinstance(repair, bool):
-        raise WorkspaceError(f"settings.yaml compile.repair is {repair!r}: write true or false")
+
+
+def min_grounding(settings: dict[str, Any]) -> float:
+    """The score under which a sentence's grounding is marked, `min_grounding`, or `ground.FLOOR` when it is left out.
+    An agent file's own takes its place."""
+    from .ground import FLOOR
+
+    value = settings.get("min_grounding")
+    if value is None:
+        return FLOOR
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+        raise WorkspaceError(f"settings.yaml min_grounding is {value!r}: write a number from 0 to 1, such as 0.6")
+    return float(value)
 
 
 def _serve(settings: dict[str, Any]) -> None:
@@ -1056,7 +1067,7 @@ def _store(settings: dict[str, Any]) -> None:
 CHECKS: dict[str, Callable[[dict[str, Any]], object]] = {
     "models": read_models, "budget": _budget, "schedule": _schedule, "timezone": zone_of, "search": _search,
     "facts": _facts, "compile": _compile, "serve": _serve, "collections": _collections, "port": _port, "id": _id,
-    "store": _store, "providers": read_providers,
+    "store": _store, "providers": read_providers, "min_grounding": min_grounding,
 }
 
 

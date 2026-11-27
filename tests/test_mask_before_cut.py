@@ -1228,7 +1228,7 @@ def test_an_unreadable_store_opens_the_session_refuses_the_call_and_leaves_no_ca
 # -- every other place text is cut or printed: the mask comes first
 
 
-def test_what_grounding_drops_is_masked_before_it_is_cut_to_the_line_that_says_so(tmp_path: Path) -> None:
+def test_what_grounding_scores_is_masked_in_the_runs_log(tmp_path: Path) -> None:
     from cerebro.apps import App, evidence
 
     secret = SECRETS["plain"]
@@ -1238,8 +1238,8 @@ def test_what_grounding_drops_is_masked_before_it_is_cut_to_the_line_that_says_s
         """Items: a stand-in app's evidence, one record to cite."""
         return [{"id": "r1", "text": "The review moved to Friday."}]
 
-    shapes = {"comment": "<!-- " + "x" * 63 + secret + " -->",
-              "yaml item": "```yaml\n- " + "y" * 148 + secret + " [^nope]\n```"}
+    shapes = {"sentence": "x" * 230 + " said " + secret + " of the review [^r1].",
+              "table row": "| Who | Said |\n| --- | --- |\n| " + "y" * 230 + " | " + secret + " [^nope] |"}
     for shape, text in shapes.items():
         root = tmp_path / shape.replace(" ", "_")
         (root / "agents" / "projects").mkdir(parents=True)
@@ -1247,13 +1247,13 @@ def test_what_grounding_drops_is_masked_before_it_is_cut_to_the_line_that_says_s
             "---\nevidence:\n  - items: {}\n---\n\n# Instructions\n\nWrite what was said.\n\n# Output\n\n## Said\n")
         (root / "settings.yaml").write_text("timezone: UTC\n")
         with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets(SECRETS),
-                     decider=FakeDecider(), apps=[App("probe", functions=[items])],
+                     decider=FakeDecider({"s1": 0}), apps=[App("probe", functions=[items])],
                      agent_run=ScriptedRun(lambda prompt, t=text: t, clock=lambda: DAY), clock=lambda: DAY) as workspace:
             workspace.store.create(Identity("projects/said", "projects", "Said"))
             compiled = workspace.compile(workspace.agent("projects/said"))
             runs = json.dumps(workspace.call(YOU, "query", {"from": "agent-runs"}), ensure_ascii=False, default=str)
-        out = "\n".join([*compiled.dropped, *(r.note for r in compiled.runs if r), runs])
-        assert MARK in "\n".join(compiled.dropped), shape
+        out = "\n".join([*(r.note for r in compiled.runs if r), runs])
+        assert MARK in runs and "made up" in runs, shape  # its score, on the run's line
         assert not leaks(secret, out), (shape, leaks(secret, out))
 
 

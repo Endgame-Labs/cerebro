@@ -259,7 +259,7 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         _echo("agents    none: write one with cerebro agents new <collection>/<name>")
     for article in result.compiled:
         _echo(f"wrote     {article}  articles/{article}.md")
-    if result.grounding:  # what grounding did on each article, as counts: each line of it is kept on its run's line
+    if result.grounding:  # what grounding did on each article, as counts: each score is kept on its run's line
         from .ground import counted
 
         for key, tally in result.grounding.items():
@@ -271,9 +271,8 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         _echo(f"skipped   {agent}: {why}")
     for agent, why in result.held.items():
         _echo(f"held      {agent}: {why}")
-    for line in result.warnings:  # what grounding repaired or dropped is kept on its run's line
-        if line not in result.grounded:
-            _echo(f"warning   {line}")
+    for line in result.warnings:
+        _echo(f"warning   {line}")
     for agent, why in result.ran.items():  # no failure: it runs again once what it reads moves
         _echo(f"ran       {agent}: wrote nothing: {why}")
     for agent, why in result.failed.items():
@@ -3929,9 +3928,9 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
     if screen.broken:  # the live display stopped: the run ends as it does off a terminal
         _print(result)
         return
-    # what grounding repaired or dropped is said under its article's row as counts, and
-    # each line of it is kept on its run's line in the agent-runs log: none is said again here, nor is it to check
-    warnings = [line for line in result.warnings if line not in result.grounded]
+    # what grounding scored is said under its article's row as counts, and each score is kept on its run's line in
+    # the agent-runs log: none is said again here
+    warnings = result.warnings
     threaded = screen.close([*warnings, *(f"{k}: {v}" for k, v in result.ran.items()),
                              *(f"{k}: {v}" for k, v in result.failed.items())])
     if screen.broken:  # it stopped as the run ended
@@ -3956,11 +3955,6 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
         if line not in threaded and line not in said:
             p.err_line("cerebro: warning: " + _wrap(line, 18, width))
         p.check(line)
-    from .ground import counted
-
-    for key, tally in result.grounding.items():  # under its row already, and to check when it needs a person's eye:
-        if key in result.ran or tally.get("citations"):  # an article grounding left with nothing, a citation unread
-            p.check(f"{key}: {counted(tally)}")
     for key, why in result.failed.items():
         line = f"{key}: {why}"
         if line not in threaded and key not in shown:

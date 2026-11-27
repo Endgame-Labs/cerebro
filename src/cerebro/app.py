@@ -61,7 +61,6 @@ from .evidence import BUILTIN, STDERR_BYTES, Finished, Launch, start
 from .facts import STATE as FACTS_STATE
 from .facts import Extraction, FactoidExtraction, Revisions, kind_notices, revisions_kept
 from .gateway import NO_KEY, Gateway, read_providers
-from .ground import RewriteFailed, Rewriter
 from .lookup import (
     DecideResult,
     Decision,
@@ -76,12 +75,23 @@ from .lookup import (
 from .models import PROVIDERS, Decider, HttpDecider, ModelSpec, Question, YesNo, read_model
 from .models import Decision as Decided
 from .private import SIDE_FILES, tighten
-from .project import Project, WorkspaceError, agent_notices, fiscal_now, load, read_fiscal, read_ours
+from .project import Project, WorkspaceError, agent_notices, fiscal_now, load, min_grounding, read_fiscal, read_ours
 from .records import SLUG_MOST, TOLD, Proposal, Review, proposals, review, told_waiting
 from .rendered import descriptions
 from .reply import outside
 from .rerank import RERANK_CALL_SECONDS, DecisionReranker, read_rerank
-from .run import WROTE_NOTHING, AgentRun, Entry, PydanticRewriter, PydanticRun, Run, masked, masked_error
+from .run import (
+    WROTE_NOTHING,
+    AgentRun,
+    Entry,
+    PydanticRewriter,
+    PydanticRun,
+    RewriteFailed,
+    Rewriter,
+    Run,
+    masked,
+    masked_error,
+)
 from .runner import PassResult, Progress, run_pass
 from .search import Index
 from .secrets import (
@@ -380,7 +390,7 @@ class Cerebro:
                  agent_run: AgentRun | None = None, extraction: Extraction | None = None,
                  connectors: Iterable[Connector] = (), apps: Iterable[App] = (), clock: Clock | None = None,
                  secrets: Secrets | None = None, http: httpx.Client | None = None, decider: Decider | None = None,
-                 trusted: bool | None = None, rewriter: Rewriter | None = None):
+                 trusted: bool | None = None):
         project = load(root, trusted=trusted)
         self.clock = clock or system_clock
         self.root = project.root
@@ -431,7 +441,6 @@ class Cerebro:
                                 f"{self.secrets.where()}, which only your user can read")
         found = decider if decider is not None else self._decider()
         self.decider = MaskedDecider(found, self.mask_every) if found is not None else None
-        self.rewriter = self._repair(rewriter)
         self.agents, self.exposed, refused, self.notices = self._agents_and_functions(project, self.notices)
         self.refused += refused
         self._slugged: dict[Callable[[str], str], tuple[Any, Any, list[str]]] = {}  # by slug: the forms, slugged
@@ -467,20 +476,6 @@ class Cerebro:
         if isinstance(handed, PydanticRun) and handed.masks is None:
             handed.masks = self.mask_every
         return handed
-
-    def _repair(self, handed: Rewriter | None) -> Rewriter | None:
-        """What grounding's repair writes on: nothing when settings turn repair off, else the one handed in, else the
-        compilation model, as the runs write. A run handed in, as a test's is, gets no model, so no test reaches one."""
-        if (self.settings.get("compile") or {}).get("repair", True) is False:
-            return None
-        if handed is not None:
-            if isinstance(handed, PydanticRewriter) and handed.masks is None:
-                handed.masks = self.mask_every
-            return handed
-        if not self._own_run:
-            return None
-        return PydanticRewriter.from_spec(self.models["compilation"], key=self._compile_key, masks=self.mask_every,
-                                          gateway=self.gateway)
 
     def _agents_and_functions(self, project: Project,
                               notices: list[str]) -> tuple[list[Agent], Exposed, list[str], list[str]]:
@@ -739,8 +734,8 @@ class Cerebro:
                                        model=self.model_of(agent), clock=self.clock, this=this, subagents=self.agents,
                                        scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
                                        zone=self.zone, starter=self.start_script, sources=self.connectors,
-                                       descriptions=descriptions(self.settings), rewriter=self.rewriter, only=only,
-                                       hold=hold, by_hand=by_hand)
+                                       descriptions=descriptions(self.settings), only=only, hold=hold,
+                                       by_hand=by_hand, min_grounding=min_grounding(self.settings))
         if compiled.article is not None:
             if not compiled.skipped and (compiled.run is not None or compiled.runs):
                 runner.ran_on(self, agent, compiled.article.identity.id, began)
@@ -850,8 +845,8 @@ class Cerebro:
                    "not set")
         else:
             why = "settings.yaml names no decision model with a decision API"
-        self.notices.append(f"{why}, so grounding and the near-match judge run without a model, on the words alone: "
-                            "set the key, or name a decision model")
+        self.notices.append(f"{why}, so grounding scores no sentence and the near-match judge runs on the words "
+                            "alone: set the key, or name a decision model")
         return None
 
     def _reranker(self, extraction: Extraction | None) -> DecisionReranker | None:

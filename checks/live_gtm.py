@@ -50,10 +50,15 @@ from cerebro.article import cut, passages
 from cerebro.budget import LOG
 from cerebro.evidence import CITE
 from cerebro.first_run import run as first_run
-from cerebro.ground import ABSENCE, split_sentences
+from cerebro.ground import split_sentences
 from cerebro.models import HttpDecider, ModelSpec
 from cerebro.records import proposals
 from cerebro.runner import PassResult
+
+# a line that says the evidence holds none of something, which stands with no citation
+ABSENCE = re.compile(
+    r"\b(?:the (?:evidence|facts)(?: on hand| of the run)? (?:holds?|has|have|shows?|lists?|contains?|says?|records?) "
+    r"(?:no|none|nothing)|nothing in (?:the|this run's|the run's) (?:evidence|facts))\b", re.IGNORECASE)
 
 MAX_PASSES = 8
 LOCAL = """kind: files

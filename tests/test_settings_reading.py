@@ -53,7 +53,7 @@ def _refused(tmp_path: Path, text: str) -> str:
     ("timezone: UTC\t# the zone\n", ("timezone",), "UTC"),
     ("caps: &c { daily_usd: 5 }\n", None, None),
     (JOBS.replace("effort: low", "effort: ''"), ("models", "extraction", "effort"), None),
-    ("compile: { repair: yes }\n", ("compile", "repair"), True),
+    ("min_grounding: 0.75\n", ("min_grounding",), 0.75),
     ("search: { rerank: off }\n", ("search", "rerank"), False),
 ])
 def test_a_value_that_reads_loads_with_its_value(tmp_path: Path, text: str, path: tuple | None,
@@ -94,6 +94,7 @@ def test_a_merge_key_brings_in_the_keys_of_its_map_and_the_keys_beside_it_win(tm
     ("schedule: { sources: 106752d }\n", 1, "schedule.sources: '106752d' is longer than a duration can be"),
     ("schedule: { articles: '' }\nport: x\n", 2, "port is 'x'"),
     ("budget: { <<: 5 }\n", None, "a << merge key takes a map or a list of maps"),
+    ("min_grounding: 2\n", 1, "min_grounding is 2: write a number from 0 to 1, such as 0.6"),
 ])
 def test_a_value_that_does_not_read_is_refused_with_its_line(tmp_path: Path, text: str, line: int | None,
                                                                 says: str) -> None:

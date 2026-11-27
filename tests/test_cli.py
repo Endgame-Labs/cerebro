@@ -222,12 +222,11 @@ def test_init_then_a_note_then_serve_once_then_status(tmp_path: Path, stand_ins:
         assert "Vega leads the review" in (workspace / "articles" / "accounts" / "acme-corp.md").read_text()
         # each fixed article that was due is born before its first run, and holds nothing until a run lands a part
         assert re.search(r"^ran       accounts/subagents/overview: done at \S+Z on ", status.output, re.MULTILINE), status.output
-        assert "agents    29 loaded" in status.output and "articles  accounts: 1, digests: 1\n" in status.output
-        # the report no run has written is not counted among the written or linked from Contents, as it has no copy,
-        # and status lists it, marked as waiting
-        assert "pending   1 article not yet written:\n          reports/pipeline\n" in status.output
+        # the report is written too: its stand-in writes a line though it has nothing to cite
+        assert "agents    29 loaded" in status.output and "articles  accounts: 1, digests: 1, reports: 1\n" in status.output
+        assert "pending" not in status.output and (workspace / "articles" / "reports" / "pipeline.md").exists()
         index = (workspace / "articles" / "digests" / "index.md").read_text()
-        assert "](../accounts/)" in index and "Reports" not in index and not (workspace / "articles" / "reports").exists()
+        assert "](../accounts/)" in index
         assert "working   3 articles in the working set" in status.output
 
 

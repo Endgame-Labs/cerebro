@@ -7,7 +7,8 @@ list; `S` `done`; `R` "I could not find anything new about this in the evidence.
 ("The evidence holds nothing new about this article."); `P` a line on the way ("Let me check the records first.");
 `E` an empty reply; `C` a reply cut for length, its text under Summary; `CU` cut, under no heading; `CE` cut and
 empty; `T` a tool call; `RT` an unknown tool beside text; `HI` a hand-in that cites; `HG` a hand-in that cites nothing,
-under no heading; `HGH` one that cites nothing, under Summary; `N` nothing to write; an error by its name. The last
+under no heading, of which the stand-in editor has something to say; `HGH` one that cites nothing, under Summary; `N`
+nothing to write; an error by its name. The last
 form repeats on every turn after. Limits: `calls` one tool call, spent by the first `T`; `room@1` the opening alone
 closes the room for tools; `room@2` the first reply's tokens close it; `budget@2` the first reply's tokens spend the
 whole budget."""
@@ -26,10 +27,10 @@ from pydantic_ai.exceptions import ContentFilterError, UnexpectedModelBehavior
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
-from suites.agent_run import AGENT, EVIDENCE
+from suites.agent_run import AGENT, EVIDENCE, citing_nothing
 
 from cerebro.agent import Agent, Budget
-from cerebro.run import WROTE_NOTHING, PydanticRun, hand_in, instructions, opening, tokens
+from cerebro.run import REVIEW, WROTE_NOTHING, PydanticRun, hand_in, instructions, opening, tokens
 
 SUB = replace(AGENT, id="things/subagents/risks", path=Path("agents/things/subagents/risks.md"), role="subagent",
               target="things", prompt="Name the risks.", output=["Risks"])
@@ -91,8 +92,12 @@ def run(role: str, replies: str, limit: str = "none") -> Any:
         return ModelResponse(parts=parts, finish_reason=finish,  # type: ignore[arg-type]
                              usage=RequestUsage(output_tokens=first if n == 0 else 0))
 
-    return PydanticRun(FunctionModel(reply, model_name="scripted"), clock=lambda: NOW).run(
-        agent, EVIDENCE, [lookup], budget)
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        return PydanticRun(FunctionModel(reply, model_name="scripted"), clock=lambda: NOW).run(
+            agent, EVIDENCE, [lookup], budget)
+    finally:
+        REVIEW.reset(reviewing)
 
 
 @dataclass

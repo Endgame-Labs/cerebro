@@ -31,7 +31,6 @@ from cerebro.evidence import (
     render,
 )
 from cerebro.fakes import FakeDecider, MemoryStore, ScriptedRun
-from cerebro.ground import Grounded
 from cerebro.lookup import StoreLookup
 from cerebro.models import DEFAULTS, ModelSpec
 from cerebro.records import Proposal
@@ -40,10 +39,6 @@ TEMPLATE = Path(rendered.__file__).parent / "templates" / "gtm" / "agents"
 CURATOR = Caller("things/curator", "agent")
 
 RUNE = ModelSpec("fireworks", "rune", "", "decision")
-
-
-def keep_all(agent: object, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-    return Grounded(dict(parts))
 
 
 class Clock:
@@ -63,7 +58,7 @@ def workspace(tmp_path: Path, written: bool = False) -> tuple[MemoryStore, dict]
     for id, title in (("accounts/alpha-co", "Alpha Co"), ("accounts/beta-co", "Beta Co"), ("people/dana-lee", "Dana Lee")):
         (made if written else MemoryStore.create)(store, Identity(id, id.split("/")[0], title, status="active"))
     common = {"lookup": StoreLookup(store), "store": store, "root": tmp_path, "functions": {}, "agent_tools": {},
-              "grounder": keep_all, "clock": Clock()}
+              "clock": Clock()}
     return store, common
 
 
@@ -166,6 +161,7 @@ def test_a_rendered_part_is_written_with_no_model_call_even_when_the_rest_of_the
     run = ScriptedRun(lambda p: calls.append(p) or {"Notes": "n"})
     compile_article(article, agent_run=run, decider=decider, **common)
     assert len(calls) == 1
+    decider.asked.clear()  # what grounding asked of the run's text
     admit(store, "accounts/gamma-co")
     skipped = compile_article(article, agent_run=run, decider=decider, **common)
     # Nothing the model reads moved, so no run and no decision; the compilation still follows what it lists.
@@ -526,7 +522,7 @@ class ByArticle(FakeDecider):
         self.scores = {article: list(v) if isinstance(v, list) else v for article, v in scores.items()}
 
     def decide(self, state: Any, questions: dict) -> Any:
-        for passage in state["passages"]:
+        for passage in state.get("passages", []):  # the keep judge's; grounding asks of no article
             score = self.scores.get(passage["article"], 1.0)
             self.answers[passage["id"]] = score.pop(0) if isinstance(score, list) else score
         return super().decide(state, questions)
@@ -540,7 +536,7 @@ def test_a_compile_with_a_decision_model_cuts_a_keep_line_by_its_judge(tmp_path:
     run = ScriptedRun(lambda p: prompts.append(p) or {"Accounts": "- Alpha Co"})
     decider = ByArticle({"accounts/beta-co": 0.05})  # beta-co scores below the bar, then again when asked once more
     compile_article(agent, agent_run=run, decider=decider, **common)
-    assert len(decider.asked) == 2 and "kept 2 of 3 passages" in prompts[0]
+    assert len([s for s, _ in decider.asked if "passages" in s]) == 2 and "kept 2 of 3 passages" in prompts[0]
     assert "articles/accounts/alpha-co.md, 1 of its 1 passages" in prompts[0]
     assert "articles/accounts/beta-co.md" not in prompts[0]
 

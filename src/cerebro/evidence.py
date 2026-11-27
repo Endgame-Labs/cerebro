@@ -391,7 +391,7 @@ def _item(thing: Any) -> Item:
         from .ground import quote_for  # grounding imports this module, so its helper loads at the call
         quote = quote_for(thing)
         text = f"- [^{thing.id}] {thing.text}" + (f' (quote: "{quote}", {thing.record})' if quote else "")
-        if thing.status == "superseded":  # history only: compile keeps it out of any claim of what holds now
+        if thing.status == "superseded":  # history only, which the judge holds to what was
             text += f" [{superseded(thing)}]"
         return Item(f"fact:{thing.id}", text, [Citation("fact", thing.id, thing.record, quote)], thing.at,
                     thing.record)
@@ -1038,8 +1038,8 @@ def _spawn(launch: Launch, keeper: bool) -> subprocess.Popen[bytes]:
 
 # -- the gatherer: a method for each kind of line
 
-# What a run's grounding and repair calls are kept under in the spend log, before its agent's id.
-RUN_SPEND = ("ground", "repair")
+# What a run's grounding calls are kept under in the spend log, before its agent's id.
+RUN_SPEND = "ground"
 READ_AT_ONCE = 20  # the most articles one read asks for
 SUMMARY_NOTE = "summary:"  # how a line that says a summary fell back to an article's first part opens
 
@@ -1097,7 +1097,7 @@ class _Gatherer:
             return row.get("agent") in self.writers
         if source == "spend":
             run = str(row.get("run") or "")
-            return run in self.runs() or run in {f"{kind} {w}" for kind in RUN_SPEND for w in self.writers}
+            return run in self.runs() or run in {f"{RUN_SPEND} {w}" for w in self.writers}
         if source == "merges":
             return row.get("by") in self.writers
         if source == "proposals":

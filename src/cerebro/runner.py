@@ -105,7 +105,6 @@ from .curate import (
 )
 from .errors import CerebroError
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
-from .ground import LINES as GROUND_LINES
 from .ground import TALLY, counted
 from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
 from .identity import (
@@ -198,10 +197,8 @@ class PassResult:
     crossed: dict[str, dict[str, Any]] = field(default_factory=dict)  # by layer, the crossing its first refusal met
     tried: dict[str, list[str]] = field(default_factory=dict)  # each retry list the pass tried, as it began
     paused: set[str] = field(default_factory=set)  # each source a daily cap stopped reading, at its first model record
-    # what grounding did on each article compiled, by its run's key, counted by kind, and the lines of `warnings` that
-    # say each thing it repaired or dropped, which the run's line in the `agent-runs` log keeps
-    grounding: dict[str, dict[str, int]] = field(default_factory=dict)
-    grounded: set[str] = field(default_factory=set)
+    grounding: dict[str, dict[str, int]] = field(default_factory=dict)  # what grounding did, by the run's key and kind
+    grounded: set[str] = field(default_factory=set)  # the lines of `warnings` that are grounding's own: none are
     cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens
@@ -2214,9 +2211,8 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
     the cooldown, and one owed only its `parts` runs only the part marked."""
     key = _key(agent, article)
     result.step("compile", "start", article)
-    tally: Counter[str] = Counter()  # what grounding does while this article compiles, and its lines
-    own: list[str] = []
-    counting, saying = TALLY.set(tally), GROUND_LINES.set(own)
+    tally: Counter[str] = Counter()  # what grounding does while this article compiles
+    counting = TALLY.set(tally)
     try:
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
                                  hold=_hold(workspace, agent, article, served) if change else None,
@@ -2236,12 +2232,7 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         raise
     finally:
         TALLY.reset(counting)
-        GROUND_LINES.reset(saying)
     compiled.grounding = dict(tally)
-    # grounding's own lines of what went, as compile carries them in `dropped` among lines that are not
-    # grounding's, which are said as they come
-    compiled.grounded = [line for line in compiled.dropped if line in own or any(
-        line.endswith(f": {said}") for said in own)]
     result.tell(_compiled_line(workspace, key, compiled))
     result.step("compile", "end", article, **_compiled_step(agent, compiled))
     # what grounding did and what landing made safe, as counts, under the article's row
@@ -2321,10 +2312,9 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
     # each line kept on its run's line, and counted for its end
-    keep_grounding(workspace.store, run, compiled.grounding, [*compiled.grounded, *compiled.cleaned])
+    keep_grounding(workspace.store, run, compiled.grounding, compiled.cleaned)
     if compiled.grounding:
         result.grounding[key] = compiled.grounding
-        result.grounded.update(f"{key}: {line}" for line in compiled.grounded)
     if compiled.cleaned:
         result.cleaned[key] = len(compiled.cleaned)
     result.warnings += [f"{key}: {note}" for note in compiled.notes]

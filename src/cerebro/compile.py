@@ -4,16 +4,18 @@ A run is due when anything it reads moved: the digest of its evidence is kept on
 it writes, so the same evidence does not run it again. A run, or a gather, that failed on the same evidence waits,
 30 seconds doubling to an hour. A scheduled compile runs even when nothing moved.
 
-Every run goes through `run_agent`, so each is held to the cap and leaves its spend and its `agent-runs` row. What it
-hands in is grounded (`_Grounding`), one heading at a time as `article.pieces` cuts it, and what stands lands in one
-write (`_land`), with the fields it set with `override`, or not at all. A run writes only its own part, its fields,
-and the article's identity only when a fixed article is first born. A run that lands nothing leaves the article as it
-was, but for a line whose facts were all withdrawn. Then the mirror copy is written. The store is the truth: a copy
-that fails to write is a warning, and the article stands.
+Every run goes through `run_agent`, so each is held to the cap and leaves its spend and its `agent-runs` row. An
+editor (`ground.Editor`) scores each sentence a run hands in against what it read, and the run is told, once, of
+each sentence under its floor: `min_grounding` in its agent file, else in `settings.yaml`, else `ground.FLOOR`. What
+it hands in lands whole in one write (`_land`), each sentence still under the floor marked, with the fields it set
+with `override`, or not at all; each sentence's score and why stay on its run's row of the `agent-runs` log. A run
+writes only its own part, its fields, and the article's identity only when a fixed article is first born. A run that
+lands nothing leaves the article as it was, but for a line whose facts were all withdrawn. Then the mirror copy is
+written. The store is the truth: a copy that fails to write is a warning, and the article stands.
 
 Grounding is given the decision model when the workspace has one, the line the run read for each citation, the facts
-linked to the article, the day, and the body of `workspace.md`, and the writing model to repair a sentence that
-fails, when the compile is handed one. What those calls spent is kept under compilation, call by call.
+linked to the article, the day, and the body of `workspace.md`. What its calls spent is kept under compilation, call
+by call, each try of a call checked against the cap before it starts.
 
 What a file writes follows its role. A writer writes its one article. An article agent (`article.md`) and a
 query target write each article `targets` lists, one compile each, named by `this`. An agent that lists `subagents:`
@@ -48,8 +50,8 @@ from .article import (
     Citation,
     Compilation,
     Identity,
-    Piece,
     Property,
+    fields,
     mirror,
     pieces,
     protected,
@@ -76,27 +78,13 @@ from .evidence import (
     gather,
 )
 from .facts import Fact
-from .ground import (
-    ARTICLE_LINK,
-    Grounded,
-    Grounder,
-    RewriteFailed,
-    Rewriter,
-    ground,
-    history_alone,
-    link_id,
-    names_only,
-    own_sides,
-    quote_for,
-    split_sentences,
-    tallied,
-)
-from .identity import follow, in_working_set, redirects
-from .lookup import LINKED, MAX_READ, Lookup, ReadResult
-from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
+from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, tallied
+from .identity import in_working_set
+from .lookup import LINKED, MAX_READ, Lookup
+from .models import TRIES, Decider, ModelSpec, TokenCount, cost, price_of, read_model
 from .records import proposals
 from .reply import outside
-from .run import STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
+from .run import REVIEW, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
 from .secrets import MARK
 from .store import PropertyError, Store, StoreError, check_value, own_key, update_state
 from .tokens import MASKED
@@ -121,13 +109,13 @@ class CompileRefused(CerebroError, NotImplementedError):
     """An agent compile does not run, by its role or a tool it lists. The message names the file and what to do."""
 
 
-KEPT_LAST = "so it kept what it wrote last"  # what a part kept while it grounds says
+KEPT_LAST = "so it kept what it wrote last"  # what a part its agent did not write again says
 
 
 @dataclass
 class Compiled:
     """A run, the article it landed if any, a warning line when the mirror copy was not written, and a line for each
-    thing grounding dropped. With nothing moved since the agent's last write, `run` is None and `skipped` is true.
+    thing that did not land. With nothing moved since the agent's last write, `run` is None and `skipped` is true.
     `run` is the agent's own run, or the subagent's run that failed; `runs` holds every run the compile made, each
     subagent's first, and `notes` what the run line should say, such as a composer that did not write."""
 
@@ -142,7 +130,6 @@ class Compiled:
     rendered: list[str] = field(default_factory=list)  # the headings code wrote from `rendered:` on a skip
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
-    grounded: list[str] = field(default_factory=list)  # the lines of `dropped` that are grounding's own
     cleaned: list[str] = field(default_factory=list)  # a line for each change landing made to the text, counted
 
 
@@ -151,25 +138,28 @@ def made_safe(n: int) -> str:
     return f"made {n} safety edit{'' if n == 1 else 's'}"
 
 
-def agent_surface(lookup: Lookup, caller: Caller, seen: list[Fact] | None = None) -> list[Callable[..., Any]]:
-    """`query` and `read` as a context agent calls them, under its own caller. Each fact either returns is added to
-    `seen`, when given: a run may cite what its tools returned, as it may its evidence."""
+def agent_surface(lookup: Lookup, caller: Caller, seen: list[Fact | Article] | None = None) -> list[Callable[..., Any]]:
+    """`query` and `read` as a context agent calls them, under its own caller. Each fact and article either returns
+    is added to `seen`, when given: a run may cite what its tools returned, as it may its evidence."""
 
     def query(source: str, filters: dict[str, Any] | None = None, limit: int = 50) -> dict[str, Any]:
-        """Search or filter the articles of a collection, the facts, or a log, by their fields. A fact it returns
-        may be cited by its id, as evidence is."""
+        """Search or filter the articles of a collection, the facts, or a log, by their fields. A fact or an
+        article it returns may be cited by its id, as evidence is."""
         result = lookup.query(caller, source, filters, limit=limit)
         if seen is not None:
-            seen.extend(item for item in result.items if isinstance(item, Fact))
+            seen.extend(item for item in result.items if isinstance(item, (Fact, Article)))
         return outside(result)
 
     def read(ids: list[str], about: str | None = None) -> dict[str, Any]:
         """Articles whole, each as its text with the ids it cites in place and the facts learned since it was last
         written, and facts asked for by id, for up to 20 ids: read a fact by the id an article's text names for its
-        words. about gives an article's facts that hold its words. A fact whose id it returns may be cited by it."""
-        shown = outside(lookup.read(caller, ids, about, linked=False))
+        words. about gives an article's facts that hold its words. An article or a fact whose id it returns may be
+        cited by it."""
+        got = lookup.read(caller, ids, about, linked=False)
+        shown = outside(got)
         if seen is not None:
             said = json.dumps(shown)
+            seen.extend(got.articles)
             seen.extend(f for f in lookup.read(caller, ids, about).facts if f.id in said)
         return shown
 
@@ -210,9 +200,10 @@ def _inbox(store: Store, agent: Agent, article: str) -> list[Evidence]:
         what = "instruction" if p.kind == "article.instruct" else f"waiting {p.kind.partition('.')[2] or p.kind}"
         what = f"the curator's {what}, context and never a source," if p.by.kind == "agent" and \
             p.kind == "article.instruct" else what
-        text = f"- [{p.id}] {what} from {p.by.name} ({p.by.kind}), {p.at[:10]}: {said}"
-        items.append(Item(f"proposal:{p.id}:{p.status}", text))
-    return [Evidence(INBOX, [item.text for item in items], items=items, spelled="inbox")]
+        text = f"- [^{p.id}] {what} from {p.by.name} ({p.by.kind}), {p.at[:10]}: {said}"
+        items.append(Item(f"proposal:{p.id}:{p.status}", text, [Citation("proposal", p.id, p.target, said)]))
+    return [Evidence(INBOX, [item.text for item in items], [c for item in items for c in item.citations], items=items,
+                     spelled="inbox")]
 
 
 def _read(agent: Agent, article: str) -> str:
@@ -280,9 +271,9 @@ def _article(agent: Agent, this: str | None) -> str:
 
 
 def _tools(agent: Agent, lookup: Lookup, agent_tools: dict[str, Callable[..., Any]],
-           workspace: Workspace | None, seen: list[Fact]) -> list[Callable[..., Any]]:
+           workspace: Workspace | None, seen: list[Fact | Article]) -> list[Callable[..., Any]]:
     """The tools the agent file names, bound with its caller and the workspace handle, which the model never sees. The
-    facts `query` and `read` return go into `seen`."""
+    facts and articles `query` and `read` return go into `seen`."""
     caller = Caller(agent.id, "agent")
     tools = agent_surface(lookup, caller, seen)
     for name in agent.tools:
@@ -352,9 +343,10 @@ class _Writes:
             self.store.set_field(self.article, name, prop)
 
 
-def _by_tool(facts: list[Fact]) -> list[Evidence]:
-    """What a run read through its tools, as one more entry of its evidence, so what it cites of it is checked as any
-    evidence is, and its digest moves when one of those facts does. Empty when it read no fact that way."""
+def _by_tool(read: list[Fact | Article]) -> list[Evidence]:
+    """The facts a run read through its tools, as one more entry of its evidence, so what it cites of them is checked
+    as any evidence is, and its digest moves when one of those facts does. Empty when it read no fact that way."""
+    facts = [f for f in read if isinstance(f, Fact)]
     if not facts:
         return []
     entry = Evidence(BY_TOOL)
@@ -366,6 +358,23 @@ def _by_tool(facts: list[Fact]) -> list[Evidence]:
         entry.lines.append(text)
         entry.citations.append(Citation("fact", fact.id, fact.record, quote))
     return [entry]
+
+
+def _articles_read(read: list[Fact | Article]) -> list[Evidence]:
+    """The articles a run read through its tools, as an entry that lets it cite them, which counts in no digest: an
+    article moves at every write, and its facts move a reader's digest already."""
+    found = {a.identity.id: a for a in read if isinstance(a, Article)}
+    if not found:
+        return []
+    lines = [f"- [^{id}] {a.identity.title}: {json.dumps(_fields(a), sort_keys=True, default=str)}"
+             for id, a in sorted(found.items())]
+    return [Evidence(BY_TOOL, lines, citations=[Citation("article", id, id) for id in sorted(found)],
+                     items=[Item(f"article:{id}", line, [Citation("article", id, id)])
+                            for id, line in zip(sorted(found), lines)])]
+
+
+def _fields(article: Article) -> dict[str, Any]:
+    return {name: prop.value for name, prop in fields(article).items()}
 
 
 def _tool_reads(agent: Agent, article: str) -> str:
@@ -425,48 +434,18 @@ class _Part:
     digest: str | None = None
 
 
-def _ground_whole(grounding: _Grounding, agent: Agent, text: str, citable: dict[str, Citation],
-                  *evidence: list[Evidence]) -> tuple[str, list[str]]:
-    """Text handed in whole, grounded one heading at a time as `article.pieces` cuts it, an underlined heading read as
-    the `#` heading it shows as, each piece as a part of its own, and joined again: what stands, and a line for each
-    thing dropped. A heading the model wrote stands with what stands under it, its citations taken out, unless
-    `names_only` says it is a claim: then the heading goes, and what is under it is grounded with the text above it.
-    A part under a heading the agent's `rendered:` names goes, since the wiki writes that heading itself."""
-    dropped: list[str] = []
-    found: dict[str, Piece] = {}
-    for piece in pieces(underlined_as_atx(text)):
-        if piece.level and piece.heading.casefold() in {h.casefold() for h in agent.rendered}:
-            dropped.append(f"{piece.heading}: dropped the part: the wiki writes {piece.heading} itself")
-            continue
-        if piece.level and not names_only(title := " ".join(CITE.sub("", piece.heading).split())):
-            said = f"{title}: dropped the heading: a heading is a few words and no figure, and this one reads as a " \
-                   "claim"
-            tallied({"headings": 1}, [said])
-            dropped.append(said)
-            if not piece.under:
-                continue
-            if found:  # the text under it is grounded as part of what it now follows
-                last = next(reversed(found))
-                found[last] = replace(found[last], under=f"{found[last].under}\n\n{piece.under}".strip("\n"))
-                continue
-            piece = replace(piece, level=0, heading="", line="")
-        key, n = piece.heading or BEFORE_ANY, 2
-        while key in found:
-            key, n = f"{piece.heading or BEFORE_ANY} ({n})", n + 1
-        found[key] = piece
-    grounded = grounding(agent, {key: piece.under for key, piece in found.items()}, citable, *evidence)
-    kept = []
-    for key, stood in grounded.parts.items():
-        piece = found[key]
-        title = " ".join(CITE.sub("", piece.heading).split())
-        if title != " ".join(piece.heading.split()):  # a heading cites nothing
-            said = f"{key}: removed the citation from the heading {title!r}: a heading cites nothing"
-            tallied({"citations": 1}, [said])
-            dropped.append(said)
-        line = "" if not piece.level else piece.line if title == piece.heading else \
-            f"{'#' * piece.level} {title}".rstrip()
-        kept.append(f"{line}\n\n{stood}".rstrip() if line else stood.strip("\n"))
-    return "\n\n".join(part for part in kept if part.strip()), dropped + grounded.dropped
+def _landing(editor: Editor, agent: Agent, text: str) -> tuple[str, list[str]]:
+    """Text handed in whole as it lands, an underlined heading read as the `#` heading it shows as: each sentence under
+    the floor marked, and each part under a heading the agent's `rendered:` names taken out, since the wiki writes
+    that heading itself, with a line that says so."""
+    text = underlined_as_atx(text)
+    rendered = {h.casefold() for h in agent.rendered}
+    found = pieces(text)
+    gone = [p for p in found if p.level and p.heading.casefold() in rendered]
+    if gone:
+        text = "\n\n".join(f"{p.line}\n\n{p.under}".rstrip() if p.level else p.under for p in found if p not in gone)
+    return editor.marked(text).strip("\n"), [f"{p.heading}: dropped the part: the wiki writes {p.heading} itself"
+                                             for p in gone]
 
 
 class _LeftAlone(Exception):
@@ -561,19 +540,6 @@ def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[
     return said
 
 
-def keep_part(grounding: _Grounding, agent: Agent, heading: str, text: str, citable: dict[str, Citation],
-              evidence: list[Evidence], why: str) -> tuple[str, list[str], str]:
-    """A part an agent wrote before and did not write again, grounded against what this run read: what stands of it,
-    empty when nothing does, a line for each thing that went, and the note that says which. Text nothing grounds
-    never stands, whatever it was kept for."""
-    grounded = grounding(agent, {heading: text}, citable, evidence)
-    kept = grounded.parts.get(heading, "")
-    lines = [f"{agent.id}, its earlier text: {line}" for line in grounded.dropped]
-    if not kept.strip():
-        return "", lines, f"{heading}: {why}, and nothing it wrote grounds now, so it waits for the next run"
-    return kept, lines, f"{heading}: {why}, {KEPT_LAST}"
-
-
 def _has_word(line: str) -> bool:
     """Whether a line holds a letter or a digit past its leading quote and list marks: a lone > or an empty list item
     is no word."""
@@ -604,12 +570,6 @@ def no_sentence(text: str) -> bool:
     return True
 
 
-def _empty_or(text: str) -> str:
-    """Why a part's text left none to land: `empty` when it holds no sentence, and `grounded to nothing` when
-    grounding removed what it wrote."""
-    return "empty" if no_sentence(text) else "grounded to nothing"
-
-
 def _cited(text: str, citable: dict[str, Citation]) -> list[Citation]:
     """The citations `text` cites, by the id a writer wrote or by the label the store wrote in its place."""
     by_label = {label(id): c for id, c in citable.items()}
@@ -635,33 +595,21 @@ def birth(store: Store, agent: Agent, article: str, at: str) -> None:
 
 
 class _Grounding:
-    """How one compile grounds what its runs wrote: the grounder, with the decision model when the workspace has
-    one, the line the run read for each citation, the facts linked to the article and every other fact a part cites,
-    the day of the run in the workspace's zone, and what the workspace is about, from `workspace.md`. Each judge and
-    repair call is held to the compilation cap, and what it spent kept in the ledger as it returns: past the cap,
-    the rest of that grounding goes on by the words alone, and `notes` says so. A grounder a test hands in gets the
-    parts and citations alone."""
+    """How one compile grounds what its runs hand in: an editor for each run, on the decision model when the workspace
+    has one, each call and each try of it held to the compilation cap, reading the line the run read for each
+    citation, the facts linked to the article and every other fact a part cites, the day of the run in the
+    workspace's zone, and what the workspace is about, from `workspace.md`. Every editor of the compile shares what
+    was scored, so a passage one run handed in is not scored again for another."""
 
-    def __init__(self, grounder: Grounder, article: str, *, lookup: Lookup, root: Path, ledger: Ledger | None,
-                 clock: Clock, decider: Decider | None, decision: ModelSpec | None, zone: tzinfo,
-                 rewriter: Rewriter | None = None, writer: ModelSpec | None = None):
-        self.grounder, self.article, self.lookup, self.root, self.ledger = grounder, article, lookup, root, ledger
-        self.clock, self.decider, self.decision, self.zone = clock, decider, decision, zone
-        self.rewriter, self.writer = rewriter, writer
-        self.notes: list[str] = []
+    def __init__(self, article: str, *, lookup: Lookup, root: Path, ledger: Ledger | None, clock: Clock,
+                 decider: Decider | None, decision: ModelSpec | None, zone: tzinfo, floor: float):
+        self.article, self.lookup, self.root, self.ledger = article, lookup, root, ledger
+        self.clock, self.decider, self.decision, self.zone, self.floor = clock, decider, decision, zone, floor
+        self.known: dict[str, list[Verdict]] = {}
 
     def linked(self) -> list[Fact]:
         """The current facts linked to the article, as `read` gives them."""
         return self.lookup.read(Caller("compile", "agent"), [self.article]).facts
-
-    def cited_facts(self, parts: dict[str, str]) -> dict[str, Fact]:
-        """The facts linked to the article, and every other fact the parts cite, each whole, so the judge reads a
-        fact's own text, day, subject and speaker, and not only the line the run read it in."""
-        facts = {f.id: f for f in self.linked()}
-        cited = [id for id in dict.fromkeys(CITE.findall("\n".join(parts.values()))) if id not in facts]
-        if cited and self.lookup.extraction is not None:
-            facts |= {f.id: f for f in self.lookup.extraction.facts(ids=cited)}
-        return facts
 
     def withdrawn(self, citations: list[Citation]) -> tuple[set[str], set[str]]:
         """Of the facts `citations` name, those withdrawn since: retired, a fact the extraction no longer holds at
@@ -677,124 +625,66 @@ class _Grounding:
         return ({id for id in ids if id not in found},
                 retracted | {id for id, f in found.items() if f.status != "current"})
 
-    def written(self, parts: dict[str, str]) -> set[str]:
-        """The articles the parts link, as linked, that have been written, a merged one's by the article it leads to:
-        a link to any other article, or to a record the run did not read, names nothing a reader can open."""
-        ids = sorted({link_id(m.group(1)) for text in parts.values() for m in ARTICLE_LINK.finditer(text)})
-        if not ids:
-            return set()
-        written = {a.identity.id for read in self._reads(ids) for a in read.articles if a.compilations}
-        store = getattr(self.lookup, "store", None)
-        moved = redirects(store) if store is not None else {}
-        return {id for id in ids if follow(id, moved) in written}
-
     def stale(self, facts: Mapping[str, Fact]) -> dict[str, str]:
         """The line a read shows under each of `facts` whose document a person marked out of date, or flagged, by id,
         so the judge is told what a reader is told."""
         if not facts:
             return {}
-        return {id: line for read in self._reads(list(facts)) for id, line in (getattr(read, "stale", {}) or {}).items()}
+        ids = list(facts)
+        return {id: line for start in range(0, len(ids), MAX_READ)
+                for id, line in (getattr(self.lookup.read(Caller("compile", "agent"), ids[start:start + MAX_READ]),
+                                         "stale", {}) or {}).items()}
 
-    def _reads(self, ids: list[str]) -> list[ReadResult]:
-        """`ids` read as the compile, at most `MAX_READ` a call, as `read` takes them."""
-        return [self.lookup.read(Caller("compile", "agent"), ids[start:start + MAX_READ])
-                for start in range(0, len(ids), MAX_READ)]
-
-    def __call__(self, agent: Agent, parts: dict[str, str], citable: dict[str, Citation],
-                 *evidence: list[Evidence]) -> Grounded:
-        parts, history = _history_only(parts, self.cited_facts(parts))
-        if self.grounder is not ground:
-            grounded = self.grounder(agent, parts, citable)
-            grounded.dropped[:0] = history
-            return grounded
-        texts = {c.id: item.text for entries in evidence for entry in entries for item in entry.items
-                 if item.text in entry.lines for c in item.citations}
-        today = f"{self.clock().astimezone(self.zone):%Y-%m-%d}"
+    def editor(self, agent: Agent, reads: Callable[[], list[Evidence]]) -> Editor:
+        """An editor for one run of `agent`, held to the agent file's `min_grounding` or the workspace's. `reads`
+        gives what the run has read when the editor is asked, so what it read by its tools is found too."""
         decider = self.decider
         if decider is not None and self.ledger is not None and self.decision is not None:
-            decider = _Held(decider, self.ledger, self.decision, self.clock, f"{RUN_SPEND[0]} {agent.id}")
-        rewriter = self.rewriter
-        if rewriter is not None and self.ledger is not None:
-            if self.writer is None:
-                rewriter = None  # a repair nothing can price is not made
-            else:
-                rewriter = _HeldRewriter(rewriter, self.ledger, self.writer, self.clock, f"{RUN_SPEND[1]} {agent.id}")
-        facts = self.cited_facts(parts)
-        grounded = ground(agent, parts, citable, decider=decider, texts=texts, facts=facts, today=today,
-                          context=_workspace(self.root), rewriter=rewriter,
-                          prompt=prompts.load("repair", self.root) if rewriter else "", stale=self.stale(facts),
-                          links=self.written(parts),
-                          sides=own_sides(self.lookup.store.record, facts.values()))
-        grounded.dropped[:0] = history
-        if grounded.spent:
-            self.notes.append(f"{agent.id}: grounded by the words alone, since {grounded.spent}")
-        if grounded.unrepaired:
-            self.notes.append(f"{agent.id}: repaired no more sentences, since {grounded.unrepaired}")
-        return grounded
+            decider = _Held(decider, self.ledger, self.decision, self.clock, f"{RUN_SPEND} {agent.id}")
+        judge = Judge(decider, self.article, _workspace(self.root), f"{self.clock().astimezone(self.zone):%Y-%m-%d}")
 
+        def found(ids: list[str]) -> dict[str, dict[str, Any]]:
+            entries = reads()
+            citable = _citable(entries)
+            facts = {f.id: f for f in self.linked()}
+            wanted = [id for id in ids if id in citable and id not in facts]
+            if wanted and self.lookup.extraction is not None:
+                facts |= {f.id: f for f in self.lookup.extraction.facts(ids=wanted)}
+            texts = {c.id: item.text for entry in entries for item in entry.items if item.text in entry.lines
+                     for c in item.citations}
+            cited = {id: facts[id] for id in ids if id in facts}
+            stale, sides = self.stale(cited), own_sides(self.lookup.store.record, cited.values())
+            return {id: fields_of(id, citable.get(id), cited.get(id), texts.get(id, ""), stale.get(id, ""),
+                                  sides.get(cited[id].record) if id in cited else None) or {"text": ""}
+                    for id in ids if id in citable or id in cited}
 
-def _history_only(parts: dict[str, str], facts: Mapping[str, Fact]) -> tuple[dict[str, str], list[str]]:
-    """Take out each sentence or table row that cites a superseded fact with no fact of a later save of its record
-    that speaks to the same thing beside it, and give a line for each. An earlier save is history, told beside the
-    save that replaced it: a fact it gave never stands alone for what holds now, nor beside a fact of the new save on
-    another matter."""
-    out: dict[str, str] = {}
-    dropped: list[str] = []
-    for heading, text in parts.items():
-        lines = []
-        for line in text.split("\n"):
-            spans = [(0, len(line))] if line.lstrip().startswith("|") else [
-                (s.start, s.end) for s in split_sentences(line)] or [(0, len(line))]
-            taken = False
-            for start, end in reversed(spans):
-                alone = history_alone([facts[id] for id in CITE.findall(line[start:end]) if id in facts])
-                if alone:
-                    dropped.append(f"{heading}: dropped {line[start:end].strip()!r}: it cites "
-                                   f"{', '.join(f.id for f in alone)}, an earlier save of {alone[0].record}, and no "
-                                   "later save of the same thing, so it would give an old value as the one that "
-                                   "holds now")
-                    line, taken = (line[:start] + line[end:].lstrip(" ")).rstrip(), True
-            if not taken or re.sub(r"^[\s>*+\-\d.]*", "", line).strip():
-                lines.append(line)
-        out[heading] = "\n".join(lines)
-    return out, dropped
+        floor = agent.min_grounding if agent.min_grounding is not None else self.floor
+        return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "")
 
 
 class _Held(Decider):
-    """A decider held to the compilation cap call by call: each call is checked against the ledger before it starts,
-    and what each spent is recorded right after it, so a later call that fails or a grounding that raises loses none
-    of it."""
+    """A decider held to the compilation cap call by call and try by try: each call, and each try of it again, is
+    checked against the ledger before it starts, and what each spent is recorded right after it, a try that failed
+    at what it sent, so a later call that fails or a grounding that raises loses none of it."""
 
     def __init__(self, inner: Decider, ledger: Ledger, model: ModelSpec, clock: Clock, run: str):
         self.inner, self.ledger, self.model, self.clock, self.run = inner, ledger, model, clock, run
 
     def decide(self, state: Any, questions: Mapping[str, Any]) -> Any:
         self.ledger.check("compilation", self.clock(), self.model)
-        decision = self.inner.decide(state, questions)  # a call that raises gives no count of what it spent
+        tried = TRIES.set(self)
+        try:
+            decision = self.inner.decide(state, questions)  # a call that raises gives no count of what it spent
+        finally:
+            TRIES.reset(tried)
         self.ledger.record("compilation", self.clock(), self.model, decision.usage, self.run)
         return decision
 
+    def again(self) -> None:
+        self.ledger.check("compilation", self.clock(), self.model)
 
-class _HeldRewriter(Rewriter):
-    """A repair's writing model held to the compilation cap call by call: reserved before each call, so calls made
-    side by side cannot all pass the cap together, and each call's spend recorded right after it, priced on the
-    writing model, also when the call failed once its provider was asked."""
-
-    def __init__(self, inner: Rewriter, ledger: Ledger, model: ModelSpec, clock: Clock, run: str):
-        self.inner, self.ledger, self.model, self.clock, self.run = inner, ledger, model, clock, run
-
-    def rewrite(self, system: str, request: str) -> tuple[str, Any]:
-        ticket = self.ledger.reserve("compilation", self.clock(), self.model, tokens(system + request))
-        try:
-            reply, usage = self.inner.rewrite(system, request)
-        except RewriteFailed as error:
-            self.ledger.record("compilation", self.clock(), self.model, error.spent, self.run)
-            raise
-        else:
-            self.ledger.record("compilation", self.clock(), self.model, usage, self.run)
-            return reply, usage
-        finally:
-            self.ledger.release(ticket)
+    def failed(self, spent: TokenCount) -> None:
+        self.ledger.record("compilation", self.clock(), self.model, spent, self.run)
 
 
 def _workspace(root: Path) -> str:
@@ -813,7 +703,6 @@ def _finish(store: Store, article_id: str, root: Path, compiled: Compiled, groun
     if article is None:
         raise StoreError(f"article {article_id} was written and does not read back: check the store")
     compiled.article = article
-    compiled.notes += grounding.notes
     compiled.warning = _copy(store, article_id, article, root, grounding)
     return compiled
 
@@ -845,16 +734,14 @@ def unmirrored(store: Store, article: str, failed: bool) -> None:
 def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: AgentRun, root: Path,
                     functions: dict[str, Callable[..., Any]], agent_tools: dict[str, Callable[..., Any]],
                     workspace: Workspace | None = None, ledger: Ledger | None = None,
-                    model: ModelSpec | None = None, clock: Clock = system_clock,
-                    grounder: Grounder = ground, this: str | None = None,
+                    model: ModelSpec | None = None, clock: Clock = system_clock, this: str | None = None,
                     subagents: list[Agent] | None = None, scheduled: bool = False, decider: Decider | None = None,
                     decision: ModelSpec | None = None, zone: tzinfo = UTC,
                     starter: Starter | None = None, sources: Mapping[str, Connector] | None = None,
-                    descriptions: Mapping[str, str] | None = None,
-                    rewriter: Rewriter | None = None, only: str = "",
-                    hold: Callable[[list[str]], str] | None = None, by_hand: bool = False) -> Compiled:
-    """Run `agent` on the article it writes, if anything it reads has moved, ground what it wrote, and land what
-    stands. `grounder` is `ground` unless a test hands in another.
+                    descriptions: Mapping[str, str] | None = None, only: str = "",
+                    hold: Callable[[list[str]], str] | None = None, by_hand: bool = False,
+                    min_grounding: float = FLOOR) -> Compiled:
+    """Run `agent` on the article it writes, if anything it reads has moved, score what it hands in, and land it.
 
     `this` names the article, for an agent that writes many. `subagents` are the loaded agents a composer's names are
     looked up in; left out, a composer loads its subagents' files from beside it. `model` is what a run is priced at,
@@ -865,8 +752,8 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
     rebuild waits, or empty to run it.
 
     With a `decider`, grounding and the keep judge of an `articles` line ask the decision model, priced on
-    `decision`; with a `rewriter`, grounding repairs a sentence that fails once, priced on `model`. Both are held to
-    the compilation cap. `zone` is the workspace's: the day grounding reads claims against, the copy's dates, and the
+    `decision` and held to the compilation cap. `min_grounding` is the workspace's floor, which an agent file's own
+    takes the place of. `zone` is the workspace's: the day grounding reads claims against, the copy's dates, and the
     time a `left` line reads its query as of. `starter` runs a `script` line, `sources` are the connectors a `sql`
     line reads, and `descriptions` give each collection the line a `rendered:` part shows of it.
     """
@@ -876,8 +763,8 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
     if why := out_of_working_set(article, current.identity if current is not None else None):
         # no agent runs on an article out of the working set, however its run started: nothing is charged
         return Compiled(None, current, skipped=True, waiting=why, left_alone=why)
-    grounding = _Grounding(grounder, article, lookup=lookup, root=root, ledger=ledger, clock=clock, decider=decider,
-                           decision=decision, zone=zone, rewriter=rewriter, writer=model)
+    grounding = _Grounding(article, lookup=lookup, root=root, ledger=ledger, clock=clock, decider=decider,
+                           decision=decision, zone=zone, floor=min_grounding)
     c = _Compile(lookup=lookup, store=store, agent_run=agent_run, root=root, functions=functions,
                  agent_tools=agent_tools, workspace=workspace, ledger=ledger, model=model, clock=clock, grounding=grounding,
                  scheduled=scheduled, hold=hold, by_hand=by_hand, starter=starter, zone=zone, sources=sources,
@@ -928,11 +815,11 @@ class _Compile:
                        last=_last_sets(self.store, agent, article), starter=self.starter, zone=self.zone,
                        sources=self.sources, judge=self.judge) + _inbox(self.store, agent, article)
 
-    def run(self, agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]]) -> Run:
+    def run(self, agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], editor: Editor) -> Run:
         """`run_agent` under this compile's caps and in its log, priced on the model the agent's own file names, if it
-        names one, else on the compile's."""
+        names one, else on the compile's, its first hand-in shown to `editor`."""
         return run_agent(agent, evidence, tools, agent_run=self.agent_run, store=self.store, ledger=self.ledger,
-                         model=_model(agent, self.model), clock=self.clock)
+                         model=_model(agent, self.model), clock=self.clock, review=editor.review)
 
 
 def _single(c: _Compile, agent: Agent, article: str, descriptions: Mapping[str, str] | None,
@@ -977,15 +864,16 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
     article stays as it was, less each line whose every cited fact was withdrawn."""
     store, clock, grounding = c.store, c.clock, c.grounding
     writes = _Writes(article, store, agent.id)
-    seen: list[Fact] = []
+    seen: list[Fact | Article] = []
     tools = _tools(agent, c.lookup, c.agent_tools, c.workspace, seen) + writes.tools()
-    run = c.run(replace(agent, target=article), evidence, tools)
+    editor = grounding.editor(agent, lambda: [*evidence, *_by_tool(seen), *_articles_read(seen)])
+    run = c.run(replace(agent, target=article), evidence, tools, editor)
     evidence = evidence + _by_tool(seen)  # what it read by tool, it read: it may cite it, and its digest counts it
     stamp_ = digest(agent, evidence)
-    store.set_state(_tool_reads(agent, article), sorted({f.id for f in seen}))
+    store.set_state(_tool_reads(agent, article), sorted({f.id for f in seen if isinstance(f, Fact)}))
     _tried(store, agent, article, stamp_, clock(), run.status not in ("done", WROTE_NOTHING, "budget spent"))
-    citable = _citable(evidence)
-    text, dropped = _ground_whole(grounding, agent, run.result.text, citable, evidence) if run.result else ("", [])
+    citable = _citable(evidence, _articles_read(seen))
+    text, dropped = _landing(editor, agent, run.result.text) if run.result else ("", [])
     if run.status in ("done", WROTE_NOTHING) and not text:
         _wrote_nothing(store, run, dropped)
     ended = run.status in ("done", WROTE_NOTHING)
@@ -996,6 +884,8 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
                             _land_own(c, article, [agent.id], agent, evidence, writes, run.ended_at) or stamp_)
 
     lands = _lands(run, bool(text))  # land what it handed in
+    if lands and text:
+        _scored(store, run, editor)
     if not lands or not text:
         read()  # what it set lands, whatever its text
         notes: list[str] = []
@@ -1208,16 +1098,17 @@ NOTES_MOST = 16_000  # characters of what grounding said that one run's line kee
 
 def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], lines: list[str]) -> None:
     """Keep what grounding did on the run's line of the `agent-runs` log: a later row of the same run, as it stood,
-    with `grounding`, the counts by kind, and `notes`, each line of what it repaired or dropped and of what landing
-    made safe, whole and masked as the store masks a row. One run keeps at most `NOTES_MOST` characters of them, whole
-    lines in order, and a last line counts the rest, so the log grows by a bounded row a run."""
+    with `grounding`, the counts by kind, when there are any, and `notes`, the lines it held already, then each line
+    of what grounding scored and of what landing made safe, whole and masked as the store masks a row. One run keeps
+    at most `NOTES_MOST` characters of them, whole lines in order, and a last line counts the rest, so the log grows by
+    a bounded row a run."""
     if run is None or not run.id or not (tally or lines):
         return
     if (last := _run_row(store, run)) is None:
         return
     scrub = store.scrubbing()
-    kept: list[str] = []
-    room = NOTES_MOST
+    kept: list[str] = list(last.get("notes") or [])
+    room = NOTES_MOST - sum(len(line) for line in kept)
     for n, line in enumerate(lines):
         line = scrub(line) if scrub is not None else line  # masked as the store masks a row, never cut
         if len(line) > room:
@@ -1225,7 +1116,15 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
             break
         kept.append(line)
         room -= len(line)
-    store.append("agent-runs", {**last, "article": run.target, "grounding": dict(tally), "notes": kept})
+    store.append("agent-runs", {**last, "article": run.target, **({"grounding": dict(tally)} if tally else {}),
+                                "notes": kept})
+
+
+def _scored(store: Store, run: Run, editor: Editor) -> None:
+    """Keep each sentence `editor` scored of a run's text on its run's row, and count what it marked and left unscored
+    toward the article compiling."""
+    tallied(editor.tally)
+    keep_grounding(store, run, {}, editor.scores)
 
 
 # A subagent's run that failed fails the article's whole run, and nothing of it lands.
@@ -1382,14 +1281,15 @@ class _Composing:
         self.stale: list[int] = []  # the subagents that run
         self.orphans: list[str] = []  # subagents no agent lists any more, whose parts and material go
         # draft
-        self.own_seen: list[Fact] = []  # what the agent's own run reads by its tools
+        self.own_seen: list[Fact | Article] = []  # what the agent's own run reads by its tools
         self.own_tools: list[Callable[..., Any]] = []
         self.sub_writes: dict[int, _Writes] = {}  # the fields each subagent's run sets
+        self.editors: dict[int, Editor] = {}  # what scores each subagent's run
         self.holds: dict[int, BudgetSpent] = {}  # the subagents refused under the cap before they ran
         self.rows: dict[str, Compilation] = {}  # each subagent's part on the article, by its id
         self.ran: dict[int, Run] = {}  # each subagent's run
         self.failed: list[int] = []  # the subagents whose run failed
-        self.kept_parts: dict[int, str] = {}  # what a subagent that returned nothing keeps, as `keep_part` grounds it
+        self.kept_parts: dict[int, str] = {}  # what a subagent that returned nothing keeps of what it wrote last
         self.kept_from: dict[int, int] = {}  # the index in `compiled.notes` of that kept part's note
         self.compiled = Compiled(None, None)  # what the compile gives back, filled as it goes
         # run_own
@@ -1398,13 +1298,16 @@ class _Composing:
         self.everything: dict[str, Citation] = {}  # what the agent's own text may cite
         self.writes = _Writes(article, c.store, composer.id)  # the fields the agent's own run sets
         self.own: Run | None = None  # the agent's own run, when it ran
+        self.editor = c.grounding.editor(composer, lambda: [  # what scores the agent's own run, on all it read
+            *self.lead, *_by_tool(self.own_seen), *_articles_read(self.own_seen), *(e for r in self.reads for e in r)])
         # plan_own, join and settle
         self.plan: list[_Part] = []  # the parts that land
         self.drafts: set[int] = set()  # drafts returned since the agent last composed, never landed
         self.stood: set[str] = set()  # the agents whose text stands as grounded on this pass
         # `new`: some text lands, this run's or what a subagent returned and never landed; `composed`: what the agent
-        # composed last stands, less what was withdrawn; `leave`: the agent's text stands as it is
-        self.leave = self.unstood = self.new = self.composed = self.drafted = self.grounded = False
+        # composed last stands, less what was withdrawn; `leave`: the agent's text stands as it is; `redrafted`: a
+        # draft returned since the agent last composed lands
+        self.leave = self.unstood = self.new = self.composed = self.drafted = self.redrafted = False
 
     def compose(self) -> Compiled:
         if (skipped := self.due()) is not None:
@@ -1468,16 +1371,18 @@ class _Composing:
         article's run failed when one of them failed. A stop of serve is raised once what the others returned is
         kept."""
         c, store, article, subs = self.c, self.c.store, self.article, self.subs
-        seen: dict[int, list[Fact]] = {n: [] for n in self.stale}
+        seen: dict[int, list[Fact | Article]] = {n: [] for n in self.stale}
         tools = {n: _tools(subs[n], c.lookup, c.agent_tools, c.workspace, seen[n]) for n in self.stale}  # refused first
         self.own_tools = _tools(self.composer, c.lookup, c.agent_tools, c.workspace, self.own_seen)
         self.sub_writes = {n: _Writes(article, store, subs[n].id) for n in self.stale}
+        self.editors = editors = {n: c.grounding.editor(subs[n], partial(self.read_by, n, seen[n]))
+                                  for n in self.stale}
         stops: list[Stopped] = []
 
         def one(n: int) -> Run:
             try:
                 return c.run(_part_of(subs[n], self.composer, article, c.root), self.parts[n],
-                             tools[n] + self.sub_writes[n].tools())
+                             tools[n] + self.sub_writes[n].tools(), editors[n])
             except BudgetSpent as error:  # refused before it ran: it stands aside, and the others land
                 self.holds[n] = error
                 return _not_run(subs[n], article, error, c.clock)
@@ -1487,7 +1392,6 @@ class _Composing:
 
         self.rows = {s.by: s for s in (self.current.compilations if self.current is not None else []) if not s.whole}
         with ThreadPoolExecutor(max_workers=max(1, len(self.stale))) as pool:
-            # each draft counts what grounding did toward this article, as its compile keeps the count
             futures = {n: pool.submit(contextvars.copy_context().run, one, n) for n in self.stale}
         self.ran = {n: future.result() for n, future in futures.items()}
         if self.holds and len(self.holds) == len(self.ran) and not self.orphans:
@@ -1503,7 +1407,7 @@ class _Composing:
                                            "it returned before stands, and it runs when there is room")
         for n, run in self.ran.items():
             if n not in self.holds:
-                self.returned(n, run, seen[n])
+                self.returned(n, run, seen[n], editors[n])
         if broke := [n for n in self.failed if n not in self.holds]:
             return _sub_failed(store, self.composer, article, [(subs[n], self.ran[n]) for n in broke], self.compiled,
                                c.clock)
@@ -1513,29 +1417,32 @@ class _Composing:
             raise stops[0]
         return None
 
-    def returned(self, n: int, run: Run, seen: list[Fact]) -> None:
-        """What subagent `n`'s run read and returned, kept in `held`. One that returned nothing keeps what it wrote
-        last while that grounds."""
+    def read_by(self, n: int, seen: list[Fact | Article]) -> list[Evidence]:
+        """What subagent `n` has read so far: its evidence, and what it read by its tools."""
+        return [*self.parts[n], *_by_tool(seen), *_articles_read(seen)]
+
+    def returned(self, n: int, run: Run, seen: list[Fact | Article], editor: Editor) -> None:
+        """What subagent `n`'s run read and returned, as it lands, kept in `held`, and what its editor scored of it on
+        its run's row. One that returned nothing keeps what it wrote last."""
         c, store, article, sub, held = self.c, self.c.store, self.article, self.subs[n], self.held
         self.parts[n] = self.parts[n] + _by_tool(seen)
         self.stamps[n] = _stamp_of(digest(sub, self.parts[n]), self.composer.context)
-        store.set_state(_tool_reads(sub, article), sorted({f.id for f in seen}))
+        store.set_state(_tool_reads(sub, article), sorted({f.id for f in seen if isinstance(f, Fact)}))
         failed = n in self.failed
         _tried(store, sub, article, self.stamps[n], c.clock(), failed and run.status not in ("budget spent", STOPPED))
         if failed:
             return
-        text = run.result.text.strip() if run.result else "" if run.status == WROTE_NOTHING else held[n].get("text", "")
+        text = editor.marked(run.result.text).strip() if run.result else "" if run.status == WROTE_NOTHING else \
+            held[n].get("text", "")
         row = self.rows.get(sub.id) if not self.instructed else None
         if row is not None:
             last = unlabeled(row.text, row.citations)
         else:
             last = held[n].get("text", "") if self.instructed else ""
-        if not text and last.strip() and run.status != "budget spent":  # not returned: kept while it grounds
-            text, lines, note = keep_part(c.grounding, sub, sub.output[0], last, _citable(self.parts[n]),
-                                          self.parts[n], "empty")
-            self.compiled.dropped += lines
+        if no_sentence(text) and last.strip() and run.status != "budget spent":  # none returned: it keeps its last
+            text = last
             self.kept_from[n] = len(self.compiled.notes)
-            self.compiled.notes.append(note)
+            self.compiled.notes.append(f"{sub.output[0]}: empty, {KEPT_LAST}")
             self.kept_parts[n] = text
         written = (held[n].get("started", ""), held[n].get("at", "")) if n in self.kept_parts else (run.started_at,
                                                                                                    run.ended_at)
@@ -1559,18 +1466,21 @@ class _Composing:
             own_wait = _backs_off(store, composer, article, own_now, self.now)
         if own_wait:  # its own run failed on what the subagents returned again: the article's run waits as a whole
             return Compiled(None, self.current, skipped=True, waiting=own_wait, runs=compiled.runs)
+        for held in self.held:  # a part handed in as a subagent returned it keeps the scores it was given
+            self.editor.seed(held.get("text", ""))
         if own_due:
             try:
                 own = c.run(replace(composer, target=article, prompt=prompts.fill("composer", c.root, drafts=DRAFTS)
                                     + "\n\n" + composer.prompt),
-                            [_drafts(subs, self.held), *self.lead], self.own_tools + self.writes.tools())
+                            [_drafts(subs, self.held), *self.lead], self.own_tools + self.writes.tools(), self.editor)
             except BudgetSpent as error:  # what the subagents returned was paid for: it stands
                 own = _not_run(composer, article, error, c.clock)
             self.own = own
             compiled.runs.append(own)
             self.lead = self.lead + _by_tool(self.own_seen)
-            self.everything = _citable(self.lead, *self.reads)
-            store.set_state(_tool_reads(composer, article), sorted({f.id for f in self.own_seen}))
+            self.everything = _citable(self.lead, *self.reads, _articles_read(self.own_seen))
+            store.set_state(_tool_reads(composer, article), sorted({f.id for f in self.own_seen
+                                                                  if isinstance(f, Fact)}))
             _tried(store, composer, article, _stamp_of(digest(composer, self.lead), *_returned(subs, self.held)),
                    c.clock(), own.status not in ("done", WROTE_NOTHING, "budget spent", "held"))
             if own.status == "failed":  # nothing of the article's run lands, as for a subagent's failure: what the
@@ -1584,16 +1494,16 @@ class _Composing:
         own, composer, current = self.own, self.composer, self.current
         whole = next((s for s in current.compilations if s.by == composer.id and s.whole), None) if current else None
         if own is not None and own.result is not None and own.status in ("done", "budget spent"):
-            text, dropped = _ground_whole(self.c.grounding, composer, own.result.text, self.everything, self.lead,
-                                          *self.reads)
+            text, dropped = _landing(self.editor, composer, own.result.text)
             self.compiled.dropped += dropped
             if text:
+                _scored(self.c.store, own, self.editor)
                 self.plan = [_Part(composer.id, composer.id, text, self.everything, own.started_at, own.ended_at,
                                    whole=True)]
                 self.new = True
                 self.stood.add(composer.id)
             else:
-                if own.status == "done":  # it handed in, and grounding dropped all of it: it wrote nothing
+                if own.status == "done":  # it handed in only what the wiki writes itself: it wrote nothing
                     _wrote_nothing(self.c.store, own, dropped)
                 self.composed, self.unstood = whole is not None, whole is None
         elif own is not None and own.status == WROTE_NOTHING and whole is not None:
@@ -1610,14 +1520,14 @@ class _Composing:
             self.leave = any(s.by == composer.id for s in (current.compilations if current is not None else []))
 
     def join(self) -> None:
-        """The subagents' parts, in order, each grounded against its own evidence, or as it stands when it did not
-        run, or kept while what it wrote last grounds."""
+        """The subagents' parts, in order, each as it returned it, or as it stands when it did not run, or kept as it
+        wrote it last."""
         c, held, rows, plan, ran, failed = self.c, self.held, self.rows, self.plan, self.ran, self.failed
         for n, sub in enumerate(self.subs):
             heading, text, row = sub.output[0], held[n].get("text", ""), rows.get(sub.id)
             stays = None if row is None else _Part(row.heading, sub.id, row.text, {x.id: x for x in row.citations},
                                                    row.started, row.at, digest=row.digest)
-            if n in self.kept_parts:  # not written again: grounded again, as `keep_part` keeps it, or gone
+            if n in self.kept_parts:  # not written again: what it wrote last
                 if text and stays is not None:
                     plan.append(replace(stays, text=text, citable=self.citable[n], digest=held[n].get("digest", "")))
                 elif text:  # no part of its own on the article, as under a whole body that gives way: it lands
@@ -1634,30 +1544,14 @@ class _Composing:
                     row.digest == held[n].get("digest") and n not in ran:
                 plan.append(stays)
                 continue
-            kept = c.grounding(sub, {heading: text}, self.citable[n], self.parts[n])
-            self.compiled.dropped += [f"{sub.id}: {line}" for line in kept.dropped]
-            if heading in kept.parts:
-                plan.append(_Part(heading, sub.id, kept.parts[heading], self.citable[n], held[n].get("started", ""),
-                                  held[n].get("at", ""), digest=held[n].get("digest", "")))
-                self.new, self.grounded = True, self.grounded or self.drafted and n in self.drafts
-                self.stood.add(sub.id)
-                continue
-            if n in ran and ran[n].status == "done":  # it handed in, and grounding dropped all of it
-                _wrote_nothing(c.store, ran[n], kept.dropped)
-            if stays is not None and n in ran:  # grounded to nothing: what it wrote last is kept while it grounds
-                again, lines, note = keep_part(c.grounding, sub, row.heading, unlabeled(row.text, row.citations),
-                                               _citable(self.parts[n]), self.parts[n], _empty_or(text))
-                self.compiled.dropped += lines
-                self.compiled.notes.append(note)
-                if again:
-                    plan.append(replace(stays, text=again, citable=self.citable[n], digest=held[n].get("digest", "")))
-                self.new = self.new or again != unlabeled(row.text, row.citations)
-            elif stays is not None:  # what it handed in landed nothing: its part stays as it was
-                plan.append(stays)
+            plan.append(_Part(heading, sub.id, text, self.citable[n], held[n].get("started", ""),
+                              held[n].get("at", ""), digest=held[n].get("digest", "")))
+            self.new, self.redrafted = True, self.redrafted or self.drafted and n in self.drafts
+            self.stood.add(sub.id)
 
     def settle(self) -> None:
         """What the plan says of what the agent wrote, once the parts are planned."""
-        if self.drafted and not self.grounded:  # no draft returned since grounded: what it composed stands
+        if self.drafted and not self.redrafted:  # no draft returned since lands: what it composed stands
             self.plan, self.composed, self.new = [], True, False
         if self.composed or self.leave or any(p.whole for p in self.plan):  # a kept part not on the article: the
             for n, at in self.kept_from.items():  # composer's text stands
@@ -1727,9 +1621,14 @@ class _Composing:
             self.read()
             if self.leave and not compiled.runs:  # no run, and nothing it reads moved: the article stands, unwritten
                 return Compiled(None, current, skipped=True)
+            if self.leave:  # what it wrote stands, less each line whose every cited fact was withdrawn
+                compiled.dropped += _withdrawn(c.grounding, store, article, self.writers)
             return compiled if not self.leave else _finish(store, article, c.root, compiled, c.grounding)
         if fixed(self.composer) and plan:
             birth(store, self.composer, article, min((p.started for p in plan if p.started), default=stamp(c.clock())))
+        for n, editor in self.editors.items():  # what each subagent's text that lands was scored, on its run's row
+            if self.subs[n].id in self.stood:
+                _scored(store, self.ran[n], editor)
 
         def after() -> None:
             self.land_sets()
@@ -1792,12 +1691,12 @@ def _cut(text: str, scrub: Callable[[str], str] | None, most: int) -> str:
 
 def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], *, agent_run: AgentRun,
               store: Store, ledger: Ledger | None = None, model: ModelSpec | None = None,
-              clock: Clock = system_clock) -> Run:
+              clock: Clock = system_clock, review: Callable[[str], str] | None = None) -> Run:
     """The part every agent's run shares, a writer's, a subagent's, a composer's or a curator's: reserve what the run
-    may spend under the compilation cap, as `_estimate` gives it, run the agent with its tools on its evidence, and in every outcome, a run
-    that fails or raises included, record what it spent in the ledger and a row in the `agent-runs` log, then let
-    the reservation go. Raises `BudgetSpent` before the run when the cap is reached, or runs under way already hold
-    what is left of it, as `HeldForRoom`."""
+    may spend under the compilation cap, as `_estimate` gives it, run the agent with its tools on its evidence, its
+    first hand-in shown to `review`, and in every outcome, a run that fails or raises included, record what it spent
+    in the ledger and a row in the `agent-runs` log, then let the reservation go. Raises `BudgetSpent` before the run
+    when the cap is reached, or runs under way already hold what is left of it, as `HeldForRoom`."""
     if stopping(store):
         raise Stopped(f"serve is stopping, so {agent.id} does not run: it runs on a later pass")
     ticket = ledger.reserve("compilation", clock(), model, agent.budget.tokens_per_run,
@@ -1806,8 +1705,12 @@ def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., 
     interrupted = False  # an interrupt goes on up as itself, not as a stop of serve
     try:
         try:
-            with under(store):
-                run = agent_run.run(agent, evidence, tools, agent.budget)
+            reviewing = REVIEW.set(review)
+            try:
+                with under(store):
+                    run = agent_run.run(agent, evidence, tools, agent.budget)
+            finally:
+                REVIEW.reset(reviewing)
         except BaseException as stopped:  # an interrupt: the turns it made before it count
             run, interrupted = getattr(stopped, "partial_run", None), True
             raise

@@ -494,16 +494,6 @@ def test_a_fact_a_run_read_through_its_query_tool_may_be_cited_and_moves_its_dig
     assert len(again.runs) == 1 and again.skipped == {}  # a fact it read by tool moved, so it runs again
 
 
-def test_a_pass_says_each_line_that_went_once_under_the_article_it_went_from(tmp_path: Path) -> None:
-    def write(prompt: str) -> dict[str, str]:
-        first = re.search(r"\[\^([^\]\s]+)\] (Note \d\.)", prompt)
-        return {"Summary": f"{first.group(2)[:-1]} [^{first.group(1)}]. Nothing else is known."}  # type: ignore[union-attr]
-
-    run = ScriptedRun(write)
-    result = workspace(tmp_path, extraction=FakeExtraction(), run=run).run_once()
-    assert result.warnings == ['reports/weekly: Summary: dropped "Nothing else is known.": it cites nothing']
-
-
 def test_an_article_read_right_after_its_compile_counts_no_fact_as_new_and_a_later_one_counts(tmp_path: Path) -> None:
     from cerebro.caller import Caller
 

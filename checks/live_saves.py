@@ -37,8 +37,14 @@ from cerebro.app import Cerebro
 from cerebro.article import Identity, passages
 from cerebro.clock import stamp
 from cerebro.evidence import CITE
-from cerebro.ground import SAYS_OLD, split_sentences
+from cerebro.ground import split_sentences
 from cerebro.runner import PassResult
+
+# words that tell a value as what was
+SAYS_OLD = re.compile(
+    r"\b(?:out of date|outdated|out-of-date|no longer|used to|marked|superseded|replaced|earlier|previous(?:ly)?|"
+    r"former(?:ly)?|old|was|were|had|said|stated|gave|read|until|took|changed|moved|raised|lowered|before|rose|fell|"
+    r"grew|increased|decreased|went (?:up|down)|from\s[^.;|]*?\bto)\b", re.IGNORECASE)
 
 DOC = "local/knowledge/discount-policy.md"
 TOPIC = "knowledge/discount-policy"

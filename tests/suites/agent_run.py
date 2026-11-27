@@ -23,6 +23,11 @@ EVIDENCE = [Evidence("Query from facts, source notes", ["- [^f_1] The review mov
                      [Citation("fact", "f_1", "memo-1", "The review moved to March.")])]
 
 
+def citing_nothing(text: str) -> str:
+    """A stand-in editor: it has something to say of a hand-in that cites nothing, and nothing of any other."""
+    return "" if "[^" in text else "An editor scored your text: no sentence of it cites the evidence."
+
+
 def lookup_tool(id: str) -> str:
     """Look one thing up."""
     return f"looked up {id} in the notes"

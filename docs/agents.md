@@ -215,13 +215,23 @@ In an agent file, `linked: this` finds what links to the article being written, 
 
 ## How Cerebro checks what an agent writes
 
-Before anything lands, Cerebro checks every sentence against the facts it cites. A sentence that cites nothing, or says more than its facts hold, is rewritten once to match them or dropped. Each drop is a line in the run:
+When an agent hands in its text, the decision model scores each sentence from 0 to 1 against the facts it cites. It reads meaning, not wording, so a fair summary, a translation or a quote in another style scores as well as a plain restatement. If any sentence scores under the floor, the agent gets those sentences back once, with each score and why, and hands in again. That text lands whole.
+
+Cerebro never cuts a sentence. One that still scores under the floor lands with a footnote, and the article defines it once:
 
 ```text
-warning   projects/atlas: Where it stands: dropped "Nothing yet.": it cites nothing
+Atlas moves to spring because the audit runs late [^fact_01m7p4qga4pxpjkgvf].[^unsupported]
+
+[^unsupported]: Not fully backed by the facts it cites.
 ```
 
-So write prompts that ask for plain, cited statements. A run that writes nothing that holds up leaves the article as it was.
+The floor is 0.6. Set `min_grounding` in an agent's front matter to change it for that agent, or in `settings.yaml` for every agent:
+
+```yaml
+min_grounding: 0.8   # this agent's sentences are marked under 0.8
+```
+
+The run counts what it marked, as `grounding projects/atlas: marked 1 sentence not fully backed`. Each sentence's score and why stay on its run's row of the `agent-runs` log: `query { "from": "agent-runs", "run": "run_4f2a9c1e7b3d" }` reads them. With no decision model, no sentence is scored or marked.
 
 ## Kinds of fact
 

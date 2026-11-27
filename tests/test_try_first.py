@@ -1309,7 +1309,7 @@ def test_a_run_with_nothing_to_cite_or_that_wrote_nothing_is_not_counted_failed(
     w.model = Counts(w.hands, tmp_path)
     empty = w.run("compile", "--article", "things")
     assert len(w.model.asked) == 2 and empty.exit_code == 0, empty.output
-    assert empty.output.splitlines()[-1] == "0 written, 2 ran and wrote nothing, 0 fresh, 0 failed.", empty.output
+    assert empty.output.splitlines()[-1] == "2 written, 0 fresh, 0 failed.", empty.output
     full = Workspace(tmp_path / "full", monkeypatch, note("n1", "The launch moved to March 3."))
     full.model = Empty(full.hands, tmp_path / "full")
     real = full.run("compile", "--article", "things")

@@ -170,3 +170,23 @@ def test_a_metered_call_waiting_behind_one_under_way_is_checked_when_it_starts()
         metered.extract(note(1))
     first.join()
     assert handler.calls == 1, "a call checked before the one under way met the cap still started after it"
+
+
+def test_each_try_of_a_grounding_judge_call_is_checked_against_the_cap_before_it_starts_and_a_failed_try_counts(
+        ) -> None:
+    from test_models import Network
+
+    from cerebro.models import YesNo
+
+    state, questions = {"passage": "a sentence " * 400}, {"q": YesNo("Is it backed?")}
+    store = SQLiteStore()
+    net = Network(503, 503)  # two tries fail, and the third answers
+    _Held(net.decider(), Ledger(store, Caps(compilation=10.0)), RUNE, lambda: NOW, "ground x").decide(state, questions)
+    rows = store.rows(LOG, {"layer": "compilation"})
+    assert len(net.sent) == 3 and len(rows) == 3 and all(r.data["usd"] > 0 for r in rows)  # each failed try counts
+    one = rows[0].data["usd"]  # what a failed try is held to have spent
+    store, net = SQLiteStore(), Network(503, 503)
+    with pytest.raises(BudgetSpent):  # the first failed try meets the cap, so no try again starts
+        _Held(net.decider(), Ledger(store, Caps(compilation=one / 2)), RUNE, lambda: NOW, "ground x").decide(
+            state, questions)
+    assert len(net.sent) == 1 and len(store.rows(LOG, {"layer": "compilation"})) == 1

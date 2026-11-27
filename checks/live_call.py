@@ -37,7 +37,12 @@ from cerebro import cli
 from cerebro.app import Cerebro
 from cerebro.article import Identity, Property, body
 from cerebro.caller import Caller
-from cerebro.ground import ABSENCE, split_sentences
+from cerebro.ground import split_sentences
+
+# a line that says the evidence holds none of something, which stands with no citation
+ABSENCE = re.compile(
+    r"\b(?:the (?:evidence|facts)(?: on hand| of the run)? (?:holds?|has|have|shows?|lists?|contains?|says?|records?) "
+    r"(?:no|none|nothing)|nothing in (?:the|this run's|the run's) (?:evidence|facts))\b", re.IGNORECASE)
 
 YOU, NAME = "robin@ourco.example", "Robin Vale"
 NOW = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)

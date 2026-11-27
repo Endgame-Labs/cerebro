@@ -13,8 +13,9 @@ The file follows the parts of a run:
   more to say there is nothing to write, with why. An agent file's `model:` replaces the settings' model.
 - Which text lands. A candidate is a hand-in, or a reply that holds text under a heading the agent was given: the
   model marks its article by writing those headings, and code only reads the mark. The run lands its latest candidate
-  with the mark. A hand-in that cites nothing is held, and the model is told once that grounding would drop it; a
-  reply that hands in nothing is asked once to hand in. With nothing to land, a normal end wrote nothing, which is no
+  with the mark. The first hand-in is held while the model is told, once, what `REVIEW` says of it, when it says
+  anything: grounding's scores of each sentence under its floor. A reply that hands in nothing is asked once to hand
+  in. With nothing to land, a normal end wrote nothing, which is no
   failure, and a run whose room or calls were spent, or whose reply was cut at its output limit, fails, so it runs
   again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
   content standing. An error on any request fails the run, once its tries are spent: a request to a provider is
@@ -32,7 +33,7 @@ The file follows the parts of a run:
   leaves for the model: the instructions, each message, each tool's description and reply, and the arguments the
   model gives a tool. Its result, note and transcript come masked the same way.
 
-`PydanticRewriter` is grounding's writing model for a repair: one request, no tools, masked the same way.
+`PydanticRewriter` is a writing model asked one request, with no tools, masked the same way.
 """
 from __future__ import annotations
 
@@ -46,6 +47,7 @@ import re
 import threading
 import uuid
 from collections.abc import Callable, Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, tzinfo
 from pathlib import Path
@@ -56,11 +58,10 @@ from .agent import Agent, Budget
 from .apps import ToolError
 from .budget import METER, MeterTurn, RoundCut, Stopped, cancelling
 from .clock import Clock, stamp, system_clock
-from .errors import ArgumentsRefused
-from .evidence import CITE, Evidence
+from .errors import ArgumentsRefused, CerebroError
+from .evidence import Evidence
 from .file import File
-from .ground import RewriteFailed, Rewriter
-from .models import RETRIES, WAIT_MOST, ModelSpec, cost, wire_id
+from .models import RETRIES, WAIT_MOST, ModelSpec, TokenCount, cost, wire_id
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import BinaryContent, ModelMessage, ModelResponse
@@ -69,8 +70,9 @@ if TYPE_CHECKING:
     from .gateway import Gateway, Route
 
 __all__ = [
-    "HAND_INS", "REPAIR_MAX_TOKENS", "ROLES", "WROTE_NOTHING", "AgentRun", "Entry", "PydanticRewriter", "PydanticRun",
-    "Result", "Run", "Usage", "block_model_requests", "fit", "hand_in", "instructions", "joined", "model_name",
+    "ASK_MAX_TOKENS", "HAND_INS", "REVIEW", "ROLES", "WROTE_NOTHING", "AgentRun", "Entry", "PydanticRewriter",
+    "PydanticRun", "Result", "RewriteFailed", "Rewriter", "Run", "Usage", "block_model_requests", "fit", "hand_in",
+    "instructions", "joined", "model_name",
     "model_settings", "opening", "refused", "tokens",
 ]
 
@@ -375,9 +377,9 @@ def joined(agent: Agent, parts: dict[str, str]) -> str:
     return "\n\n".join(f"## {heading}\n\n{text}" for heading, text in parts.items())
 
 
-UNCITED = ("Your text cites nothing, so grounding would drop every line of it and nothing of it would land. It is "
-           "kept for now. Hand it in again with each line citing the evidence it rests on, by the id the evidence "
-           "gives it, as [^fact_01m7p4qga4pxpjkgvf].")
+# What a run's first hand-in is shown to, set around the run: what it gives back goes to the model, once, before the
+# run lands anything, and "" lets the hand-in land.
+REVIEW: ContextVar[Callable[[str], str] | None] = ContextVar("review", default=None)
 ENDS = " The run ends once it lands, so hand it in last, in the same reply as any field you set."
 
 
@@ -490,14 +492,15 @@ class _Candidates:
     """Each text a run may land, in the order the model gave it, and what each way a run ends lands of them.
 
     A candidate is a hand-in, or a reply with no hand-in that carries the mark: text under a heading the agent was
-    given, as `_marked` reads it. A run lands its latest candidate with the mark. The first hand-in that cites nothing
-    is held while the model is told so, and lands only when no candidate carries the mark."""
+    given, as `_marked` reads it. A run lands its latest candidate with the mark. The first hand-in is held while the
+    model is told what `review` says of it, when it says anything, and lands only when no candidate carries the
+    mark."""
 
-    def __init__(self, agent: Agent):
-        self.agent = agent
+    def __init__(self, agent: Agent, review: Callable[[str], str] | None = None):
+        self.agent, self.review = agent, review
         self.writes = agent.role != "curator"  # a curator decides with its tools, and hands in nothing
         self.held: Result | None = None
-        self.cited: list[Result] = []
+        self.returned: list[Result] = []
         self.found: list[tuple[Result, bool, bool]] = []  # (candidate, carries the mark, handed in)
         self.replies: list[_Reply] = []
 
@@ -514,12 +517,11 @@ class _Candidates:
         from pydantic_ai import ModelRetry
 
         got = Result(text)
-        if not CITE.search(text) and self.held is None:
+        if self.review is not None and self.held is None and (said := self.review(text)):
             self.held = got
             self.found.append((got, self.carries(text), True))
-            raise ModelRetry(UNCITED)
-        if CITE.search(text):
-            self.cited.append(got)
+            raise ModelRetry(said)
+        self.returned.append(got)
         return got
 
     def replied(self, text: str, offered: bool, cut: bool, calls: bool) -> None:
@@ -538,15 +540,15 @@ class _Candidates:
 
     def finished(self, run: Run, output: Any, mask: Callable[[str], str] | None) -> None:
         """Land what a run that ended on its own gives: a hand-in, a decline, or a curator's last line."""
-        if isinstance(output, Result):  # one under none of the listed headings, cited or not, gives way to an
+        if isinstance(output, Result):  # one under none of the listed headings gives way to an
             # earlier candidate with the mark
             if not self.carries(output.text) and (got := self.latest()) is not None:
                 self.land(run, got)
             else:
                 run.result = output
         elif isinstance(output, _Nothing):  # a decline is never the article, nor replaces one
-            cited = self.cited[-1] if self.cited else None
-            if (got := (cited, True) if cited and (self.carries(cited.text) or self.latest() is None)
+            last = self.returned[-1] if self.returned else None
+            if (got := (last, True) if last and (self.carries(last.text) or self.latest() is None)
                     else self.latest()) is not None:
                 self.land(run, got)
             else:
@@ -1169,7 +1171,7 @@ def ids_kept(value: Any, mask: Callable[[str], str]) -> Callable[[str], str]:
     return keeping
 
 
-# -- the run through Pydantic AI, and the repair model
+# -- the run through Pydantic AI, and a model asked one request
 
 class _OverBudget(Exception):
     """A run that holds its whole token budget, raised in place of its next request."""
@@ -1371,7 +1373,7 @@ class PydanticRun(AgentRun):
         from pydantic_ai.usage import UsageLimits
 
         model, name, settings, route = self._model(agent, result.id)
-        takes = _Candidates(agent)
+        takes = _Candidates(agent, REVIEW.get())
         writes = takes.writes
         text = opening(evidence, self.clock().astimezone(self.zone), self.root, self._mask())
         told = instructions(agent, self.root)
@@ -1460,30 +1462,45 @@ class PydanticRun(AgentRun):
         return result
 
 
-REPAIR_MAX_TOKENS = 4096  # a repair's reply is one sentence, but a model that reasons thinks from the same room
+class RewriteFailed(CerebroError):
+    """A one-request call that failed after its provider was asked, with what it is held to have spent: `spent`."""
+
+    def __init__(self, message: str, spent: TokenCount):
+        super().__init__(message)
+        self.spent = spent
+
+
+class Rewriter:
+    """The seam a writing model asked one request implements: it reads `system` and `request` and gives its reply's
+    text and what the call spent. A call that fails once its provider was asked raises `RewriteFailed` with what it
+    spent."""
+
+    def rewrite(self, system: str, request: str) -> tuple[str, TokenCount]:
+        raise NotImplementedError
+
+
+ASK_MAX_TOKENS = 4096  # a reply is short, but a model that reasons thinks from the same room
 
 
 class PydanticRewriter(Rewriter):
-    """A repair's writing model, one request through Pydantic AI on the model `block` names, as `ground.Rewriter`
-    asks: the `repair` prompt as the system prompt, the failed sentence with its facts as the one message, and the
-    reply's text with what the call spent. Its effort is `low` unless the block names one: a repair is one sentence."""
+    """A writing model asked one request through Pydantic AI on the model `block` names: `system` as the system
+    prompt, `request` as the one message, and the reply's text with what the call spent. `what` names the kind of call
+    to a gateway. Its effort is `low` unless the block names one: the reply is short."""
 
     def __init__(self, block: dict[str, Any], key: Callable[[str], str] | None = None, masks: Masks | None = None,
-                 what: str = "repair", gateway: Gateway | None = None, max_tokens: int | None = None):
+                 what: str = "ask", gateway: Gateway | None = None, max_tokens: int | None = None):
         self.block, self.key, self.masks, self.what, self.gateway = dict(block), key, masks, what, gateway
-        self.max_tokens = max_tokens or REPAIR_MAX_TOKENS
+        self.max_tokens = max_tokens or ASK_MAX_TOKENS
 
     @classmethod
     def from_spec(cls, spec: ModelSpec, key: Callable[[str], str] | None = None,
-                  masks: Masks | None = None, what: str = "repair", gateway: Gateway | None = None,
+                  masks: Masks | None = None, what: str = "ask", gateway: Gateway | None = None,
                   max_tokens: int | None = None) -> PydanticRewriter:
         return cls(spec.block(), key, masks, what, gateway, max_tokens)
 
     def rewrite(self, system: str, request: str) -> tuple[str, Any]:
         from pydantic_ai.direct import model_request_sync
         from pydantic_ai.messages import ModelRequest, SystemPromptPart, TextPart, UserPromptPart
-
-        from .models import TokenCount
 
         if self.masks is not None:
             mask = self.masks()
