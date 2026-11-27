@@ -268,7 +268,7 @@ Atlas moves to spring because the audit runs late [^fact_01m7p4qga4pxpjkgvf].[^u
 [^unsupported]: Not fully backed by the facts it cites.
 ```
 
-When you or any client with a live token takes a fact back, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
+When you take a fact back, at the command line or through a client over MCP or the JSON API, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
 
 The floor is 0.6. Set `min_grounding` in an agent's front matter to change it for that agent, or in `settings.yaml` for every agent:
 
