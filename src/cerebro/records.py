@@ -1190,7 +1190,7 @@ def _file(store: Store, extraction: Extraction | None, caller: Caller, kind: str
         proposal = replace(proposal, status=ACCEPTED, decided_by=caller, decided_at=at)
         proposal.applied, note = _apply(store, extraction, proposal, at)
         result.notes.append(f"Filed and accepted {proposal.id}. {note}")
-    propose(store, proposal)
+    propose(store, _landing(extraction, proposal))
     result.proposals.append(proposal.id)
 
 
@@ -1327,7 +1327,9 @@ def _tell_as(store: Store, extraction: Extraction | None, caller: Caller, text: 
         token = _keep(store, record, at)
         _keep_facts(store, extraction, record, at, result, token, clock)
     else:
-        _keep(store, record, at, lambda: _file(store, extraction, caller, str(kind), planned, record, at, result))
+        held = _HeldFacts(extraction) if extraction is not None else None
+        _keep(store, record, at, lambda: _file(store, held, caller, str(kind), planned, record, at, result))
+        _released(store, held)
     return result
 
 
@@ -1377,14 +1379,17 @@ def _tell_sorted(store: Store, extraction: Extraction | None, caller: Caller, te
     result.notes.append(f"Sorted {record.id} sentence by sentence: {_count(len(stated))} to facts, "
                         f"{_count(len(asked))} to proposals, {_count(len(returned))} handed back.")
 
+    held = _HeldFacts(extraction) if extraction is not None else None
+
     def filed() -> None:
         for part, planned in asked:
-            _file(store, extraction, caller, part.kind, planned, record, at, result)
+            _file(store, held, caller, part.kind, planned, record, at, result)
 
     token = _keep(store, record, at, filed)
     if stated:
         _keep_facts(store, extraction, record, at, result, token, clock)
     result.notes += lines
+    _released(store, held)
     return result
 
 
@@ -1402,13 +1407,15 @@ class _Refused(CerebroError):
 
 
 class _HeldFacts:
-    """The facts layer as a decide sees it while it lands: reads go to `inner`, and a fact it withdraws reads as
-    withdrawn and is held in `withdrawn`, to be withdrawn once the store has kept the whole decide, since the store's
-    undo does not reach the facts layer."""
+    """The facts layer as a decide or a tell sees it while its write lands: reads go to `inner`, and a fact it
+    withdraws reads as withdrawn and is held in `withdrawn`, to be withdrawn once the store has kept the whole write,
+    since the store's undo does not reach the facts layer. `rows` holds each record retract the write filed, as it is
+    filed once its facts are withdrawn."""
 
     def __init__(self, inner: Any):
         self.inner = inner
         self.withdrawn: list[str] = []
+        self.rows: list[Proposal] = []
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
@@ -1421,6 +1428,39 @@ class _HeldFacts:
 
     def retract(self, fact_id: str) -> None:
         self.withdrawn.append(fact_id)
+
+
+def _landing(extraction: Any, row: Proposal) -> Proposal:
+    """`row` as a write files it: a record retract whose facts are held goes in without `applied`, which `_release`
+    files once they are withdrawn, so a pass finishes one that stops between the two."""
+    if isinstance(extraction, _HeldFacts) and row.kind == "record.retract":
+        extraction.rows.append(row)
+        return replace(row, applied={})
+    return row
+
+
+def _release(store: Store, held: _HeldFacts) -> dict[str, Exception]:
+    """Withdraw the facts `held` holds, now the store has kept the write, and file as applied each record retract whose
+    facts all went. Gives each fact the facts layer kept, with its error: its retract waits for a pass to finish."""
+    kept: dict[str, Exception] = {}
+    for fact in held.withdrawn:
+        try:
+            held.inner.retract(fact)
+        except Exception as error:  # noqa: BLE001 - the store kept the write: the rest go on
+            kept[fact] = error
+    for row in held.rows:
+        if not kept.keys() & set(row.applied.get("withdrew", [])):
+            propose(store, row)
+    return kept
+
+
+def _released(store: Store, held: _HeldFacts | None) -> None:
+    """`_release` for a tell, which says so when a fact stayed, as `retract` does."""
+    kept = _release(store, held) if held is not None else {}
+    for fact, error in kept.items():
+        id = next((r.target for r in held.rows if fact in r.applied.get("withdrew", [])), fact)  # type: ignore[union-attr]
+        raise CerebroError(f"retract: {id} is retracted, but withdrawing what it gave stopped partway: {error}. "
+                           f"Retract {id} again to withdraw the rest.") from error
 
 
 def _fault(store: Store, caller: Caller, id: str, row: Proposal | None, root: Path | None,
@@ -1448,7 +1488,7 @@ def _accept(store: Store, extraction: Extraction | None, caller: Caller, decisio
             decided.applied, note = _apply(store, extraction, decided, at)
         except CerebroError as error:
             raise _NotApplied(str(error)) from error
-    propose(store, decided)
+    propose(store, _landing(extraction, decided))
     for p in _cited(store, row):
         propose(store, replace(p, status=ACCEPTED, decided_by=caller, decided_at=at,
                                decision_reason=decision.reason or row.reason, applied=decided.applied))
@@ -1561,16 +1601,13 @@ def _land(store: Store, extraction: Extraction | None, caller: Caller, entries: 
             cause = cause.__context__
         raise CerebroError(f"decide stopped as it landed, and the store kept none of it: {cause}. Nothing was "
                            "applied.") from error
-    for fact in held.withdrawn if held is not None else []:
-        try:
-            extraction.retract(fact)  # type: ignore[union-attr]
-        except Exception as error:  # noqa: BLE001 - the store has kept the decide: say what the facts layer kept
-            by = next((id for id, note in result.notes.items() if result.answers[id] == "decided" and fact in note),
-                      next(iter(result.notes)))
-            said = result.notes[by].replace(f", {fact}", "").replace(f"Withdrew {fact}, ", "Withdrew ")
-            result.notes[by] = said.replace(f" Withdrew {fact}.", "") + (
-                f" The facts layer kept {fact}: {error}. So {fact} still stands, though {by} is accepted: deciding "
-                f"{by} again changes nothing, and the retract tool takes {fact} back.")
+    for fact, error in (_release(store, held) if held is not None else {}).items():  # say what the facts layer kept
+        by = next((id for id, note in result.notes.items() if result.answers[id] == "decided" and fact in note),
+                  next(iter(result.notes)))
+        said = result.notes[by].replace(f", {fact}", "").replace(f"Withdrew {fact}, ", "Withdrew ")
+        result.notes[by] = said.replace(f" Withdrew {fact}.", "") + (
+            f" The facts layer kept {fact}: {error}. So {fact} still stands, though {by} is accepted: deciding "
+            f"{by} again changes nothing, and the retract tool takes {fact} back.")
     return result
 
 
