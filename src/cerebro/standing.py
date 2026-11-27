@@ -81,8 +81,8 @@ def grounding(runs: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, int]
     latest: dict[tuple[str, str], dict[str, int]] = {}
     for agent, rows in runs.items():
         for row in rows:
-            if "grounding" in row:
-                latest[(agent, str(row.get("article") or row.get("target")))] = row["grounding"]
+            if "article" in row:  # a run whose text landed, with no `grounding` when it was clean
+                latest[(agent, str(row["article"]))] = row.get("grounding") or {}
     out: dict[str, dict[str, int]] = {}
     for (_, article), tally in latest.items():
         for kind, n in tally.items():

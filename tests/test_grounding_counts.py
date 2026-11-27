@@ -206,13 +206,78 @@ def test_off_a_terminal_and_in_status_the_latest_runs_counts_are_said(
     assert said is None or "marked" in said
     with cli.open_workspace(root) as workspace:
         extraction = workspace.extraction.handler  # the stand-in facts layer the pass filled
-    cited = Saying(lambda ids: {"Summary": f"The review moved [^{ids[0]}].", "Detail": f"Vega leads it [^{ids[1]}]."})
-    monkeypatch.setattr(cli, "open_workspace", lambda path: Cerebro(path, agent_run=cited, extraction=extraction,
+    labels = Saying(lambda ids: {"Summary": "Risks:", "Detail": "Next steps:"})  # no sentence to score
+    monkeypatch.setattr(cli, "open_workspace", lambda path: Cerebro(path, agent_run=labels, extraction=extraction,
                                                                 clock=lambda: datetime(2026, 11, 18, 9, tzinfo=UTC),
                                                                 decider=FakeDecider()))
-    clean = CliRunner().invoke(cli.main, ["agents", "run", "digests/weekly", "--workspace", str(root)])
+    clean = CliRunner().invoke(cli.main, ["compile", "--article", "digests/weekly", "--workspace", str(root)])
     assert clean.exit_code == 0 and "wrote    digests/weekly" in clean.output, clean.output
     data = json.loads(CliRunner().invoke(cli.main, ["status", "--json", "--workspace", str(root)]).output)
-    assert data["grounding"] == {}, data["grounding"]  # the clean run by hand's, not the pass's before it
+    assert data["grounding"] == {}, data["grounding"]  # the run by hand's text, not the pass's before it
+
+
+PARTS = "---\nsubagents: [alpha, beta]\n---\n\nA brief on one thing.\n"
+PART = ("---\nevidence:\n  - query: {{ from: facts, source: {source} }}\nheartbeat: [change]\n---\n\n"
+        "# Instructions\n\nDraft it.\n\n# Output\n\n## {heading}\n")
+OTHER = "kind: files\nwindow: { behind: all }\nselect:\n  - glob: \"other/**/*.md\"\n    extract: facts\n"
+
+
+class Parts(AgentRun):
+    """Stand-in subagents that each cite their first fact, beta then adding a line that cites nothing while `marks`
+    holds."""
+
+    marks = True
+
+    def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
+        import re
+
+        def write(prompt: str) -> dict[str, str]:
+            fact, text = re.findall(r"\[\^(fact_\w+)\] ([^(\n]+)", prompt)[0]
+            if agent.id.endswith("alpha"):
+                return {"Alpha": f"{text.strip()} [^{fact}]"}
+            return {"Beta": f"{text.strip()} [^{fact}]" + ("\n\nNothing yet." if self.marks else "")}
+
+        return ScriptedRun(write).run(agent, evidence, tools, budget)
+
+
+class Picky(FakeDecider):
+    """The stand-in judge, which scores made up each sentence that says "Nothing yet"."""
+
+    def decide(self, state: Any, questions: Any) -> Any:
+        self.answers = {u["id"]: 0 for u in state.get("passage", []) if "Nothing yet" in u["sentence"]}
+        return super().decide(state, questions)
+
+
+def test_status_counts_what_the_latest_run_of_each_part_left_on_the_article(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    parts, extraction = Parts(), FakeExtraction()
+    monkeypatch.setattr(cli, "open_workspace", lambda root: Cerebro(root, agent_run=parts, extraction=extraction,
+                                                                clock=lambda: datetime(2026, 11, 18, 9, tzinfo=UTC),
+                                                                decider=Picky()))
+    root = tmp_path / "team"
+    assert CliRunner().invoke(cli.main, ["init", str(root), "--daily-usd", "1"]).exit_code == 0
+    (root / "sources" / "other.yaml").write_text(OTHER)
+    (root / "other").mkdir()
+    (root / "agents" / "digests" / "subagents").mkdir(parents=True)
+    (root / "agents" / "digests" / "weekly.md").write_text(PARTS)
+    for name, source in (("alpha", "local"), ("beta", "other")):
+        (root / "agents" / "digests" / "subagents" / f"{name}.md").write_text(
+            PART.format(source=source, heading=name.title()))
+
+    def counts_after(*notes: tuple[str, str]) -> Any:  # a pass that takes in each note, then what status counts
+        for path, text in notes:
+            (root / path).write_text(f"Date: 2026-11-10\n\n{text}\n")
+        assert CliRunner().invoke(cli.main, ["serve", "--once", "--workspace", str(root)]).exit_code == 0
+        return json.loads(CliRunner().invoke(cli.main, ["status", "--json", "--workspace", str(root)]).output)[
+            "grounding"]
+
+    marked = {"digests/weekly": {"marked": 1}}  # beta's line that cites nothing
+    assert counts_after(("local/kickoff.md", "The review moved to March 3."),
+                        ("other/plan.md", "The plan names four steps.")) == marked
+    assert counts_after(("local/later.md", "The review moved to March 4.")) == marked  # alpha alone ran again
+    parts.marks = False
+    assert counts_after(("other/later.md", "The plan names five steps.")) == {}  # beta ran again, clean
 
 

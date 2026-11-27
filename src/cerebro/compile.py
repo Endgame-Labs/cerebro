@@ -1079,13 +1079,13 @@ def _wrote_nothing(store: Store, run: Run, dropped: list[str]) -> None:
 NOTES_MOST = 16_000  # characters of what grounding said that one run's line keeps, as `_kept_note` bounds a note
 
 
-def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], lines: list[str]) -> None:
+def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int] | None, lines: list[str]) -> None:
     """Keep what grounding did on the run's line of the `agent-runs` log: a later row of the same run, as it stood,
-    with `grounding`, the counts by kind, empty for a clean run, and `notes`, the lines it held already, then each line
-    of what grounding scored and of what landing made safe, whole and masked as the store masks a row. One run keeps
-    at most `NOTES_MOST` characters of them, whole lines in order, and a last line counts the rest, so the log grows by
-    a bounded row a run."""
-    if run is None or not run.id or not (tally or lines):
+    with `notes`, the lines it held already, then each line of what grounding scored and of what landing made safe,
+    whole and masked as the store masks a row. A `tally` says the run's text lands: the row then names its `article`,
+    with `grounding`, the counts by kind, when there are any. One run keeps at most `NOTES_MOST` characters of the
+    lines, whole lines in order, and a last line counts the rest, so the log grows by a bounded row a run."""
+    if run is None or not run.id or tally is None and not lines:
         return
     if (last := _run_row(store, run)) is None:
         return
@@ -1099,14 +1099,15 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
             break
         kept.append(line)
         room -= len(line)
-    store.append("agent-runs", {**last, "article": run.target, "grounding": dict(tally), "notes": kept})
+    landed = {} if tally is None else {"article": run.target, **({"grounding": dict(tally)} if tally else {})}
+    store.append("agent-runs", {**last, **landed, "notes": kept})
 
 
 def _scored(store: Store, run: Run, editor: Editor) -> None:
-    """Keep each sentence `editor` scored of a run's text on its run's row, and count what it marked and left unscored
-    toward the article compiling."""
+    """Keep each sentence `editor` scored of a run's text that lands, and what it marked and left unscored, on its
+    run's row, and count those toward the article compiling."""
     tallied(editor.tally)
-    keep_grounding(store, run, {}, editor.scores)
+    keep_grounding(store, run, editor.tally, editor.scores)
 
 
 # A subagent's run that failed fails the article's whole run, and nothing of it lands.

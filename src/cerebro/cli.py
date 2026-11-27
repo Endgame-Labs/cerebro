@@ -1976,10 +1976,10 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         return "fresh"
     if compiled.article is not None:
         _echo(f"wrote    {article}  articles/{article}.md")
-        keep_grounding(workspace.store, compiled.run, compiled.grounding, compiled.cleaned)
         if did := counted(compiled.grounding):
             _echo(f"grounding {article}: {did}")
-        if compiled.cleaned:
+        if compiled.cleaned:  # each line of it kept on its run's line, as a pass keeps it
+            keep_grounding(workspace.store, compiled.run, None, compiled.cleaned)
             _echo(f"cleaned  {article}: {made_safe(len(compiled.cleaned))}")
         if compiled.warning:
             _echo(f"warning  {compiled.warning}")
