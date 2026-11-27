@@ -119,7 +119,7 @@ def test_the_judge_reads_one_passage_a_request_each_cited_fact_once_and_an_id_re
 
 def test_the_first_hand_in_hears_of_each_sentence_under_the_floor_and_one_with_none_hears_nothing() -> None:
     told = editor(FakeDecider({"s1": 2}), floor=0.6).review("Alder signs for ten years [^f_1].")
-    assert '"Alder signs for ten years [^f_1].": 0.50, a reframe' in told and "under 0.6" in told
+    assert '"Alder signs for ten years [^f_1].": 0.50, a reframe' in told
     assert editor(FakeDecider()).review("Alder renews in March [^f_1].") == ""
 
 

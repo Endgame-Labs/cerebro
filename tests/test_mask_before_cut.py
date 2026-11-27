@@ -1573,7 +1573,7 @@ def pieces(value: str, text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("style", [{"ensure_ascii": False}, {"ensure_ascii": False, "separators": (",", ":")}, {}])
-def test_a_value_json_wrote_with_escapes_reaches_no_repair_or_grouping_request(
+def test_a_value_json_wrote_with_escapes_reaches_no_writing_models_one_request(
         monkeypatch: pytest.MonkeyPatch, style: dict[str, Any]) -> None:
     import pydantic_ai.direct
     from pydantic_ai.messages import TextPart
@@ -1590,7 +1590,8 @@ def test_a_value_json_wrote_with_escapes_reaches_no_repair_or_grouping_request(
 
     monkeypatch.setattr(pydantic_ai.direct, "model_request_sync", request)
     mask = Scrubber.of([stored for stored, _ in WRAPPED.values()])
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, key=lambda _: "test", masks=lambda: mask)
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, what="ask", key=lambda _: "test",
+                                masks=lambda: mask)
     held = {"claim": "Juniper moved.", "operating_context": "\n".join(f"Old {k}: {w}" for k, (_, w) in WRAPPED.items()),
             "facts": [{"id": "fact_1", "text": f"rack {WRAPPED['token wrapped'][1]}"}]}
     rewriter.rewrite("Repair the sentence.", json.dumps(held, **style))

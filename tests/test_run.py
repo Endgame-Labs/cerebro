@@ -483,7 +483,7 @@ def test_a_one_request_call_sends_its_prompt_and_request_and_counts_what_it_read
     from cerebro.run import ASK_MAX_TOKENS, PydanticRewriter
 
     replied = _Replied(monkeypatch)
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, key=lambda provider: "k-test")
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, what="ask", key=lambda provider: "k-test")
     text, spent = rewriter.rewrite("the prompt", "the claim")
     assert text == '{"claim": "x", "fact_ids": ["f_1"]}' and spent == TokenCount(300, 45, 7, 0)
     [(model, [message], settings)] = replied.asked
@@ -499,7 +499,7 @@ def test_a_one_request_call_keeps_the_effort_its_block_names_and_the_key_the_wor
 
     replied = _Replied(monkeypatch)
     asked: list[str] = []
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3", "effort": "high"},
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3", "effort": "high"}, what="ask",
                                 key=lambda provider: asked.append(provider) or "kept-test-key")
     rewriter.rewrite("the prompt", "the claim")
     [(model, _, settings)] = replied.asked

@@ -1500,16 +1500,16 @@ class PydanticRewriter(Rewriter):
     prompt, `request` as the one message, and the reply's text with what the call spent. `what` names the kind of call
     to a gateway. Its effort is `low` unless the block names one: the reply is short."""
 
-    def __init__(self, block: dict[str, Any], key: Callable[[str], str] | None = None, masks: Masks | None = None,
-                 what: str = "ask", gateway: Gateway | None = None, max_tokens: int | None = None):
+    def __init__(self, block: dict[str, Any], *, what: str, key: Callable[[str], str] | None = None,
+                 masks: Masks | None = None, gateway: Gateway | None = None, max_tokens: int | None = None):
         self.block, self.key, self.masks, self.what, self.gateway = dict(block), key, masks, what, gateway
         self.max_tokens = max_tokens or ASK_MAX_TOKENS
 
     @classmethod
-    def from_spec(cls, spec: ModelSpec, key: Callable[[str], str] | None = None,
-                  masks: Masks | None = None, what: str = "ask", gateway: Gateway | None = None,
+    def from_spec(cls, spec: ModelSpec, *, what: str, key: Callable[[str], str] | None = None,
+                  masks: Masks | None = None, gateway: Gateway | None = None,
                   max_tokens: int | None = None) -> PydanticRewriter:
-        return cls(spec.block(), key, masks, what, gateway, max_tokens)
+        return cls(spec.block(), what=what, key=key, masks=masks, gateway=gateway, max_tokens=max_tokens)
 
     def rewrite(self, system: str, request: str) -> tuple[str, Any]:
         from pydantic_ai.direct import model_request_sync
