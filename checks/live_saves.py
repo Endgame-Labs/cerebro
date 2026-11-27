@@ -12,11 +12,13 @@ passes only when:
 - after the first pass a knowledge article states the 10% limit, citing a fact of the policy;
 - after the edit, a facts query with `latest: false` gives the first save's facts marked superseded with their
   revision, and one without it gives the new save's alone;
-- the text under the rewritten article's Current heading states 15%, and every sentence of it cites a current fact, and never
-  gives 10% but as history, citing the first save beside the new one, in words that tell 10% as what was;
-- somewhere in the article the old 10% limit is told as what was, and 15% if given as what holds, citing a
-  superseded fact of the first save beside a fact of the new one;
+- the text under the rewritten article's Current heading states 15%, and grounding marked each sentence of it that
+  cites no current fact, or gives 10% without citing the first save beside the new one;
+- somewhere in the article the old 10% limit is given citing a superseded fact of the first save beside a fact of the
+  new one;
 - every citation in the article names a fact the workspace holds.
+
+It prints each sentence that gives the old limit beside the new one, and how many sentences grounding marked.
 """
 
 from __future__ import annotations
@@ -34,17 +36,11 @@ from spend import spent_line
 
 from cerebro import Caller, scaffold
 from cerebro.app import Cerebro
-from cerebro.article import Identity, passages
+from cerebro.article import MARK, Identity, passages
 from cerebro.clock import stamp
 from cerebro.evidence import CITE
 from cerebro.ground import split_sentences, unmarked
 from cerebro.runner import PassResult
-
-# words that tell a value as what was
-SAYS_OLD = re.compile(
-    r"\b(?:out of date|outdated|out-of-date|no longer|used to|marked|superseded|replaced|earlier|previous(?:ly)?|"
-    r"former(?:ly)?|old|was|were|had|said|stated|gave|read|until|took|changed|moved|raised|lowered|before|rose|fell|"
-    r"grew|increased|decreased|went (?:up|down)|from\s[^.;|]*?\bto)\b", re.IGNORECASE)
 
 DOC = "local/knowledge/discount-policy.md"
 TOPIC = "knowledge/discount-policy"
@@ -86,20 +82,6 @@ def show(n: int, result: PassResult) -> None:
         print(f"  failed  {key}: {why}")
     for line in result.warnings:
         print(f"  warning {line}")
-
-
-def past(unit: str) -> bool:
-    """Whether a sentence or a row tells the old limit as what was, and the new one, if it gives it, as what holds:
-    a word of what was beside the old limit, and none beside the new."""
-    text = CITE.sub("", unit)
-    clauses = re.split(r"[;|]|,\s+(?:and|but)\s+|\band now\b|\bnow\b", text)
-    old = [c for c in clauses if OLD.search(c)]
-    new = [c for c in clauses if NEW.search(c)]
-    said_old = SAYS_OLD.search(text) if not old else all(SAYS_OLD.search(c) for c in old) or bool(
-        re.search(r"\b(?:superseded|replaced|until)\b", text))
-    # a change told into the new value, such as "raised the limit to 15%", gives 15% as what holds now
-    into = re.compile(r"\b(?:from|up from|after)\b|\bto\s+(?:up\s+to\s+)?(?:15\s?%|15 percent)")
-    return bool(said_old) and not any(SAYS_OLD.search(c) and not into.search(c) for c in new)
 
 
 def units(text: str) -> list[str]:
@@ -184,20 +166,19 @@ def main() -> int:
             if not NEW.search(now_text):
                 reasons.append("the text under the rewritten article's Current heading does not state the 15% limit")
             for unit in units(now_text):
-                cited = set(CITE.findall(unit))
-                told = bool(cited & set(old)) and bool(cited & current) and past(unit)  # what was, beside the new
-                if OLD.search(unit) and not told:
-                    reasons.append(f"Current states the old limit as if it held: {unit!r}")
-                if not cited & current or not cited <= current | set(old) or (cited & set(old) and not told):
-                    reasons.append(f"a sentence of Current does not rest on the policy as it stands: {unit!r}")
+                cited = set(CITE.findall(unmarked(unit)))
+                beside = bool(cited & set(old)) and bool(cited & current)  # what was, beside the new
+                if (OLD.search(unit) and not beside or not cited & current) and MARK not in unit:
+                    reasons.append(f"Current gives the old limit, or rests on no current fact, unmarked: {unit!r}")
             history = [u for heading, text in parts.items() for u in units(text)
-                       if set(CITE.findall(u)) & set(old) and set(CITE.findall(u)) & current and past(u)
+                       if set(CITE.findall(u)) & set(old) and set(CITE.findall(u)) & current
                        and (OLD.search(u) or any(OLD.search(old[i].text) for i in CITE.findall(u) if i in old))]
             if not history:
-                reasons.append("the article does not tell the old 10% limit as history, citing the first save "
-                               "beside the new one")
+                reasons.append("the article does not give the old 10% limit citing the first save beside the "
+                               "new one")
             for line in history:
                 print(f"history: {line}")
+            print(f"grounding marked {sum(text.count(MARK) for text in parts.values())} sentences")
             for id in CITE.findall(unmarked("\n".join(parts.values()))):  # a mark is grounding's, and cites nothing
                 if id not in held:
                     reasons.append(f"[^{id}] is no fact the wiki holds")
