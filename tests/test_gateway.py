@@ -164,13 +164,14 @@ def test_every_road_goes_to_base_url_on_its_own_path_with_the_merged_headers_and
     assert calls == {"decision", "agent_run", "extraction", "embedding", "extraction_decision", "key_proof"}
 
 
-@pytest.mark.parametrize(("road", "status"), [("decision", 401), ("agent run", 402), ("facts layer", 402),
-                                              ("key proof", 403)])
+@pytest.mark.parametrize(("road", "status"), [("decision", 401), ("decision", 403), ("agent run", 402),
+                                              ("facts layer", 402), ("facts layer", 403), ("key proof", 403)])
 def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_and_stops_every_call_after_it(
         tmp_path: Path, gateway: Gateway, road: str, status: int) -> None:
     """Breaks caught: a road that tries a refused call again, or goes on making calls after the refusal, a status of
-    `STOP` that does not stop the pass, and what a road says of the refusal holding the secret header's value that
-    the reply echoes."""
+    `STOP` that does not stop the pass, what a road says of the refusal holding the secret header's value that the
+    reply echoes, and a decision's, a record's or the pass's refusal that does not send the person to the gateway's
+    settings for a refused key, or to the provider for payment due."""
     call, _, path = ROADS[road]
     gateway.status = status
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
@@ -180,26 +181,31 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
             said = workspace.mask_every()(str(error)) if road == "facts layer" else str(error)  # as a pass prints it
         assert len(gateway.sent) == 1 and gateway.sent[0][0] == HOST + path and gateway.sent[0][1]["x-example-key"]
         assert str(status) in said and VALUE[:8] not in said and VALUE[-8:] not in said, said
+        todo = "payment is due at the provider" if status == 402 else "check providers in settings.yaml"
+        tail = {"decision": f": {todo}", "facts layer": f": {todo}; the record is tried again next pass"}
+        assert road not in tail or said.endswith(tail[road]), said
         assert workspace.gateway.said.startswith(f"Model calls stopped: {HOST} refused a ")
-        assert f"HTTP {status} at 09:00 UTC" in workspace.gateway.said
+        assert f"HTTP {status} at 09:00 UTC. Nothing more starts this pass: {todo}, and" in workspace.gateway.said
         with pytest.raises(CallRefused):
             workspace.ledger.check("compilation", NOW)
 
 
 @pytest.mark.parametrize(("road", "said"), [
-    ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check providers in settings.yaml"),
-    ("facts layer", "HTTP 400"),
+    ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check the model id and the request"),
+    ("facts layer", ": check the model id and the request; the record is tried again next pass"),
 ])
 def test_a_400_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(
         tmp_path: Path, gateway: Gateway, road: str, said: str) -> None:
-    """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, and a
-    decision's failure on one that does not name the gateway and its settings."""
+    """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, a
+    decision's failure on one that does not name the gateway or that sends the person to its settings, and a facts
+    layer's that sends the person to the key."""
     call, _, _ = ROADS[road]
     gateway.status = 400
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
         with pytest.raises(CerebroError) as failed:
             call(workspace)
-        assert len(gateway.sent) == 1 and said in str(failed.value), str(failed.value)
+        line = str(failed.value)
+        assert len(gateway.sent) == 1 and "HTTP 400" in line and line.endswith(said), line
         gateway.status = 0
         workspace.ledger.check("compilation", NOW)
         call(workspace)

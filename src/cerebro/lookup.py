@@ -970,7 +970,7 @@ class StoreLookup(Lookup):
             if key in OWN or key == LINKED:
                 continue
             others = [self._wanted(k, v) for k, v in literal.items() if k != key] + list(where or [])
-            if n := sum(1 for a in self.store.query(source, others) if meets(a, key) and not _held(a, key)):
+            if n := sum(1 for a in self.store.query(source, others) if meets(a, key) and key not in fields(a)):
                 kept_by = " that the other filters keep" if len(filters) > 1 or where else ""
                 lines.append(f"{n} article{'s' if n > 1 else ''} of {source}{kept_by} {'have' if n > 1 else 'has'} "
                              f"no field {key}, so the query left {'them' if n > 1 else 'it'} out")

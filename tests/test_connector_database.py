@@ -28,6 +28,7 @@ from cerebro.connectors.database import (
     open_read_only,
 )
 from cerebro.connectors.files import FilesConnector
+from cerebro.connectors.postgres import PostgresEngine
 from cerebro.evidence import SqlError, digest, gather, render
 from cerebro.lookup import Lookup
 from cerebro.secrets import MARK, Mask
@@ -110,12 +111,21 @@ def test_an_agent_file_with_a_sql_line_gathers_its_rows_as_cited_data_and_the_fi
     assert wide.lines[0].endswith("0" * 400 + '"}') and len(wide.citations[0].quote) <= 301  # cut as a fact's quote
 
 
-def test_two_sql_lines_on_one_source_each_give_their_rows(root: Path) -> None:
-    queries = [PIPELINE, "select 'one  two' as name", "select 'one two' as name"]  # the last two alike once spaces fold
-    writer = agent(root, "evidence:\n" + "".join(f'  - sql: {{ source: warehouse, query: "{q}" }}\n' for q in queries))
-    first, spaced, single = gather(writer, Lookup(), {}, root=root, sources={"warehouse": warehouse(root)})
-    assert len(first.lines) == 3 and [spaced.lines, single.lines] == [
-        ['- [^sql:warehouse:fd245967:1] {"name": "one  two"}'], ['- [^sql:warehouse:af3b59a1:1] {"name": "one two"}']]
+def test_a_sql_rows_ids_follow_its_query_and_never_its_spacing_outside_quotes(root: Path) -> None:
+    from test_connector_postgres import DSN, Server  # its stand-in server gives the same rows to any query
+
+    engine = PostgresEngine(lambda: DSN, "sources/warehouse.yaml", connect=Server().connect, ticks=lambda: 0.0)
+    postgres = DatabaseConnector(read_source(root / "sources" / "warehouse.yaml"), root, engine=engine)
+    for source, alike in [(warehouse(root), ["select 1 as [it's], 'x  y' as v", "select 1 as [it's], 'x y' as v",
+                                             "select 1 as\u00a0n", "select 1 as n"]),  # a space past ASCII names
+                          (postgres, ["select $$one  two$$ as name", "select $$one two$$ as name"])]:
+        lines = "".join(f'  - sql: {{ source: warehouse, query: "{q}" }}\n' for q in [PIPELINE, *alike])
+        entries = gather(agent(root, f"evidence:\n{lines}"), Lookup(), {}, root=root, sources={"warehouse": source})
+        ids = [line.split("]")[0] for entry in entries for line in entry.lines]
+        assert all(entry.lines for entry in entries) and len(set(ids)) == len(ids)  # alike once spaces fold, not the same
+        (apart,) = gather(pipeline(root, PIPELINE.replace(" ", "\\n  ") + " ;"), Lookup(), {}, root=root,
+                          sources={"warehouse": source})
+        assert apart.lines == entries[0].lines
 
 
 def test_a_changed_row_moves_the_digest_and_an_unchanged_database_does_not(root: Path) -> None:

@@ -32,6 +32,7 @@ from cerebro.facts import (
     load_kinds,
 )
 from cerebro.fakes import FakeExtraction
+from cerebro.gateway import Gateway
 from cerebro.models import ModelSpec
 from cerebro.store import SQLiteStore
 
@@ -92,9 +93,10 @@ class ScriptedModels:
         return None
 
 
-def on_factoid(root: Path) -> tuple[FactoidExtraction, ScriptedModels]:
+def on_factoid(root: Path, gateway: Gateway | None = None) -> tuple[FactoidExtraction, ScriptedModels]:
     models = ScriptedModels()
-    return FactoidExtraction(root, ModelSpec("fireworks", "glm-5p3-flash", "low"), client=models), models
+    return FactoidExtraction(root, ModelSpec("fireworks", "glm-5p3-flash", "low"), client=models,
+                             gateway=gateway), models
 
 
 @pytest.fixture(params=["fake", "factoid", "factoid keeping earlier saves"])
@@ -219,12 +221,18 @@ def test_a_chunk_whose_answer_is_cut_off_still_gives_its_records_facts(tmp_path:
     handler.close()
 
 
-def test_a_failed_model_call_fails_the_record_with_a_line_that_names_it(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("status", "advice"), [(401, "check the extraction model and its key"),
+                                                (402, "payment is due at the provider"),
+                                                (408, "the provider is busy or down"),
+                                                (400, "check the model id and the request")])
+def test_a_failed_model_call_fails_the_record_with_a_line_that_names_it(tmp_path: Path, status: int,
+                                                                         advice: str) -> None:
     from factoid.models import ModelError
 
     handler, models = on_factoid(tmp_path)
-    models.fail = ModelError("fireworks/glm-5p3-flash: HTTP 401: unauthorized")
-    with pytest.raises(ExtractionFailed, match="record memo-1 of notes: factoid failed: .*HTTP 401"):
+    models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
+    with pytest.raises(ExtractionFailed, match=f"^record memo-1 of notes: factoid failed: .*HTTP {status}: refused: "
+                                               f"{advice}; the record is tried again next pass$"):
         handler.extract(MEMO)
     handler.close()
 

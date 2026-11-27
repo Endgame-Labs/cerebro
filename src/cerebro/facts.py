@@ -51,7 +51,7 @@ import httpx
 from .clock import stamp, system_clock
 from .connector import Record
 from .errors import CerebroError
-from .models import DEFAULTS, PROVIDERS, ModelSpec
+from .models import DEFAULTS, PROVIDERS, ModelSpec, advice_for
 from .private import make_folder, owner_only, write_file
 from .search import Hit
 
@@ -1013,7 +1013,7 @@ class FactoidExtraction(Extraction):
         from factoid import Factoid, Settings
 
         self.root = Path(root)
-        self.speakers = speakers
+        self.speakers, self.gateway = speakers, gateway
         self.classes = list(kinds) if kinds is not None else load_kinds(self.root)
         self._kinds = [kind_name(k) for k in self.classes] or ["fact"]
         self.data = self.root / STATE
@@ -1107,7 +1107,13 @@ class FactoidExtraction(Extraction):
         def failed(error: Exception) -> str:
             said = f"record {record.id} of {record.source}: factoid failed: {error}"
             if _factoids_own(error):
-                return f"{said}: check the extraction model and its key; the record is tried again next pass"
+                # Factoid's error carries its status only in its words, ahead of the reply's: `<model>: HTTP <status>:`
+                http = re.match(r"([^/\s]+)/\S+: HTTP (\d{3}):", str(error))
+                if http is None:
+                    return f"{said}: check the extraction model; the record is tried again next pass"
+                via = self.gateway is not None and self.gateway.route(http[1]).base_url
+                advice = advice_for(int(http[2]), None if via else "the extraction model and its key")
+                return f"{said}: {advice.removesuffix(', so try again later')}; the record is tried again next pass"
             return said
 
         with _active(self.app) as app:
