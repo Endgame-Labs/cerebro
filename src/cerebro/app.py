@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import threading
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import fields, is_dataclass, replace
 from pathlib import Path
@@ -35,7 +36,7 @@ from . import prompts, runner
 from .agent import Agent, load_agents, refuse_unknown_kinds, refuse_unknown_tools
 from .apps import App, Exposed, bind, check_apps, collect
 from .article import pending
-from .budget import Ledger, Metered
+from .budget import Held, Ledger, Metered
 from .caller import Caller
 from .clock import Clock, system_clock
 from .compile import Compiled, _workspace, compile_article
@@ -61,7 +62,7 @@ from .evidence import BUILTIN, STDERR_BYTES, Finished, Launch, start
 from .facts import STATE as FACTS_STATE
 from .facts import Extraction, FactoidExtraction, Revisions, kind_notices, revisions_kept
 from .gateway import NO_KEY, Gateway, read_providers
-from .ground import RewriteFailed, Rewriter
+from .ground import TALLY
 from .lookup import (
     DecideResult,
     Decision,
@@ -76,12 +77,23 @@ from .lookup import (
 from .models import PROVIDERS, Decider, HttpDecider, ModelSpec, Question, YesNo, read_model
 from .models import Decision as Decided
 from .private import SIDE_FILES, tighten
-from .project import Project, WorkspaceError, agent_notices, fiscal_now, load, read_fiscal, read_ours
+from .project import Project, WorkspaceError, agent_notices, fiscal_now, load, min_grounding, read_fiscal, read_ours
 from .records import SLUG_MOST, TOLD, Proposal, Review, proposals, review, told_waiting
 from .rendered import descriptions
 from .reply import outside
 from .rerank import RERANK_CALL_SECONDS, DecisionReranker, read_rerank
-from .run import WROTE_NOTHING, AgentRun, Entry, PydanticRewriter, PydanticRun, Run, masked, masked_error
+from .run import (
+    WROTE_NOTHING,
+    AgentRun,
+    Entry,
+    PydanticRewriter,
+    PydanticRun,
+    RewriteFailed,
+    Rewriter,
+    Run,
+    masked,
+    masked_error,
+)
 from .runner import PassResult, Progress, run_pass
 from .search import Index
 from .secrets import (
@@ -380,7 +392,7 @@ class Cerebro:
                  agent_run: AgentRun | None = None, extraction: Extraction | None = None,
                  connectors: Iterable[Connector] = (), apps: Iterable[App] = (), clock: Clock | None = None,
                  secrets: Secrets | None = None, http: httpx.Client | None = None, decider: Decider | None = None,
-                 trusted: bool | None = None, rewriter: Rewriter | None = None):
+                 trusted: bool | None = None):
         project = load(root, trusted=trusted)
         self.clock = clock or system_clock
         self.root = project.root
@@ -431,7 +443,6 @@ class Cerebro:
                                 f"{self.secrets.where()}, which only your user can read")
         found = decider if decider is not None else self._decider()
         self.decider = MaskedDecider(found, self.mask_every) if found is not None else None
-        self.rewriter = self._repair(rewriter)
         self.agents, self.exposed, refused, self.notices = self._agents_and_functions(project, self.notices)
         self.refused += refused
         self._slugged: dict[Callable[[str], str], tuple[Any, Any, list[str]]] = {}  # by slug: the forms, slugged
@@ -467,20 +478,6 @@ class Cerebro:
         if isinstance(handed, PydanticRun) and handed.masks is None:
             handed.masks = self.mask_every
         return handed
-
-    def _repair(self, handed: Rewriter | None) -> Rewriter | None:
-        """What grounding's repair writes on: nothing when settings turn repair off, else the one handed in, else the
-        compilation model, as the runs write. A run handed in, as a test's is, gets no model, so no test reaches one."""
-        if (self.settings.get("compile") or {}).get("repair", True) is False:
-            return None
-        if handed is not None:
-            if isinstance(handed, PydanticRewriter) and handed.masks is None:
-                handed.masks = self.mask_every
-            return handed
-        if not self._own_run:
-            return None
-        return PydanticRewriter.from_spec(self.models["compilation"], key=self._compile_key, masks=self.mask_every,
-                                          gateway=self.gateway)
 
     def _agents_and_functions(self, project: Project,
                               notices: list[str]) -> tuple[list[Agent], Exposed, list[str], list[str]]:
@@ -705,7 +702,6 @@ class Cerebro:
         result.refused = [self.mask_every()(line) for line in result.refused]
         result.notices = [self.mask_every()(line) for line in result.notices]
         result.warnings = [self.mask_every()(line) for line in result.warnings]
-        result.grounded = {self.mask_every()(line) for line in result.grounded}
         for run in result.runs:
             self._mask_run(run)
         return result
@@ -727,20 +723,26 @@ class Cerebro:
         `compile.targets` lists the articles an agent writes. Its runs' transcripts and its lines come masked. With
         no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, as
         `compile_article` takes it. A run that lands, or that ran and wrote nothing, moves the article's clock, by hand
-        or in a pass; one that fails does not."""
+        or in a pass; one that fails does not. What grounding did on it is counted in its `grounding`."""
         self.files_read()
         self.need_key(agent)
         self.refresh_mask()
         began = self.clock()
-        with masking(self.mask_every()):  # what grounding drops is masked before it is cut for the lines that say so
-            compiled = compile_article(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run,
-                                       root=self.root, functions=self.exposed.evidence,
-                                       agent_tools=self.exposed.agent_tools, workspace=self.handle, ledger=self.ledger,
-                                       model=self.model_of(agent), clock=self.clock, this=this, subagents=self.agents,
-                                       scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
-                                       zone=self.zone, starter=self.start_script, sources=self.connectors,
-                                       descriptions=descriptions(self.settings), rewriter=self.rewriter, only=only,
-                                       hold=hold, by_hand=by_hand)
+        tally: Counter[str] = Counter()  # what grounding does while it compiles
+        counting = TALLY.set(tally)
+        try:
+            with masking(self.mask_every()):  # what a source gives a compile is masked before a line that says it is cut
+                compiled = compile_article(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run,
+                                           root=self.root, functions=self.exposed.evidence,
+                                           agent_tools=self.exposed.agent_tools, workspace=self.handle, ledger=self.ledger,
+                                           model=self.model_of(agent), clock=self.clock, this=this, subagents=self.agents,
+                                           scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
+                                           zone=self.zone, starter=self.start_script, sources=self.connectors,
+                                           descriptions=descriptions(self.settings), only=only, hold=hold,
+                                           by_hand=by_hand, min_grounding=min_grounding(self.settings))
+        finally:
+            TALLY.reset(counting)
+        compiled.grounding = dict(tally)
         if compiled.article is not None:
             if not compiled.skipped and (compiled.run is not None or compiled.runs):
                 runner.ran_on(self, agent, compiled.article.identity.id, began)
@@ -850,8 +852,8 @@ class Cerebro:
                    "not set")
         else:
             why = "settings.yaml names no decision model with a decision API"
-        self.notices.append(f"{why}, so grounding and the near-match judge run without a model, on the words alone: "
-                            "set the key, or name a decision model")
+        self.notices.append(f"{why}, so grounding scores no sentence and the near-match judge runs on the words "
+                            "alone: set the key, or name a decision model")
         return None
 
     def _reranker(self, extraction: Extraction | None) -> DecisionReranker | None:
@@ -887,8 +889,8 @@ class Cerebro:
         it offers, or the compilation model as a list of proposals is arranged: the bundled prompt named `prompt`, or
         the workspace's ejected copy, with `$workspace` filled from `workspace.md`, and the `request`. Refused in one
         line, with nothing sent, when the model has no key, or when a question to the extraction model passes
-        `EXTRACTION_INPUT_BYTES`. Checked against the job's layer's cap before it is sent, and what it spent recorded
-        after, under the prompt's name, also when it failed. `asker` stands in for the model, as a test's does. The
+        `EXTRACTION_INPUT_BYTES`. Held to the job's layer's cap try by try, as `budget.Held` holds a call, under the
+        prompt's name. `asker` stands in for the model, as a test's does. The
         reply's text."""
         system = self._system(prompt)
         spec = self.models[job]
@@ -901,19 +903,12 @@ class Cerebro:
         asker = self.asker or PydanticRewriter.from_spec(spec, key=self._compile_key, masks=self.mask_every,
                                                          what=prompt, gateway=self.gateway,
                                                          max_tokens=32_000 if job == "compilation" else None)
-        self.ledger.check(job, self.clock(), spec)
-        try:
-            reply, usage = asker.rewrite(system, request)
-        except RewriteFailed as error:
-            self.ledger.record(job, self.clock(), spec, error.spent, prompt)
-            raise
-        self.ledger.record(job, self.clock(), spec, usage, prompt)
-        return reply
+        return Held(asker, self.ledger, job, spec, self.clock, prompt).rewrite(system, request)[0]
 
     def prove_key(self, job: str, spec: ModelSpec, value: str) -> None:
-        """Prove a key not yet kept with one small call on `spec`, the model of `job`, checked against the day's budget
-        first, so a model with no known price is refused under a daily cap before any call, with the runtime's line,
-        and what it spent recorded after, under `keys.PROOF`. A decision model is asked one yes or no on its decision
+        """Prove a key not yet kept with one small call on `spec`, the model of `job`, held to the day's budget try by
+        try as `budget.Held` holds a call, so a model with no known price is refused under a daily cap before any call,
+        with the runtime's line, and what it spent recorded under `keys.PROOF`. A decision model is asked one yes or no on its decision
         API; any other model is asked to reply with a word. `asker` stands in for the model, as a test's does. The
         value is masked from then on. Raises with why it did not verify."""
         from .keys import PROOF
@@ -921,26 +916,22 @@ class Cerebro:
         self.mask.add(value)
         value = NO_KEY if self.gateway.route(spec.provider).base_url else value  # a gateway gets no provider's key
         layer = "extraction" if job == "extraction" else "compilation"
-        self.ledger.check(layer, self.clock(), spec)
         if self.asker is None and spec.job == "decision" and PROVIDERS[spec.provider].decision_url:
             asked = HttpDecider(spec, key=lambda: value, route=self.gateway.route(spec.provider), call=PROOF)
-            decided = asked.decide(
+            Held(asked, self.ledger, layer, spec, self.clock, PROOF).decide(
                 "The sky is above the ground.", {"proof": YesNo("Is the sky above the ground?")})
-            self.ledger.record(layer, self.clock(), spec, decided.usage, PROOF)
             return
         asker = self.asker or PydanticRewriter.from_spec(spec, key=lambda provider: value, masks=self.mask_every,
                                                          what=PROOF, gateway=self.gateway)
         try:
-            _, usage = asker.rewrite("Reply with the word ok.", "ok")
+            Held(asker, self.ledger, layer, spec, self.clock, PROOF).rewrite("Reply with the word ok.", "ok")
         except RewriteFailed as error:
-            self.ledger.record(layer, self.clock(), spec, error.spent, PROOF)
             cause = error.__cause__  # the provider's reply may echo the key, which no mask holds before it is kept
             if cause is None:
                 raise
             status = getattr(cause, "status_code", None)
             raise RewriteFailed(f"the {PROOF} call failed: {type(cause).__name__}"
-                                + (f" (status {status})" if status is not None else ""), error.spent) from None
-        self.ledger.record(layer, self.clock(), spec, usage, PROOF)
+                                + (f" (status {status})" if status is not None else "")) from None
 
     # -- building connectors -------------------------------------------------------------------------------------------
     @property

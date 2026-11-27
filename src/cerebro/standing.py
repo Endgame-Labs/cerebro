@@ -75,18 +75,21 @@ def runs_by_agent(workspace: Cerebro) -> dict[str, list[dict[str, Any]]]:
     return out
 
 
-def grounding(runs: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, int]]:
-    """What grounding did on each article, by its path, over the latest run of each agent on it that grounded
-    anything, as the run's line in the `agent-runs` log keeps it: the counts `status` adds up."""
+def grounding(workspace: Cerebro, runs: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, int]]:
+    """What grounding did on each article, by its path, over the latest run that landed text of each agent with a part
+    on it now, as the run's line in the `agent-runs` log keeps it: the counts `status` adds up. A clean article is
+    left out."""
     latest: dict[tuple[str, str], dict[str, int]] = {}
     for agent, rows in runs.items():
         for row in rows:
-            if row.get("grounding"):
-                latest[(agent, str(row.get("article") or row.get("target")))] = row["grounding"]
+            if "article" in row:  # a run whose text landed, with no `grounding` when it was clean
+                latest[(agent, str(row["article"]))] = row.get("grounding") or {}
     out: dict[str, dict[str, int]] = {}
-    for (_, article), tally in latest.items():
-        kept = out.setdefault(article, {})
+    for (agent, article), tally in latest.items():
+        if (now := workspace.store.article(article)) is None or all(s.by != agent for s in now.compilations):
+            continue  # its part is no longer on the article
         for kind, n in tally.items():
+            kept = out.setdefault(article, {})
             kept[kind] = kept.get(kind, 0) + int(n)
     return out
 
@@ -268,7 +271,7 @@ def gather(workspace: Cerebro, status: dict[str, Any]) -> dict[str, Any]:
         "unpriced": unpriced(workspace, bool((status.get("rerank") or {}).get("on"))),
         "requests": requests(workspace),
         "archived": archived(workspace),
-        "grounding": grounding(runs),
+        "grounding": grounding(workspace, runs),
     }
     # in this order, which matters: the last line of `status` names the first check and counts the rest
     check = [cap_check(reached, zone) for reached in data["caps_reached"]]

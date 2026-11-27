@@ -24,6 +24,7 @@ from cerebro import Caller, Cerebro
 from cerebro.apps import App, bind, collect, load_app
 from cerebro.article import passages
 from cerebro.connector import Record
+from cerebro.facts import Quote
 from cerebro.fakes import FakeExtraction, MemoryStore, ScriptedRun
 from cerebro.lookup import StoreLookup
 from cerebro.mcp import DATA
@@ -145,6 +146,16 @@ def test_a_revision_replaces_the_whole_note_and_evidence_reads_only_the_newest(a
     items = notes(collection="notes/projects")
     assert [item["text"] for item in items] == ["Tried the cache. It helped once warm."]  # the old facts went
     assert items[0]["source"] == written["record"]
+
+
+def test_a_notes_fact_another_note_states_again_gives_its_own_notes_quote(app: App, workspace: Workspace) -> None:
+    note, notes = tools(app, workspace)
+    first = note(text="Vega leads the review.", collection="notes/projects")
+    again = note(text="Vega leads the review, as agreed.", collection="notes/projects")
+    extracted(workspace)
+    FACTS.by_record[first["record"]][0].quotes.insert(0, Quote("Vega leads the review, as agreed.",
+                                                               record=again["record"]))  # first, by its passage
+    assert [item["quote"] for item in notes() if item["source"] == first["record"]] == ["Vega leads the review."]
 
 
 def test_a_note_that_cannot_be_written_as_asked_is_refused_with_one_line_naming_it(app: App, workspace: Workspace) -> None:

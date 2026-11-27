@@ -10,14 +10,14 @@ is the writer alone. Not part of the test suite: it calls real models and costs 
 
 Cases, each read from the article's headings and text:
   upcoming    a call five days ahead holds a prep and no write-up: who is coming, which its invite gives, and only
-              prep parts, each sentence of them citing what it rests on
+              prep parts
   recorded    a call three days back with a recording holds the write-up (Summary, Decisions) and no prep
   unrecorded  a call three days back with no recording says so in a line under Summary, and holds no prep
   turned      a call under way, which the calendar says is upcoming until it ends, holds a prep as upcoming does; once
               the calendar says past and its recording comes in, the write-up, and the prep is gone
 
-It prints what grounding dropped in each pass, each article, then a line per case and what it cost. It exits 0 when every case holds, 1 otherwise or when
-it could not run. It never prints a key.
+It prints each pass, each article, then a line per case with how many of its sentences grounding marked, and what it
+cost. It exits 0 when every case holds, 1 otherwise or when it could not run. It never prints a key.
 """
 
 from __future__ import annotations
@@ -35,9 +35,8 @@ from _paths import ran_lines
 
 from cerebro import cli
 from cerebro.app import Cerebro
-from cerebro.article import Identity, Property, body
+from cerebro.article import MARK, UNSUPPORTED, Identity, Property, body
 from cerebro.caller import Caller
-from cerebro.ground import ABSENCE, split_sentences
 
 YOU, NAME = "robin@ourco.example", "Robin Vale"
 NOW = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
@@ -158,20 +157,10 @@ def prep_parts(said: str) -> int:
     return sum(f"## {h}" in said for h in PREP)
 
 
-def absences(said: str) -> int:
-    """How many sentences of `said` cite nothing and say the evidence holds none of something, which grounding
-    keeps by that same rule."""
-    text = re.sub(r"^#.*$", "", said, flags=re.MULTILINE)
-    return sum("[^" not in s.text and bool(ABSENCE.search(s.text)) for s in split_sentences(text))
-
-
 def prep(said: str) -> bool:
-    """Whether `said` is a prep: who is coming, no heading but the prep's own, and every sentence citing, but one
-    grounding keeps as saying the evidence holds none of something."""
+    """Whether `said` is a prep: who is coming, and no heading but the prep's own."""
     headings = re.findall(r"^## (.+)$", said, re.MULTILINE)
-    text = re.sub(r"^#.*$", "", said, flags=re.MULTILINE)
-    uncited = sum("[^" not in s.text for s in split_sentences(text))
-    return "Who is coming" in headings and all(h in PREP for h in headings) and uncited == absences(said)
+    return "Who is coming" in headings and all(h in PREP for h in headings)
 
 
 def write_up(said: str) -> bool:
@@ -214,10 +203,9 @@ def main() -> int:
             "unrecorded": write_up(unrecorded) and "record" in unrecorded.lower() and "Decisions" not in unrecorded,
             "turned": prep(before) and write_up(said["turned"]) and "Decisions" in said["turned"],
         }
-        absent = {"upcoming": absences(said["upcoming"]), "turned": absences(before)}
         for case, ok in checks.items():
-            n = absent.get(case, 0)
-            print(f"{'ok  ' if ok else 'FAIL'} {case}" + (f", {n} absence line{'s' * (n > 1)}" if n else ""))
+            n = said[case].removesuffix(UNSUPPORTED).count(MARK)  # its sentences grounding marked
+            print(f"{'ok  ' if ok else 'FAIL'} {case}, {n} marked")
         print(f"spent    ${spent:.4f}")
         if keep is not None:
             print(f"kept     {root}")

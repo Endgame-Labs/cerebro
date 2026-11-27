@@ -5,10 +5,9 @@ The workspace holds every gtm template agent file, a files source over `local/` 
 stand-in CRM whose records carry a stage, and a calendar source with no login, built by the real kinds. The facts layer is the stand-in extraction handler, the decision model
 the stand-in decider, and each agent's run a scripted one: no network and no model call. The test walks the loop: a
 curator admits an article, a record that carries its key is in scope and one that carries none is held, its facts
-are linked, a composer and its subagents write the article, grounding keeps a supported claim and drops an
-unsupported one, a pass with nothing changed runs nothing, the article reads back over MCP with its citations, and
-a person's tell becomes facts on the article and writes none of its front matter, which a source's fields never
-reach either.
+are linked, a composer and its subagents write the article, grounding marks a claim its fact does not back, a pass
+with nothing changed runs nothing, the article reads back over MCP with its citations, and a person's tell becomes
+facts on the article and writes none of its front matter, which a source's fields never reach either.
 """
 
 from __future__ import annotations
@@ -43,16 +42,15 @@ GLOBEX = "Domain: globex.example\nDate: 2026-11-11\n\nGlobex asked for a price l
 
 
 class ReadsFacts(FakeDecider):
-    """The stand-in decision model, answering from the facts it is shown: a sentence is grounded when every word of
-    three letters or more in it is in the text of a fact it cites, and unsupported otherwise."""
+    """The stand-in decision model, answering from the facts it is shown: a sentence is backed when every word of
+    three letters or more in it is in the text of a fact it cites, and made up otherwise."""
 
     def decide(self, state: Any, questions: dict[str, Any]) -> Any:
-        if "facts" in state:  # grounding; a tell's sort shows sentences and no facts
-            for item in state["sentences"]:
-                held = " ".join(state["facts"][id]["text"] for id in item["cited_facts"] if id in state["facts"])
+        if "passage" in state:  # grounding; a tell's sort shows sentences and no passage
+            for item in state["passage"]:
+                held = " ".join(state["facts"][id]["text"] for id in item["cited"] if id in state["facts"])
                 words = {w for w in re.findall(r"[a-z]{3,}", item["sentence"].lower())}
-                self.answers[item["id"]] = "grounded" if words <= set(re.findall(r"[a-z]{3,}", held.lower())) \
-                    else "unsupported"
+                self.answers[item["id"]] = 4 if words <= set(re.findall(r"[a-z]{3,}", held.lower())) else 0
         return super().decide(state, questions)
 
 
@@ -118,15 +116,14 @@ def test_a_pass_on_a_gtm_template_workspace_compiles_a_real_article_from_a_folde
         assert stage.text == "The stage of Acme Corp is Negotiation."  # no name of its own: named as its article is
         assert sorted(workspace.store.facts_of("accounts/acme-corp")) == sorted([renewal.id, stage.id])
 
-        # a composer and its subagents write the article; grounding keeps the supported claim and drops the other
+        # a composer and its subagents write the article; grounding marks the claim its fact does not back
         assert first.compiled == ["accounts/acme-corp"]
         [compilation] = workspace.store.article("accounts/acme-corp").compilations
         assert compilation.heading == "Overview" and compilation.by == "accounts/subagents/overview"
-        assert compilation.text == f"Acme Corp renewed for two years [^{renewal.id}]."
+        assert compilation.text == (f"Acme Corp renewed for two years [^{renewal.id}]. Acme Corp signed a ten year deal "
+                                    f"[^{renewal.id}].[^unsupported]")
         assert [c.id for c in compilation.citations] == [renewal.id]
-        assert any("ten year deal" in line for line in first.warnings)
-        grounding = [r.data for r in workspace.store.rows("spend") if r.data["run"] == "ground accounts/subagents/overview"]
-        assert grounding and {row["layer"] for row in grounding} == {"compilation"}
+        assert first.grounding["accounts/article on accounts/acme-corp"]["marked"] == 1
         assert "Acme Corp renewed" in (root / "articles" / "accounts" / "acme-corp.md").read_text()
 
         # curators run one at a time, a curator after the ones whose collections it reads: the calls and risk
@@ -154,7 +151,8 @@ def test_a_pass_on_a_gtm_template_workspace_compiles_a_real_article_from_a_folde
                 return reply.content[0].text
 
         text = anyio.run(read)
-        assert f"[^{renewal.id}]" in text and "Acme Corp renewed for two years" in text and "ten year" not in text
+        assert f"[^{renewal.id}]" in text and "Acme Corp renewed for two years" in text
+        assert "ten year deal [^" in text and "Not fully backed by the facts it cites." in text
 
         async def search() -> str:
             async with Client(workspace.mcp_server()) as client:
@@ -176,77 +174,44 @@ def test_a_pass_on_a_gtm_template_workspace_compiles_a_real_article_from_a_folde
         assert "stage" not in workspace.store.article("accounts/acme-corp").properties
 
 
-class HoldsNoBlocking(FakeDecider):
-    """The stand-in decision model for a data block: every claim is grounded but one that says a person blocks."""
-
-    def decide(self, state: Any, questions: dict[str, Any]) -> Any:
-        if "facts" in state:
-            for item in state["sentences"]:
-                self.answers[item["id"]] = "unsupported" if "blocks" in item["sentence"] else "grounded"
-        return super().decide(state, questions)
-
-
-def test_a_data_block_a_writer_hands_in_keeps_each_item_its_fact_holds_and_reads_back_with_its_citations_everywhere(
-        tmp_path: Path) -> None:
+def test_a_data_blocks_citation_reads_back_over_mcp_and_http_and_keeps_its_footnote(tmp_path: Path) -> None:
     root = gtm_workspace(tmp_path / "workspace")
     (root / "local" / "acme.md").write_text("Domain: acme.example\nDate: 2026-11-10\n\n"
                                             "Dana Reyes, the CFO of Acme Corp, signed the two year renewal.\n")
 
-    def writes_a_block(prompt: str) -> dict[str, str]:
+    def stakeholders(prompt: str) -> dict[str, str]:
         found = re.search(r"\[\^(fact_\w+)\] Dana Reyes", prompt)
-        assert found, "the writer's evidence holds the signature"
-        cite = f"[^{found[1]}]"
-        return {"Stakeholders": f"Dana Reyes signed the two year renewal {cite}.\n\n```yaml\n"
-                                f"- person: Dana Reyes\n  role: decides\n  since: 2026-11-10\n  fact: \"{cite}\"\n"
-                                f"- person: Dana Reyes\n  role: blocks\n  fact: \"{cite}\"\n"
-                                f"- person: Omar Lund\n  role: connects\n  fact: \"{cite}\"\n"
-                                f"- person: Dana Reyes\n  role: decides\n  since: 2025-01-01\n"
-                                f"  fact: \"{cite}\"\n```\n"}
+        assert found, "the stakeholders evidence holds the signature"
+        return {"Stakeholders": f"```yaml\n- person: Dana Reyes\n  role: decides\n  fact: \"[^{found[1]}]\"\n```\n"}
 
     admit = ScriptedRun(lambda prompt: {}, clock=lambda: NOW, calls=[(
         "admit", {"name": "Acme Corp", "keys": {"domain": ["acme.example"]}, "reason": "a renewal in local notes"})])
     runs = ByAgent({"accounts/curator": admit,
-                    "accounts/subagents/stakeholders": ScriptedRun(writes_a_block, clock=lambda: NOW)})
-    kinds = ["identity", "relationship", "decision_commitment"]
-    with Cerebro(root, extraction=FakeExtraction(kinds), agent_run=runs, decider=HoldsNoBlocking(),
-                 clock=lambda: NOW) as workspace:
-        first = workspace.run_once()
+                    "accounts/subagents/stakeholders": ScriptedRun(stakeholders, clock=lambda: NOW)})
+    with Cerebro(root, extraction=FakeExtraction(["identity", "relationship", "decision_commitment"]), agent_run=runs,
+                 decider=FakeDecider(), clock=lambda: NOW) as workspace:
+        workspace.run_once()
         [signed] = workspace.extraction.facts(record="local/acme.md")
-        cite = f"[^{signed.id}]"
-        block = f"```yaml\n- person: Dana Reyes\n  role: decides\n  since: 2026-11-10\n  fact: \"{cite}\"\n```"
+        block = f"```yaml\n- person: Dana Reyes\n  role: decides\n  fact: \"[^{signed.id}]\"\n```"
         [compilation] = workspace.store.article("accounts/acme-corp").compilations
-        assert compilation.heading == "Stakeholders"
-        assert compilation.text == f"Dana Reyes signed the two year renewal {cite}.\n\n{block}"
-        assert [c.id for c in compilation.citations] == [signed.id]
-        dropped = [line for line in first.warnings if "Stakeholders:" in line]
-        assert any("role: blocks" in line and "does not hold it" in line for line in dropped)
-        assert any("Omar Lund" in line and "names Lund" in line for line in dropped)
-        assert any("since: 2025-01-01" in line and "a figure" in line for line in dropped)
-
+        assert compilation.text.strip() == block and [c.id for c in compilation.citations] == [signed.id]
         copy = (root / "articles" / "accounts" / "acme-corp.md").read_text()
         assert block in copy and re.search(rf"(?m)^\[\^{signed.id}\]: ", copy)
 
-        async def tools() -> tuple[str, str]:
+        async def read() -> str:
             async with Client(workspace.mcp_server()) as client:
-                read = await client.call_tool("read", {"ids": ["accounts/acme-corp"]})
-                found = await client.call_tool("query", {"from": "accounts", "matching": "decides"})
-                return read.content[0].text, found.content[0].text
+                return (await client.call_tool("read", {"ids": ["accounts/acme-corp"]})).content[0].text
 
-        read, found = anyio.run(tools)
-        assert block in read.replace("\\n", "\n").replace('\\"', '"') and signed.id in read
-        assert "accounts/acme-corp" in found
-        read_fact = workspace.lookup.read(YOU, [signed.id])  # the block's citation leads to its fact
-        assert [f.id for f in read_fact.facts] == [signed.id]
-
+        assert block in anyio.run(read).replace("\\n", "\n").replace('\\"', '"')
         token = workspace.make_token("agent-a").token
         with serving(workspace) as client:
             reply = client.post("/api/v1/read", json={"ids": ["accounts/acme-corp"]},
                                 headers={"Authorization": f"Bearer {token}"})
         [article] = reply.json()["articles"]
-        assert article["text"] == f"## {compilation.heading}\n\n{compilation.text.strip()}" and f"[^{signed.id}]" in article["text"]
+        assert block in article["text"]
 
 
-def test_the_index_is_told_to_leave_out_the_contents_the_wiki_writes_so_grounding_drops_no_part_of_it(
+def test_the_index_is_told_to_leave_out_the_contents_the_wiki_writes_so_grounding_marks_no_part_of_it(
         tmp_path: Path) -> None:
     root = gtm_workspace(tmp_path / "workspace")
     asked: list[str] = []

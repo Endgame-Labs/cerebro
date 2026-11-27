@@ -17,7 +17,7 @@ from click.testing import CliRunner
 from conftest import GTM
 from mcp import Client
 from test_archive_command import carry
-from test_workspace_words import commands, presumed_lines
+from test_workspace_words import commands
 
 from cerebro import Caller, Cerebro, prompts
 from cerebro.article import Compilation, Identity
@@ -380,8 +380,8 @@ def test_agents_run_on_many_articles_and_a_run_by_hand_over_earlier_text_say_no_
 def test_a_composed_articles_failed_and_dropped_lines_and_agents_runs_skipped_lines_say_no_section_brain_or_page(
         tmp_path: Path, monkeypatch: Any) -> None:
     """The `failed` line of a composed article a subagent's failure failed, in a pass, by hand and in `status`; the
-    notes of one whose content grounding dropped whole; and `agents run`'s `skipped` line and its line when every
-    article skipped."""
+    notes of one whose content was all withdrawn; and `agents run`'s `skipped` line and its line when every article
+    skipped."""
     from test_handin_composed import CURATOR, Workspace, cited, composed
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
@@ -396,9 +396,9 @@ def test_a_composed_articles_failed_and_dropped_lines_and_agents_runs_skipped_li
     dropped.run.how["things/subagents/overview"] = lambda prompt: said.append(cited(prompt)) or said[-1]
     dropped.cli("agents", "run", "things/article")
     dropped.move()
-    dropped.run.how["things/subagents/overview"] = lambda prompt: said[0]
+    dropped.run.how["things/subagents/overview"] = ""
     lines += dropped.cli("agents", "run", "things/article").output.splitlines()
-    assert any("nothing it wrote grounds now" in line for line in lines), lines  # grounded again, as keep_part
+    assert any("withdrawn since" in line for line in lines), lines
     kept = composed(tmp_path / "d", monkeypatch)
     kept.run.how["things/subagents/overview"] = cited
     kept.cli("agents", "run", "things/article")
@@ -642,6 +642,7 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
         tmp_path: Path, monkeypatch: Any) -> None:
     from cerebro import cli
     from cerebro.fakes import FakeExtraction
+    from cerebro.records import Proposal, propose
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     root = tmp_path / "w"
@@ -657,7 +658,14 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
 
     seen = [run("--reject-from", "agents/projects/article.md"), run("--accept-from", "agents/projects/curator.md"),
             run("--reject-from", "agents/projects/curator.md,projects/curator"), run("--accept", "p_nothing")]
+    (root / "agents" / "places").mkdir()
+    (root / "agents" / "places" / "curator.md").write_text((root / "agents" / "projects" / "curator.md").read_text())
+    with Cerebro(root, extraction=FakeExtraction()) as workspace:  # one curator with an admit waiting, one with none
+        propose(workspace.store, Proposal("p_east00000001", "article.admit", "places/east", Caller("places/curator",
+                                          "agent"), "2026-11-18T09:00:00Z", payload={"name": "East"}, reason="Named."))
+    seen.append(run("--accept-from", "agents/projects/curator.md,agents/places/curator.md"))
     assert any("curates no collection" in line for line in seen), seen
+    assert any(line.startswith("skipped") for line in seen[-1].splitlines()), seen
     assert any("no admit from agents/projects/curator.md is awaiting your review" in line for line in seen), seen
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
@@ -911,12 +919,6 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
     store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
     said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
     assert len(said) == 10 and not [line for line in said if words.search(line) or WORDS.search(line)], said
-
-
-def test_no_line_a_presumed_mark_shows_names_a_section_or_a_hand_in() -> None:
-    for line in presumed_lines():
-        shown = line.split('": ', 1)[-1] if line.startswith("Part: dropped \"") else line
-        assert not WORDS.search(shown), shown
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:

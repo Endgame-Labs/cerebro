@@ -4,7 +4,8 @@ A suite is a file of labelled cases, read by `load`. It is one of two kinds:
 - **questions**: each asks something of a workspace's articles, and says what a right answer must hold. A run asks it
   the way an outside agent would, through the workspace's own `find`, `query` and `read`, then judges what it read.
 - **ground**: the hand-labelled grounding corpus. Each case is one draft sentence with the facts it cites, labelled
-  supported or not before anything ran against it. A run grounds it, and it scores when it lands as labelled.
+  supported or not before anything ran against it. A run scores it as grounding does, and it scores right when a
+  supported case scores at or above the floor, `ground.FLOOR`, and an unsupported one under it.
 
 A question takes one route: `find` a name, `query` a source, or `read` ids. Its `expect` lists checks, each passed
 or missed on its own:
@@ -30,7 +31,7 @@ import json
 import math
 import re
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -39,15 +40,14 @@ from typing import Any
 import yaml
 
 from . import prompts
-from .agent import Agent
-from .article import Article, Citation, fields, passages
-from .budget import EVALUATION_DAILY_USD, BudgetSpent, Ledger
+from .article import Article, fields, passages
+from .budget import EVALUATION_DAILY_USD, BudgetSpent, Held, Ledger
 from .caller import Caller
 from .clock import Clock, seconds, system_clock
 from .errors import CerebroError
 from .facts import Fact, Quote
-from .ground import JUDGE_MIN_CONFIDENCE, Grounded, Rewriter, ground, quote_for
-from .models import Decider, Decision, DecisionError, DecisionTooLarge, ModelSpec, Question, TokenCount, YesNo
+from .ground import FLOOR, Editor, Judge, fields_of
+from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, TokenCount, YesNo
 
 __all__ = [
     "DAILY_USD", "EVAL_CALLER", "KINDS", "LAYER", "Case", "Check", "EvalError", "Group", "Probe", "Report", "Scored",
@@ -65,9 +65,8 @@ EXPECTS = ("article", "holds", "lacks", "fields", "judge")
 QUESTION_KEYS = ("id", "ask", "group", "top", "filters", "matching", *ROUTES, "expect")
 SUITE_KEYS = ("context", "questions")
 SUPPORTED = "supported-in-other-words"
-WHOLE, LEAD_GONE, GONE, REPAIRED = "kept whole", "claim kept with the lead gone", "gone", "repaired"
-GROUND_AGENT = ("accounts/article", "accounts/eval")
-GROUND_CONTEXT = "Synthetic accounts, for an eval of grounding."
+GROUND_ARTICLE = "eval/case"
+GROUND_CONTEXT = "Synthetic records, for an eval of grounding."
 
 
 class EvalError(CerebroError, ValueError):
@@ -113,7 +112,6 @@ class Suite:
     facts: dict[str, Fact] = field(default_factory=dict)
     stale: dict[str, str] = field(default_factory=dict)  # the line a read shows under a fact of an out of date document
     today: str = ""
-    labels: str = ""
     context: str = ""
 
 
@@ -131,8 +129,8 @@ class Check:
 @dataclass
 class Scored:
     """One case as it ran: its score from 0 to 1, or None when nothing of it could be judged, its checks, the
-    articles it read, and what it spent and took. A grounding case also says how its sentence landed, the step that
-    took a supported one, and the lines grounding dropped."""
+    articles it read, and what it spent and took. A grounding case also says what grounding scored its sentence, in
+    `outcome`, and why."""
 
     id: str
     score: float | None
@@ -144,8 +142,7 @@ class Scored:
     seconds: float = 0.0
     label: str = ""
     outcome: str = ""
-    step: str = ""
-    dropped: list[str] = field(default_factory=list)
+    reason: str = ""
 
     @property
     def misses(self) -> list[Check]:
@@ -155,17 +152,14 @@ class Scored:
 @dataclass
 class Group:
     """The cases of one group, or of all: how many scored, and their mean score. For grounding, also how many
-    supported cases were kept whole and how many unsupported ones were not, how many of each lost their lead, and how
-    many of each a repair rewrote into a sentence that stood."""
+    supported cases scored at or above the floor, and how many unsupported ones under it."""
 
     scored: int = 0
     score: float | None = None
     supported: int = 0
-    kept_whole: int = 0
+    held: int = 0
     unsupported: int = 0
-    rejected: int = 0
-    lead_gone: tuple[int, int] = (0, 0)
-    repaired: tuple[int, int] = (0, 0)
+    marked: int = 0
 
 
 @dataclass
@@ -320,7 +314,7 @@ def load(path: Path | str) -> Suite:
             raise EvalError(f"eval suite {path}: a case or fact lacks {error}: write it in the corpus shape") from None
         stale = {row["id"]: str(row["stale"]) for row in raw["facts"] if row.get("stale")}
         return Suite(name, "ground", cases=cases, facts=facts, stale=stale, today=str(raw.get("today") or ""),
-                     labels=str(raw.get("labels") or ""), context=str(raw.get("context") or GROUND_CONTEXT))
+                     context=str(raw.get("context") or GROUND_CONTEXT))
     raise EvalError(f"eval suite {path}: holds neither questions nor cases and facts: {SHAPE}")
 
 
@@ -349,37 +343,19 @@ class _Spend:
             return str(error)
         return ""
 
-    def record(self, usage: TokenCount, calls: int, run: str) -> float:
-        """Keep what calls cost under the evaluation layer, priced on the model asked, and give the dollars."""
-        usd = float(self.ledger.record(LAYER, self.clock(), self.model, usage, run)["usd"])
+    def held(self, decider: Decider, run: str) -> Held:
+        """`decider` as one case asks it, under `run`, each call and each try of it held to the cap."""
+        return Held(decider, self.ledger, LAYER, self.model, self.clock, run)
+
+    def add(self, held: Held) -> float:
+        """Add what a case's calls spent to the run's totals, and give its dollars."""
         with self._lock:
-            self.usd += usd
-            self.calls += calls
-            self.tokens = TokenCount(self.tokens.input_tokens + usage.input_tokens,
-                                     self.tokens.output_tokens + usage.output_tokens,
-                                     self.tokens.cache_read_tokens + usage.cache_read_tokens,
-                                     self.tokens.cache_write_tokens + usage.cache_write_tokens)
-        return usd
-
-
-class _Recording(Decider):
-    """A decider that keeps the answers and the usage of each call, for one case."""
-
-    def __init__(self, inner: Decider):
-        self.inner = inner
-        self.answers: dict[str, Any] = {}
-        self.usage = TokenCount()
-        self.calls = 0
-
-    def decide(self, state: Any, questions: Mapping[str, Question]) -> Decision:
-        self.calls += 1  # a call that fails still counts, and is kept with what it is known to have spent
-        decision = self.inner.decide(state, questions)
-        self.answers.update(decision.answers)
-        u = decision.usage
-        self.usage = TokenCount(self.usage.input_tokens + u.input_tokens, self.usage.output_tokens + u.output_tokens,
-                                self.usage.cache_read_tokens + u.cache_read_tokens,
-                                self.usage.cache_write_tokens + u.cache_write_tokens)
-        return decision
+            u, t = held.usage, self.tokens
+            self.usd += held.usd
+            self.calls += held.calls
+            self.tokens = TokenCount(t.input_tokens + u.input_tokens, t.output_tokens + u.output_tokens,
+                                     t.cache_read_tokens + u.cache_read_tokens, t.cache_write_tokens + u.cache_write_tokens)
+        return held.usd
 
 
 # -- one question -----------------------------------------------------------------------------------------------------
@@ -519,10 +495,10 @@ def _judge(probe: Probe, articles: list[Article], nothing: str, ctx: _Run) -> tu
         return Check("judge", None, "no decision model: run with one to judge"), 0.0, 0
     if why := ctx.spend.refused():
         return Check("judge", None, why), 0.0, 0
-    return _judged(probe, articles, ctx, _Recording(ctx.decider))
+    return _judged(probe, articles, ctx, ctx.spend.held(ctx.decider, f"eval {probe.id}"))
 
 
-def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: _Recording) -> tuple[Check, float, int]:
+def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: Held) -> tuple[Check, float, int]:
     assert ctx.spend is not None
     shown, cut = list(articles), 0
     while True:  # a find or a query that read many articles is judged on as many as the model takes, first first
@@ -537,12 +513,14 @@ def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: _Record
                 shown = shown[:len(shown) // 2]
                 continue
             answer, failed = None, f"the first article read is over what the decision model takes: {error}"
+        except BudgetSpent as error:  # a try again refused at the cap
+            answer, failed = None, ctx.spend.refused() or str(error)
         except DecisionError as error:
             answer, failed = None, f"the decision call failed: {error}"
         else:
             failed = "" if answer is not None and answer.yes is not None else "the decision model gave no yes or no"
         break
-    usd = ctx.spend.record(recording.usage, recording.calls, f"eval {probe.id}") if recording.calls else 0.0
+    usd = ctx.spend.add(recording)
     if failed:
         return Check("judge", None, failed), usd, recording.calls
     yes = float(answer.yes)  # type: ignore[union-attr,arg-type]
@@ -554,69 +532,32 @@ def _judged(probe: Probe, articles: list[Article], ctx: _Run, recording: _Record
 
 # -- one grounding case -----------------------------------------------------------------------------------------------
 
-def _step(grounded: Grounded, answers: dict[str, Any]) -> str:
-    """The step of grounding that took a supported case: the lead rule, the figure check, a lost name, a claim that
-    cites nothing, a listed claim with no fact behind it, the lean rule, or the judge's verdict."""
-    said = " ".join(grounded.dropped)
-    if "removed the lead" in said and "nothing under it" not in said:
-        return "lead rule"
-    if "a figure its cited evidence" in said:
-        return "figure check"
-    if "the name it read on from" in said:
-        return "lost name"
-    if "it cites nothing" in said:
-        return "uncited"
-    for name, a in answers.items():
-        if "c" in name and a.choice.endswith(":none") and (a.confidence or 0) >= JUDGE_MIN_CONFIDENCE:
-            kind = a.choice.split(":")[0]
-            return {"link": "listed link", "qualifier": "plan versus want", "new": "listed whole: new"}.get(
-                kind, f"listed {kind}")
-    verdicts = [a for name, a in answers.items() if name.startswith("s") and "c" not in name]
-    if any(a.choice != "grounded" and (a.confidence or 0) < JUDGE_MIN_CONFIDENCE for a in verdicts):
-        return "lean rule"
-    if any(a.choice != "grounded" for a in verdicts):
-        return "verdict: " + "/".join(sorted({a.choice for a in verdicts if a.choice != "grounded"}))
-    return "no judge: words" if not answers else "other"
-
-
 def _ground_case(suite: Suite, case: Case, ctx: _Run) -> Scored:
     started = ctx.timer()
-
-    def unscored(why: str, calls: int = 0, usd: float = 0.0) -> Scored:
-        return Scored(case.id, None, [Check("lands as labelled", None, why)], case.group, usd=usd, calls=calls,
+    if ctx.spend is not None and (why := ctx.spend.refused()):
+        return Scored(case.id, None, [Check("scores as labelled", None, why)], case.group,
                       seconds=ctx.timer() - started, label=case.label)
+    recording = ctx.spend.held(ctx.decider, f"eval {case.id}") if ctx.spend is not None and ctx.decider is not None \
+        else None
 
-    if ctx.decider is None or ctx.spend is None:
-        return _ground_held(suite, case, ctx, None, started, unscored)
-    if why := ctx.spend.refused():
-        return unscored(why)
-    return _ground_held(suite, case, ctx, _Recording(ctx.decider), started, unscored)
+    def found(ids: list[str]) -> dict[str, dict[str, Any]]:
+        return {id: fields_of(id, None, suite.facts[id], stale=suite.stale.get(id, "")) or {"text": ""}
+                for id in ids if id in suite.facts}
 
-
-def _ground_held(suite: Suite, case: Case, ctx: _Run, recording: _Recording | None, started: float,
-                 unscored: Callable[..., Scored]) -> Scored:
-    supported = case.label == SUPPORTED
-    usd = 0.0
-    try:
-        grounded = ground(ctx.agent, {"Case": case.sentence}, ctx.citable, decider=recording, facts=suite.facts,
-                          stale=suite.stale,
-                          today=suite.today, context=suite.context, rewriter=ctx.rewriter)
-    except CerebroError as error:  # a decision call that failed, or a sentence too large to judge
-        if recording is not None and recording.calls:
-            usd = ctx.spend.record(recording.usage, recording.calls, f"eval {case.id}")  # type: ignore[union-attr]
-        return unscored(f"grounding failed: {error}", recording.calls if recording else 0, usd)
-    if recording is not None and recording.calls:
-        usd = ctx.spend.record(recording.usage, recording.calls, f"eval {case.id}")  # type: ignore[union-attr]
-    body = grounded.parts.get("Case", "")
-    outcome = WHOLE if body.strip() == case.sentence.strip() else GONE if not body.strip() else \
-        REPAIRED if grounded.repaired else LEAD_GONE
-    right = (outcome == WHOLE) == supported
-    step = _step(grounded, recording.answers if recording else {}) if supported and outcome != WHOLE else ""
-    why = "" if right else (f"labelled {case.label}, and it was {outcome}" + (f" by the {step}" if step else "")
-                            + (f": {'; '.join(grounded.dropped)}" if grounded.dropped else ""))
-    return Scored(case.id, float(right), [Check("lands as labelled", right, why)], case.group, [],
-                  usd, recording.calls if recording else 0, ctx.timer() - started, case.label, outcome, step,
-                  list(grounded.dropped))
+    verdicts = Editor(Judge(recording, GROUND_ARTICLE, suite.context, suite.today), found).judged(
+        case.sentence)
+    usd = ctx.spend.add(recording) if ctx.spend is not None and recording is not None else 0.0
+    calls = recording.calls if recording is not None else 0
+    verdict = min(verdicts, key=lambda v: -1.0 if v.score is None else v.score, default=None)  # its weakest
+    if verdict is None or verdict.score is None:
+        why = verdict.reason.removeprefix("unscored: ") if verdict is not None else "no sentence to score"
+        return Scored(case.id, None, [Check("scores as labelled", None, why)], case.group, usd=usd, calls=calls,
+                      seconds=ctx.timer() - started, label=case.label, outcome="unscored", reason=why)
+    right = (verdict.score >= FLOOR) == (case.label == SUPPORTED)
+    said = f"{verdict.score:.2f}"
+    why = "" if right else f"labelled {case.label}, and it scored {said}: {verdict.reason}"
+    return Scored(case.id, float(right), [Check("scores as labelled", right, why)], case.group, [], usd, calls,
+                  ctx.timer() - started, case.label, said, verdict.reason)
 
 
 # -- the run ----------------------------------------------------------------------------------------------------------
@@ -628,10 +569,7 @@ class _Run:
     spend: _Spend | None
     timer: Callable[[], float]
     context: str = ""
-    agent: Agent | None = None
     root: Path | None = None  # the workspace's folder, whose prompts/ may hold its own eval-judge
-    citable: dict[str, Citation] = field(default_factory=dict)
-    rewriter: Rewriter | None = None
 
 
 def _mean(values: list[float]) -> float | None:
@@ -647,10 +585,8 @@ def _groups(suite: Suite, scored: list[Scored]) -> dict[str, Group]:
         if suite.kind == "ground":
             good = [s for s in rows if s.label == SUPPORTED]
             bad = [s for s in rows if s.label != SUPPORTED]
-            group.supported, group.kept_whole = len(good), sum(s.outcome == WHOLE for s in good)
-            group.unsupported, group.rejected = len(bad), sum(s.outcome != WHOLE for s in bad)
-            group.lead_gone = (sum(s.outcome == LEAD_GONE for s in good), sum(s.outcome == LEAD_GONE for s in bad))
-            group.repaired = (sum(s.outcome == REPAIRED for s in good), sum(s.outcome == REPAIRED for s in bad))
+            group.supported, group.held = len(good), sum(bool(s.score) for s in good)
+            group.unsupported, group.marked = len(bad), sum(bool(s.score) for s in bad)
         out[name] = group
     return out
 
@@ -658,15 +594,14 @@ def _groups(suite: Suite, scored: list[Scored]) -> dict[str, Group]:
 def run(workspace: Any, suite: Suite, *, decider: Decider | None = None, model: ModelSpec | None = None,
         ledger: Ledger | None = None, cap_usd: float | None = DAILY_USD, clock: Clock = system_clock,
         timer: Callable[[], float] = seconds, caller: Caller = EVAL_CALLER, group: str = "",
-        workers: int = 1, rewriter: Rewriter | None = None) -> Report:
+        workers: int = 1) -> Report:
     """Run every case of `suite`, or those of one `group`, and give the report.
 
     `workspace` answers a question suite through `find`, `query` and `read`, as the `Workspace` handle or the app object
     do; a grounding suite needs none. With a `decider`, the decision model that judges, `model` names what it runs on so
     its calls are priced, and `ledger` keeps them under the evaluation layer, held to `cap_usd` a UTC day, or no cap
-    for None. With no decider, a question is judged by its rules alone and a grounding case by its words alone.
-    `workers` cases run at once. A `rewriter`, a writing model, repairs a grounding case's sentence that fails, as a
-    compile does; a repaired case is neither kept whole nor gone, and what the rewriter spent is its own to count."""
+    for None. With no decider, a question is judged by its rules alone and a grounding case is unscored. `workers`
+    cases run at once."""
     if suite.kind not in KINDS:
         raise EvalError(f"eval suite {suite.name}: kind {suite.kind!r} is not one of {', '.join(KINDS)}")
     if suite.kind == "questions" and workspace is None:
@@ -678,12 +613,8 @@ def run(workspace: Any, suite: Suite, *, decider: Decider | None = None, model: 
                                 not math.isfinite(cap_usd) or cap_usd <= 0):
         raise EvalError(f"the {LAYER} cap {cap_usd!r} is no amount above zero: pass dollars a day, or None for no cap")
     spend = _Spend(ledger, model, cap_usd, clock) if decider is not None else None  # type: ignore[arg-type]
-    ctx = _Run(caller, decider, spend, timer, suite.context, root=getattr(workspace, "root", None), rewriter=rewriter)
+    ctx = _Run(caller, decider, spend, timer, suite.context, root=getattr(workspace, "root", None))
     if suite.kind == "ground":
-        ctx.agent = Agent(id=GROUND_AGENT[0], path=Path(f"agents/{GROUND_AGENT[0]}.md"), role="writer",
-                          target=GROUND_AGENT[1], prompt=suite.labels)
-        ctx.citable = {id: Citation("fact", id, f.record, quote_for(f))
-                       for id, f in suite.facts.items()}
         todo: list[Any] = [c for c in suite.cases if not group or c.group == group]
 
         def one(item: Any) -> Scored:
@@ -698,7 +629,7 @@ def run(workspace: Any, suite: Suite, *, decider: Decider | None = None, model: 
     started = timer()
     with ThreadPoolExecutor(max(1, workers)) as pool:
         scored = list(pool.map(one, todo))
-    judge = model.wire_id if decider is not None and model is not None else "none: rules and words alone"
+    judge = model.wire_id if decider is not None and model is not None else "none: rules alone"
     groups = _groups(suite, scored)
     return Report(suite.name, suite.kind, judge, scored, groups["all"].score, groups,
                   usd=spend.usd if spend else 0.0, calls=spend.calls if spend else 0,
@@ -733,10 +664,8 @@ def lines(report: Report) -> list[str]:
             f"score {_score(report.score)}")]
     for name, g in report.groups.items():
         if report.kind == "ground":
-            out.append(f"{name}: supported kept whole {_rate(g.kept_whole, g.supported)}, unsupported rejected "
-                       f"{_rate(g.rejected, g.unsupported)}, {LEAD_GONE}: {g.lead_gone[0]} supported, "
-                       f"{g.lead_gone[1]} unsupported" + (f", {REPAIRED}: {g.repaired[0]} supported, "
-                                                          f"{g.repaired[1]} unsupported" if any(g.repaired) else ""))
+            out.append(f"{name}: supported at or above {FLOOR:g} {_rate(g.held, g.supported)}, unsupported under it "
+                       f"{_rate(g.marked, g.unsupported)}")
         elif name != "all":
             out.append(f"{name}: score {_score(g.score)} over {g.scored}")
     for case in report.scored:

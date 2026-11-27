@@ -174,8 +174,9 @@ def test_agents_run_runs_every_article_says_each_failure_and_exits_1_with_the_co
     ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
     assert ran.exit_code == 1
     assert ran.output.splitlines() == [
-        "failed   things/article on things/a: run run_x wrote nothing: failed: the model broke",
-        "wrote    things/b  articles/things/b.md", "wrote    things/c  articles/things/c.md",
+        "failed   things/article on things/a: run run_x: failed: the model broke",
+        "wrote    things/b  articles/things/b.md", "grounding things/article on things/b: left 1 sentence unscored",
+        "wrote    things/c  articles/things/c.md", "grounding things/article on things/c: left 1 sentence unscored",
         "Error: things/article: 1 of 3 runs failed"]
 
 
@@ -224,9 +225,10 @@ def test_agents_run_tells_a_runs_own_budget_from_a_daily_cap(
         assert ran.exit_code == 0 and "failed" not in ran.output, ran.output
         return
     assert ran.exit_code == 1  # a part that failed fails its article
-    assert (f"failed   {COMPOSER} on things/b: run run_scripted spent its own budget, not a daily cap, before it "
-            f"handed in text: budget: {{ tokens_per_run, tool_calls }} in agents/{RISKS}.md sets it: the run holds "
-            "41000 tokens, its budget of 40000") in ran.output.splitlines()
+    [line] = [line for line in ran.output.splitlines() if line.startswith(f"failed   {COMPOSER} on things/b: run ")]
+    assert line.endswith(f" spent its own budget, not a daily cap, before it handed in text: budget: "
+                         f"{{ tokens_per_run, tool_calls }} in agents/{RISKS}.md sets it: the run holds 41000 tokens, "
+                         "its budget of 40000"), line
 
 
 def test_a_part_agents_run_left_held_after_its_periods_run_is_said_once_and_runs_at_the_next_scheduled_run(
@@ -301,20 +303,20 @@ def test_serve_takes_a_cap_out_only_once_two_wakes_read_it_gone_and_keeps_its_ca
 
 
 
-def test_agents_run_fails_an_article_whose_cut_run_handed_in_text_that_did_not_stand(
+def test_agents_run_fails_an_article_whose_cut_run_handed_in_nothing(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     space = collection(tmp_path, ("a", "b"))
     space.clock.at = DAY + timedelta(hours=1)
 
-    class Dropped(Logged):
+    class Cut(Logged):
         def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
             done = super().run(agent, evidence, tools, budget)
             if agent.target == "things/a":
                 done.status, done.note = "budget spent", "the run holds 41000 tokens, its budget of 40000"
-                done.result.text = "## Summary\n\nA claim citing nothing it read [^no_such_fact]."
+                done.result = None
             return done
 
-    monkeypatch.setattr(space, "open", opener(space, Dropped(space)))
+    monkeypatch.setattr(space, "open", opener(space, Cut(space)))
     ran = space.cli(monkeypatch, "agents", "run", COMPOSER)
     assert ran.exit_code == 1, ran.output
     assert [line for line in ran.output.splitlines() if line.startswith("failed   things/article on things/a: run ")]
@@ -356,9 +358,8 @@ def test_agents_run_runs_an_article_with_nothing_to_cite_once(
     run = Logged(space)
     monkeypatch.setattr(space, "open", opener(space, run))
     ran = space.cli(monkeypatch, "agents", "run", "things/article")
-    # nothing to cite: the writer is asked once, writes nothing, and the run is no failure
+    # nothing to cite: the writer is asked once, and the run is no failure
     assert ran.exit_code == 0 and run.n == 1 and "runs failed" not in ran.output, ran.output
-    assert ran.output.splitlines()[0].startswith("ran      things/article on things/a: wrote nothing: "), ran.output
 
 
 def test_a_cap_taken_out_needs_two_reads_in_a_row_with_no_error_between(tmp_path: Path) -> None:
@@ -477,4 +478,5 @@ def test_an_article_every_part_of_which_is_held_by_hand_gets_one_held_line(
     assert ran.exit_code == 0, ran.output
     said = (f"held     {COMPOSER} on things/b: held for room under the cap, runs at its writer's next scheduled run, "
             "from 2026-11-20 00:00")
-    assert ran.output.splitlines() == ["wrote    things/a  articles/things/a.md", said], ran.output
+    assert ran.output.splitlines() == ["wrote    things/a  articles/things/a.md",
+                                       "grounding things/article on things/a: left 1 sentence unscored", said], ran.output

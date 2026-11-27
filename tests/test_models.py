@@ -247,7 +247,7 @@ def test_the_stand_in_decider_answers_what_it_is_told_and_keeps_what_it_was_aske
     decision = fake.decide({"note": "x"}, QUESTIONS)
     assert decision.answers["renewed"].yes == 0.2
     assert decision.answers["tone"].choice == "bad" and decision.answers["tone"].probabilities["bad"] == 1.0
-    assert decision.answers["term"].score == 0.0
+    assert decision.answers["term"].score == 2.0  # a score it was not told: the highest level
     assert fake.asked[0][0] == {"note": "x"}
 
 

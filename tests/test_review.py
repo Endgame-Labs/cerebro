@@ -345,16 +345,27 @@ def test_ids_given_with_commas_are_split_in_every_option(workspace: Workspace) -
     assert north and east
 
 
-def test_accept_from_a_curator_with_nothing_waiting_is_refused_with_exit_1_and_decides_nothing(workspace: Workspace) -> None:
+def test_accept_from_decides_each_curator_on_its_own_and_one_alone_with_nothing_waiting_is_refused(
+        workspace: Workspace) -> None:
     alone = workspace.run("review", "--accept-from", "agents/projects/curator.md")
     assert alone.exit_code == 1
     assert alone.output.splitlines()[-1] == ("Error: no admit from agents/projects/curator.md is awaiting your "
                                             "review, so nothing was decided: cerebro review lists what is")
-    east = second_curator(workspace, "East")
-    mixed = workspace.run("review", "--accept-from", "agents/places/curator.md", "--accept-from",
-                      "agents/projects/curator.md")
-    assert mixed.exit_code == 1 and "no admit from agents/projects/curator.md is awaiting" in mixed.output
-    assert [item["id"] for item in workspace.waiting()] == east  # the other curator's admit waits still
+    assert second_curator(workspace) == []  # a second curator with nothing waiting either
+    both = workspace.run("review", "--accept-from", "agents/projects/curator.md,agents/places/curator.md")
+    assert both.exit_code == 1 and both.output.splitlines()[-1] == (
+        "Error: no admit from agents/projects/curator.md or agents/places/curator.md is awaiting your review, so "
+        "nothing was decided: cerebro review lists what is")
+    skipped = "skipped   no admit from agents/projects/curator.md is awaiting your review"
+    east = second_curator(workspace, "East", "West")
+    as_json = workspace.run("review", "--accept-from", "agents/projects/curator.md", "--accept", east[1], "--json")
+    assert as_json.exit_code == 0 and json.loads(as_json.stdout)["answers"] == {east[1]: "decided"}
+    assert as_json.stderr.splitlines() == [skipped]  # the reply has no key for it, so it is said beside the reply
+    mixed = workspace.run("review", "--accept-from", "agents/projects/curator.md", "--accept-from",
+                          "agents/places/curator.md")
+    assert mixed.exit_code == 0, mixed.output
+    assert mixed.output.splitlines() == [f"Accepted {east[0]}: its curator carries it out on its next run.", skipped]
+    assert workspace.waiting() == []
 
 
 def test_an_id_no_proposal_has_is_refused_naming_a_command_and_saying_nothing_was_applied(workspace: Workspace) -> None:
@@ -814,9 +825,7 @@ def one_by_one(workspace: Workspace, args: list[str]) -> tuple[bool, Any]:
     with Cerebro(workspace.root, extraction=workspace.extraction) as app:
         admits = [r.proposal.id for r in app.review(Caller("you", "person"))
                   if r.proposal.kind == "article.admit" and r.proposal.by.name == "projects/curator"]
-        if "--accept-from" in args or "--reject-from" in args:
-            if not admits:
-                return False, None
+        if "--accept-from" in args or "--reject-from" in args:  # with no admit waiting it adds none to the ids
             if "--accept-from" in args:
                 accept += [id for id in admits if id not in reject and id not in accept]
             else:

@@ -25,6 +25,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -35,9 +36,10 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DECISION_MAX_BYTES", "DEFAULTS", "EFFORTS", "ENTRY_KEYS", "JOBS", "PRICES", "PROVIDERS", "RETRIES",
-    "RUNE_MAX_QUESTIONS", "SETTINGS_KEYS", "WAIT_MOST", "Answer", "Choice", "Decider", "Decision", "DecisionError",
-    "DecisionTooLarge", "HttpDecider", "ModelSettingsError", "ModelSpec", "Price", "Provider", "Question", "Score",
-    "TokenCount", "Tokens", "YesNo", "cost", "price_of", "read_model", "read_models", "wire_id",
+    "RUNE_MAX_QUESTIONS", "SETTINGS_KEYS", "TRIES", "WAIT_MOST", "Answer", "Choice", "Decider", "Decision",
+    "DecisionError", "DecisionTooLarge", "HttpDecider", "ModelSettingsError", "ModelSpec", "Price", "Provider",
+    "Question", "Score", "TokenCount", "Tokens", "Tried", "YesNo", "cost", "price_of", "read_model", "read_models",
+    "wire_id",
 ]
 
 JOBS = ("extraction", "decision", "compilation")
@@ -409,6 +411,19 @@ class Decider:
         raise NotImplementedError
 
 
+class Tried(Protocol):
+    """What a caller that holds model calls to a cap is told of each try: `again` before each try after the first,
+    which raises to stop it, and `spent` with what a try that failed is held to have spent."""
+
+    def again(self) -> None: ...
+
+    def spent(self, tokens: Tokens) -> None: ...
+
+
+# The `Tried` the decision call under way tells of its tries, when its caller sets one.
+TRIES: ContextVar[Tried | None] = ContextVar("decision_tries", default=None)
+
+
 def _probability(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1
 
@@ -537,18 +552,26 @@ class HttpDecider(Decider):
                                                              _tokens(self.spec.model, usage, "output_tokens")))
 
     def _post(self, headers: dict[str, str], data: bytes) -> dict[str, Any]:
+        tried = TRIES.get()
+        sent = TokenCount(input_tokens=(2 * len(data) + 4) // 5)  # what a try that failed read, as `run.tokens` holds it
         attempt = 0
         while True:
             last = attempt >= self.attempts - 1
+            if attempt and tried is not None:
+                tried.again()
             try:
                 status, reply_headers, body = self._send(self.url, headers, data)
             except OSError as error:
+                if tried is not None:
+                    tried.spent(sent)
                 if last:
                     raise DecisionError(f"{self.spec.model} at {self.url} did not answer ({type(error).__name__}): "
                                         "check the network, then try again") from None
                 self._sleep(min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1
                 continue
+            if (status in (408, 429) or status >= 500) and tried is not None:
+                tried.spent(sent)
             if (status in (408, 429) or status >= 500) and not last:
                 self._sleep(_retry_after(reply_headers) or min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1
@@ -557,7 +580,8 @@ class HttpDecider(Decider):
                 raise DecisionError(f"{self.spec.model} at {self.url} answered with a redirect (HTTP {status}), which "
                                     "is not followed so the key stays with its host: check the decision URL")
             if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
-                if self.route is not None and self.route.refused(status, self.call):
+                if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
+                    self.route.refused(status, self.call)
                     raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}: check providers in "
                                         "settings.yaml")
                 hint = (f"check the {self.spec.key_name} key" if status in (401, 403)

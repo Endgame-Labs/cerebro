@@ -15,8 +15,7 @@ from test_mcp import over_mcp
 from test_tokens import no_network  # noqa: F401  autouse: sockets reach 127.0.0.1 alone
 
 from cerebro import Caller, Cerebro, Record
-from cerebro.article import Identity, passages
-from cerebro.compile import _history_only
+from cerebro.article import Identity
 from cerebro.facts import Fact, Revisions, revisions_kept
 from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore, ScriptedRun
 from cerebro.lookup import StoreLookup
@@ -218,7 +217,7 @@ def write_both(prompt: str) -> dict[str, str]:
                         f"| 2026-09-01 | current [^{old.group(1)}] |"}
 
 
-def test_an_article_never_states_an_earlier_saves_value_as_current_and_keeps_it_as_history(tmp_path: Path) -> None:
+def test_a_writer_reads_an_earlier_save_beside_the_later_one_marked_as_superseded(tmp_path: Path) -> None:
     seen: list[str] = []
     workspace, notes = workspace_with_a_note(tmp_path, ScriptedRun(lambda p: seen.append(p) or write_both(p),
                                                             clock=lambda: NOW))
@@ -227,36 +226,6 @@ def test_an_article_never_states_an_earlier_saves_value_as_current_and_keeps_it_
     workspace.run_once()
     assert "Facts, mentions True, every revision of each record" in seen[-1]
     assert "an earlier save (revision aaa1), stated on 2026-09-01, superseded on 2026-11-10 by a later save of " + DOC in seen[-1]
-    article = {s.heading: s.text for s in passages(workspace.store.article("knowledge/discounts"))}
-    assert "is 10%" not in article["Current"] and "The discount limit without approval is 15%." in article["Current"]
-    rows = article["Versions"].splitlines()
-    assert any("superseded" in row for row in rows) and not any("| 2026-09-01 | current" in row for row in rows)
-
-
-def test_the_history_rule_lets_an_earlier_save_stand_only_beside_a_later_save_of_the_same_record() -> None:
-    old = Fact("f_old", "The limit is 10%.", "", "fact", "2026-09-01", "local", DOC, status="superseded",
-               revision="r1", superseded_at="2026-11-10T00:00:00Z")
-    older = Fact("f_older", "The limit is 5%.", "", "fact", "2026-06-01", "local", DOC, status="superseded",
-                 revision="r0", superseded_at="2026-09-01T00:00:00Z")
-    new = Fact("f_new", "The limit is 15%.", "", "fact", "2026-11-10", "local", DOC)
-    other = Fact("f_other", "The limit is 15%.", "", "fact", "2026-11-10", "local", "local/other.md")
-    parts = {"Current": "The limit is 10%. [^f_old] The limit is 15%. [^f_new]\n- Ten. [^f_old] [^f_other]",
-                "History": "It was 5% until 1 September. [^f_older] [^f_old] It was 10% until 10 November. "
-                           "[^f_old] [^f_new]"}
-    kept, dropped = _history_only(parts, {f.id: f for f in (old, older, new, other)})
-    assert kept == {"Current": "The limit is 15%. [^f_new]", "History": parts["History"]}
-    assert len(dropped) == 2 and all("no later save of the same thing" in line for line in dropped)
-
-
-def test_an_earlier_save_beside_a_later_fact_of_its_record_on_another_matter_is_still_alone() -> None:
-    old = Fact("f_old", "The discount limit without approval is 10%.", "", "fact", "2026-09-01", "local", DOC,
-               status="superseded", revision="r1", superseded_at="2026-11-10T00:00:00Z")
-    lead = Fact("f_lead", "A deal over the limit needs the sales lead.", "", "fact", "2026-11-10", "local", DOC)
-    new = Fact("f_new", "The discount limit without approval is 15%.", "", "fact", "2026-11-10", "local", DOC)
-    parts = {"Current": "The discount limit without approval is 10%. [^f_old] [^f_lead]",
-                "History": "The limit was 10% until 10 November, and is 15% now. [^f_old] [^f_new]"}
-    kept, dropped = _history_only(parts, {f.id: f for f in (old, lead, new)})
-    assert kept == {"Current": "", "History": parts["History"]} and len(dropped) == 1
 
 
 def test_latest_false_reaches_an_outside_agent_over_mcp_and_the_json_api_alike(tmp_path: Path) -> None:
@@ -287,19 +256,3 @@ def test_latest_false_reaches_an_outside_agent_over_mcp_and_the_json_api_alike(t
     assert refused.status_code == 401
 
 
-def test_the_pass_says_why_it_dropped_a_sentence_that_gave_an_earlier_saves_value_as_current(tmp_path: Path) -> None:
-    workspace, notes = workspace_with_a_note(tmp_path, ScriptedRun(write_both, clock=lambda: NOW))
-    workspace.run_once()
-    notes.add(V2)
-    second = workspace.run_once()
-    said = [line for line in second.warnings if "an earlier save of " + DOC in line]
-    assert said and all("so it would give an old value as the one that holds now" in line for line in said)
-
-
-def test_a_retracted_fact_of_the_record_is_no_later_save_beside_an_earlier_one() -> None:
-    old = Fact("f_old", "The limit is 10%.", "", "fact", "2026-09-01", "local", DOC, status="superseded",
-               revision="r1", superseded_at="2026-11-10T00:00:00Z")
-    gone = Fact("f_gone", "The limit is 15%.", "", "fact", "2026-11-10", "local", DOC, status="retracted")
-    kept, dropped = _history_only({"History": "It was 10% until 10 November. [^f_old] [^f_gone]"},
-                                  {f.id: f for f in (old, gone)})
-    assert kept == {"History": ""} and len(dropped) == 1

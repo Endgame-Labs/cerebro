@@ -168,7 +168,7 @@ def test_one_clock_reaches_the_window_the_run_and_the_ledger(tmp_path: Path) -> 
                       agent_run=PydanticRun.scripted(lambda p: seen.append(p) or cited(p)))
     cerebro.agent_run.clock, cerebro.agent_run.zone = cerebro.clock, ZoneInfo("Asia/Tokyo")
     assert cerebro.run_once().compiled == ["reports/weekly"]
-    assert seen[0].startswith("Today is Wed Nov 18, 2026.") and "A date-only note." in seen[0]
+    assert "Today is Wed Nov 18, 2026." in seen[0] and "A date-only note." in seen[0]
     assert cerebro.store.rows("spend")[0].data["at"] == "2026-11-17T20:00:00Z"
 
 
@@ -492,16 +492,6 @@ def test_a_fact_a_run_read_through_its_query_tool_may_be_cited_and_moves_its_dig
     facts.retract(facts.facts()[0].id)
     again = cerebro.run_once()
     assert len(again.runs) == 1 and again.skipped == {}  # a fact it read by tool moved, so it runs again
-
-
-def test_a_pass_says_each_line_that_went_once_under_the_article_it_went_from(tmp_path: Path) -> None:
-    def write(prompt: str) -> dict[str, str]:
-        first = re.search(r"\[\^([^\]\s]+)\] (Note \d\.)", prompt)
-        return {"Summary": f"{first.group(2)[:-1]} [^{first.group(1)}]. Nothing else is known."}  # type: ignore[union-attr]
-
-    run = ScriptedRun(write)
-    result = workspace(tmp_path, extraction=FakeExtraction(), run=run).run_once()
-    assert result.warnings == ['reports/weekly: Summary: dropped "Nothing else is known.": it cites nothing']
 
 
 def test_an_article_read_right_after_its_compile_counts_no_fact_as_new_and_a_later_one_counts(tmp_path: Path) -> None:

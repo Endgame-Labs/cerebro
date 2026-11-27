@@ -719,10 +719,9 @@ def _quoted(text: str) -> str:
 def _sort(decider: Decider, ledger: Ledger | None, model: ModelSpec, text: str, article: Article | None,
           collection: str, run: str, clock: Clock, root: Path | None = None) -> list[_Part]:
     """Sort a tell sentence by sentence through the decision model, in as few requests as its bounds allow, each
-    checked against the ledger's `SORT_LAYER` before and recorded after. Writes nothing to the store. Raises
-    `_Unsorted` when the cap is spent or a call fails. A workspace at `root` that ejected the `tell-sort` prompt sorts by
-    its own copy."""
-    from .budget import BudgetSpent  # imported here: the ledger reaches the facts layer, which this module names
+    held to the ledger's `SORT_LAYER` as `budget.Held` holds it. Writes nothing to the store. Raises `_Unsorted` when
+    the cap is spent or a call fails. A workspace at `root` that ejected the `tell-sort` prompt sorts by its own copy."""
+    from .budget import BudgetSpent, Held  # imported here: the ledger reaches the facts layer, which this module names
 
     found = [_Part(start, end, text[start:end]) for start, end in sentences(text)]
     unread = found[MAX_PARTS:]
@@ -743,16 +742,13 @@ def _sort(decider: Decider, ledger: Ledger | None, model: ModelSpec, text: str, 
     limit = getattr(decider, "max_questions", None)
     most = (limit() if callable(limit) else 0) // 2 or len(found)
     batches, alone = _batches([size([i]) - base - 2 for i in range(len(found))], base, max(most, 1))
+    decider = decider if ledger is None else Held(decider, ledger, SORT_LAYER, model, clock, run)
     answers: dict[str, Answer] = {}
     for batch in batches:
         try:
-            if ledger is not None:
-                ledger.check(SORT_LAYER, clock(), model)
             decision = decider.decide(state(batch), _questions([ids[i] for i in batch]))
         except (BudgetSpent, DecisionError) as error:
             raise _Unsorted(str(error)) from error
-        if ledger is not None:
-            ledger.record(SORT_LAYER, clock(), model, decision.usage, run)
         answers.update(decision.answers)
     parts: list[_Part] = []
     for i, part in enumerate(found):

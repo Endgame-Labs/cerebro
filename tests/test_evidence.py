@@ -176,6 +176,23 @@ def test_a_fact_of_a_query_on_several_linked_articles_is_labelled_by_the_one_it_
     assert entry.items[0].text.endswith(' [from a record of "Alder"; subject: "Ann Lee"]'), entry.items[0].text
 
 
+def test_a_query_line_on_facts_takes_a_list_of_classes_or_kinds_as_a_facts_line_does(tmp_path: Path) -> None:
+    from cerebro.connector import Record
+    from cerebro.fakes import FakeExtraction, MemoryStore
+    from cerebro.lookup import StoreLookup
+
+    extraction = FakeExtraction(kinds=["alpha", "beta", "gamma"])
+    for kind in ("alpha", "beta", "gamma"):
+        extraction.extract(Record(id=kind, source="local", revision="1", body=f"A {kind} fact.", fields={"kind": kind}))
+    reader = agent(tmp_path, "parts/article.md", "evidence:\n  - query: { from: facts, classes: [alpha, beta] }\n"
+                   "  - query: { from: facts, kind: [gamma] }\n")
+    both, one = gather(reader, StoreLookup(MemoryStore(), extraction), {}, this="parts/one")
+    assert sorted(c.source for c in both.citations) == ["alpha", "beta"] and [c.source for c in one.citations] == [
+        "gamma"]
+    with pytest.raises(AgentFileError, match=r"evidence 1, query kind is not a class or a list of them"):
+        agent(tmp_path, "parts/article.md", "evidence:\n  - query: { from: facts, kind: [{ a: b }] }\n")
+
+
 def test_an_article_about_another_reads_it_its_fields_and_its_summary_and_a_limit_is_said(tmp_path: Path) -> None:
     brief = article("risk-radar/alder", {"linked": ["things/alder"]})
     deal = article("opportunities/alder-renewal", {"account": "things/alder", "is_closed": False})
@@ -744,8 +761,6 @@ def proposal_row(id: str, by: Caller, status: str = "waiting", decided_by: Calle
     ("agent-runs", run_row("reports/weekly", "run_2"), run_row("things/article", "run_3"), "run_2"),
     ("spend", {"at": "2026-11-16T09:00:00Z", "usd": 0.01, "run": "run_1"},
      {"at": "2026-11-16T09:00:00Z", "usd": 0.01, "run": "run_3"}, "run_1"),
-    ("spend", {"at": "2026-11-16T09:00:00Z", "usd": 0.001, "run": "ground reports/weekly"},
-     {"at": "2026-11-16T09:00:00Z", "usd": 0.001, "run": "ground things/article"}, "ground reports/weekly"),
     ("proposals", proposal_row("p_2", WEEKLY), proposal_row("p_3", OTHER), "p_2"),
     ("merges", {"at": "2026-11-16T09:00:00Z", "distinct_from": ["a/x", "a/y"], "by": "reports/weekly"},
      {"at": "2026-11-16T09:00:00Z", "distinct_from": ["a/x", "a/z"], "by": "things/curator"}, "a/y"),

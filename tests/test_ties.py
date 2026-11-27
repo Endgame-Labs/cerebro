@@ -303,21 +303,19 @@ def test_the_grounding_judge_is_given_a_labelled_fact_byte_for_byte_as_with_no_l
 
     from cerebro.compile import _Grounding
     from cerebro.fakes import FakeDecider
-    from cerebro.ground import ground
 
     evidence = sys.modules["cerebro.evidence"]
     cases = everything(workspace)
     agent = load_agent(GTM / "accounts" / "subagents" / "stakeholders.md", GTM)
-    parts = {"Stakeholders": f"Theo Brandt vouched for us to Lena Voss [^{cases['reference']}]. Theo Brandt signs "
-                                f"Acme's order form [^{cases['filed-here']}]. Pia Lund advises both [^{cases['advises']}]."}
+    text = (f"Theo Brandt vouched for us to Lena Voss [^{cases['reference']}]. Theo Brandt signs Acme's order form "
+            f"[^{cases['filed-here']}]. Pia Lund advises both [^{cases['advises']}].")
 
     def judged() -> tuple[str, str]:
         handed = gather(agent, workspace.lookup, {}, this="accounts/initech", root=workspace.root, now=NOW)
-        citable = {c.id: c for entry in handed for item in entry.items for c in item.citations}
         decider = FakeDecider()
-        grounding = _Grounding(ground, "accounts/initech", lookup=workspace.lookup, root=workspace.root, ledger=None,
-                               clock=lambda: NOW, decider=decider, decision=None, zone=UTC)
-        grounding(agent, parts, citable, handed)
+        grounding = _Grounding("accounts/initech", lookup=workspace.lookup, root=workspace.root, ledger=None,
+                               clock=lambda: NOW, decider=decider, decision=None, zone=UTC, floor=0.6)
+        grounding.editor(agent, lambda: handed).marked(text)
         lines = "\n".join(item.text for entry in handed for item in entry.items)
         return json.dumps([state for state, _ in decider.asked], sort_keys=True, default=str), lines
 

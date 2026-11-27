@@ -52,7 +52,7 @@ class Records(AgentRun):
         self.clock, self.root, self.sent = clock, root, []
 
     def run(self, agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], budget: Budget) -> Run:
-        self.sent.append((instructions(agent, self.root), opening(evidence, self.clock(), self.root),
+        self.sent.append((instructions(agent, self.root), opening(agent, evidence, self.clock(), self.root),
                           [getattr(t, "__name__", "") for t in tools]))
         return ScriptedRun(cited, clock=self.clock).run(agent, evidence, tools, budget)
 
@@ -182,7 +182,9 @@ def test_a_run_by_hand_on_one_named_article_writes_that_one_alone(tmp_path: Path
     w = Workspace(tmp_path, monkeypatch, note("n1", "The launch moved to March 3."))
     w.model = Records(w.hands, tmp_path)
     ran = w.run("agents", "run", "things/article", "beta")
-    assert ran.exit_code == 0 and ran.output.splitlines() == ["wrote    things/beta  articles/things/beta.md"], ran.output
+    assert ran.exit_code == 0 and ran.output.splitlines() == [
+        "wrote    things/beta  articles/things/beta.md",
+        "grounding things/article on things/beta: left 1 sentence unscored"], ran.output  # it has no decision model
     curator = w.run("agents", "run", "things/curator", "beta")
     assert curator.exit_code == 1 and "give no article" in curator.output, curator.output
 
@@ -1062,10 +1064,11 @@ def test_a_collection_compile_goes_on_past_a_failed_article_and_exits_1(tmp_path
     assert ("things/beta", "things/article") in w.model.asked, real.output
     lines = real.output.splitlines()
     assert real.exit_code == 1 and "wrote    things/beta  articles/things/beta.md" in lines, real.output
-    assert "failed   things/alpha  things/article: run run_failed wrote nothing: failed: the stand-in failed" in lines
+    assert "failed   things/alpha  things/article: run run_failed: failed: the stand-in failed" in lines
     assert lines[-2:] == ["1 written, 0 fresh, 1 failed.", "Error: 1 agent run failed: see its line above"], lines
     one = w.run("compile", "--article", "things/beta")  # one article named: its line alone, rebuilt though fresh
-    assert one.output.splitlines() == ["wrote    things/beta  articles/things/beta.md"], one.output
+    assert one.output.splitlines() == ["wrote    things/beta  articles/things/beta.md",
+                                       "grounding things/beta: left 1 sentence unscored"], one.output
 
 
 # -- the small ones: refused forms, an empty name, refused files with --article, the sources line -----------------------
@@ -1309,7 +1312,7 @@ def test_a_run_with_nothing_to_cite_or_that_wrote_nothing_is_not_counted_failed(
     w.model = Counts(w.hands, tmp_path)
     empty = w.run("compile", "--article", "things")
     assert len(w.model.asked) == 2 and empty.exit_code == 0, empty.output
-    assert empty.output.splitlines()[-1] == "0 written, 2 ran and wrote nothing, 0 fresh, 0 failed.", empty.output
+    assert empty.output.splitlines()[-1] == "2 written, 0 fresh, 0 failed.", empty.output
     full = Workspace(tmp_path / "full", monkeypatch, note("n1", "The launch moved to March 3."))
     full.model = Empty(full.hands, tmp_path / "full")
     real = full.run("compile", "--article", "things")
