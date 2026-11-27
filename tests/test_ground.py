@@ -11,7 +11,7 @@ import pytest
 from cerebro.budget import BudgetSpent
 from cerebro.facts import Fact, Quote
 from cerebro.fakes import FakeDecider
-from cerebro.ground import Editor, Judge, fields_of, split_sentences
+from cerebro.ground import CONTRACT, Editor, Judge, fields_of, split_sentences
 from cerebro.models import Decision, DecisionTooLarge, Question
 
 DATA = Path(__file__).parent / "data" / "ground"
@@ -113,6 +113,7 @@ def test_the_judge_reads_one_passage_a_request_each_cited_fact_once_and_an_id_re
                                       "speaker": "Ines Calder", "quote": "We renew in March.",
                                       "record": "local/calls/alder.md"}}
     assert first["today"] == "2026-10-25" and second["heading"] == "Next" and set(questions) == {"s1", "s2"}
+    assert "contract" not in first and all(q.instructions.startswith(CONTRACT) for q in questions.values())  # data alone
     assert "not found in what was read" in weak.scores[1] and "[^f_9]" in weak.scores[1]
 
 
