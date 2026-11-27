@@ -842,13 +842,16 @@ def kept_notes(tmp_path: Path, extraction: FakeExtraction, clock: Clock | None =
                    agent_run=ScriptedRun(lambda prompt: {}))
 
 
-def test_a_kept_record_a_caller_retracted_gives_no_facts_until_its_maker_keeps_a_new_revision(tmp_path: Path) -> None:
+def test_a_kept_record_a_caller_retracted_gives_no_facts_until_a_caller_keeps_a_new_revision(tmp_path: Path) -> None:
     from cerebro.caller import Caller
 
-    you, extraction, hands = Caller("you", "person"), FakeExtraction(), Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
+    you, app, extraction = Caller("you", "person"), Caller("notes", "app"), FakeExtraction()
+    hands = Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
     cerebro = kept_notes(tmp_path, extraction, hands)
     kept = cerebro.handle.keep(you, "note", "The east gate opens at nine.", {"collection": "notes"})
+    own = cerebro.handle.keep(app, "note", "The west gate opens at nine.", {"collection": "notes"})
     assert kept.id in cerebro.retract(you, kept.id, "reworded").withdrew
+    assert own.id in cerebro.retract(you, own.id, "wrong").withdrew
     assert cerebro.run_once().extracted == 0 and extraction.facts(record=kept.id, latest=False) == []
     hands.move(minutes=5)
     cerebro.handle.keep(you, "note", "The east gate opens at ten.", {"collection": "notes"}, id=kept.id)
@@ -856,8 +859,10 @@ def test_a_kept_record_a_caller_retracted_gives_no_facts_until_its_maker_keeps_a
     assert cerebro.run_once().extracted == 0
     hands.move(minutes=5)
     cerebro.handle.keep(you, "note", "The east gate opens at noon.", {"collection": "notes"}, id=kept.id)
+    cerebro.handle.keep(app, "note", "The west gate opens at noon.", {"collection": "notes"}, id=own.id)
     assert cerebro.run_once().extracted == 1
     assert [f.text for f in extraction.facts(record=kept.id)] == ["The east gate opens at noon."]
+    assert extraction.facts(record=own.id) == []
 
 
 def test_a_retract_that_lands_while_a_pass_reads_its_kept_record_leaves_nothing_of_the_read(tmp_path: Path) -> None:
@@ -909,7 +914,7 @@ def test_a_retract_on_any_path_is_seen_by_a_pass_before_its_take_back_reads_the_
     assert held["seen"] is True
 
 
-def test_a_revision_its_maker_keeps_while_a_retract_takes_back_the_last_one_keeps_its_facts(tmp_path: Path) -> None:
+def test_a_revision_a_caller_keeps_while_a_retract_takes_back_the_last_one_keeps_its_facts(tmp_path: Path) -> None:
     from cerebro.caller import Caller
 
     you, held, hands = Caller("you", "person"), {}, Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
@@ -929,6 +934,27 @@ def test_a_revision_its_maker_keeps_while_a_retract_takes_back_the_last_one_keep
     held.update(id=kept.id, retracting=True)
     cerebro.retract(you, kept.id, "wrong")
     assert [f.text for f in extraction.facts(record=kept.id)] == ["The north gate opens at ten."]
+
+
+def test_a_retract_takes_back_what_an_apps_later_save_gave_though_a_pass_read_it_before_the_retract_landed(
+        tmp_path: Path) -> None:
+    from cerebro.caller import Caller
+
+    you, app, extraction = Caller("you", "person"), Caller("notes", "app"), FakeExtraction()
+    hands = Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
+    cerebro = kept_notes(tmp_path, extraction, hands)
+    kept = cerebro.handle.keep(app, "note", "The south gate opens at nine.", {"collection": "notes"})
+    asked = cerebro.tell(app, "take it back", target=kept.id, as_="proposal", kind="record.retract").proposals
+    cerebro.run_once()
+
+    def landing(write: Any) -> None:  # the decide is dated: the app saves again, and a pass reads it, before it lands
+        hands.move(seconds=2)
+        cerebro.handle.keep(app, "note", "The south gate opens at ten.", {"collection": "notes"}, id=kept.id)
+        cerebro.run_once()
+        write()
+
+    cerebro.lookup.decide(you, accept=asked, measure=landing)
+    assert extraction.facts(record=kept.id) == []
 
 
 def test_status_gives_todays_spend_alone_and_counts_what_waits(tmp_path: Path) -> None:

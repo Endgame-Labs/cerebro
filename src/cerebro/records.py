@@ -433,10 +433,11 @@ def retracted_records(store: Store) -> dict[str, str]:
 
 
 def was_retracted(record: Record, retracted: dict[str, str]) -> bool:
-    """Whether a retract of `retracted_records` took back this revision of `record`: one kept no later than it. A
-    revision its maker keeps after a retract is the maker's new word. Times go to the second, so one kept in the same
-    second as the retract counts as taken back."""
-    return record.id in retracted and record.at <= retracted[record.id]
+    """Whether a retract of `retracted_records` took back this revision of `record`: every revision but one a caller
+    kept after it, the caller's new word, since a caller's decision outranks an app's. Times go to the second, so one
+    kept in the same second as the retract counts as taken back."""
+    return record.id in retracted and (record.by is None or record.by.kind != "person"
+                                       or record.at <= retracted[record.id])
 
 
 def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str, Caller | None]:
@@ -455,7 +456,7 @@ def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) 
     applied row that stands. A record's facts, and its unapplied rows that cite it, go with it. Raises `NothingStands`
     when nothing is left."""
     id, at = proposal.target, proposal.decided_at
-    what, by = _said_by(store, extraction, id)
+    what, _ = _said_by(store, extraction, id)
     if what == "fact":
         fact = extraction.facts(ids=[id])[0] if extraction is not None else None
         if fact is None or fact.status not in ("current", "superseded"):
@@ -472,11 +473,12 @@ def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) 
             if id in claims and not _lives(claims[id], datetime.fromisoformat(at)):  # its facts are retracted below
                 store.set_state(CLAIMED, {k: v for k, v in claims.items() if k != id})
     withdrew: list[str] = []
-    if not was_retracted(store.record(id), retracted_records(store)):  # type: ignore[arg-type]
+    record = store.record(id)
+    if not was_retracted(record, retracted_records(store)):  # type: ignore[arg-type]
         propose(store, proposal)  # filed before its facts are read, so a pass that saves them later withdraws them
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
-        if by is None or fact.at <= at:  # a first-party record is dated when kept: a later fact is its maker's new word
+        if was_retracted(replace(record, at=fact.at), {id: at}):  # type: ignore[type-var]  # a fact has its revision's time
             extraction.retract(fact.id)  # type: ignore[union-attr]
             withdrew.append(fact.id)
     stands: list[str] = []

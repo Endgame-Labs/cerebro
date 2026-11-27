@@ -37,7 +37,7 @@ The usual way to handle a judgment is a few hundred lines of deterministic code:
 - Every model call is checked against a spending cap before it starts. The cap is a soft limit: once it is met nothing new starts, and a run may end over it by the calls already under way. A few cents over is fine. Dollars over is not. Do not build holds, reservations or estimates to make the cap exact.
 - Inputs are append-only. Only a run writes an article.
 - Every HTTP request needs a live token.
-- A curator does not undo what a caller decided until something new about it arrives. A caller's instruction outranks an agent's. A caller is anyone who sends a command, at the command line or over MCP or the JSON API with a live token. A curator, an agent and an app are not callers.
+- A curator does not undo what a caller decided until something new about it arrives. A caller's instruction outranks an agent's. A caller's decision outranks an app's. A caller is anyone who sends a command, at the command line or over MCP or the JSON API with a live token. A curator, an agent and an app are not callers.
 - Text from a source reaches a model as data, never as instructions.
 - Fields the system relies on are protected: whatever a model sets there, the system's value always overwrites it. They are the fields that address and name an article, place it in the working set, bind records to it, and record what compile and the sources say of it. Every other field belongs to the agent's own data domain, and the agent is free to set or rewrite it.
 
