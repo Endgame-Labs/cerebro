@@ -1814,22 +1814,28 @@ def _gone_at_source(workspace: Cerebro, name: str, id: str, result: PassResult, 
 
 
 def _keep_keys(workspace: Cerebro, name: str, record: Record | str) -> None:
-    """Keep the keys of a record just extracted, or forget those of a record removed, under `keys:<source>`, so its
-    facts can be linked again when an article is born. A record with no keys keeps nothing. A removed id that is not
-    text, such as a number, is taken by its text, as the store keeps it."""
+    """Keep the keys of a record just extracted, or forget those of a record removed, under `keys:<source>`, and the
+    names of those it only carries under `carried:<source>`, so its facts can be linked again when an article is born,
+    as landing linked them. A record with no keys keeps nothing. A removed id that is not text, such as a number, is
+    taken by its text, as the store keeps it."""
     key = f"keys:{name}"
     kept = workspace.store.state(key) or {}
     if not isinstance(record, Record):
         record = str(record)
         if record in kept:
             update_state(workspace.store, key, lambda now: {k: v for k, v in (now or {}).items() if k != record})
-        if record in (workspace.store.state(f"ours:{name}") or {}):
-            update_state(workspace.store, f"ours:{name}", lambda now: {k: v for k, v in (now or {}).items() if k != record})
+        for each in (f"ours:{name}", f"carried:{name}"):
+            if record in (workspace.store.state(each) or {}):
+                update_state(workspace.store, each, lambda now: {k: v for k, v in (now or {}).items() if k != record})
         return
     if kept.get(record.id) != (linked_keys(record) or None):
         keys = linked_keys(record) if record.keys else None
         update_state(workspace.store, key, lambda now: {**{k: v for k, v in (now or {}).items() if k != record.id},
                                                     **({record.id: keys} if keys else {})})
+    carried = [k for k in record.carried or () if k in record.keys]
+    if (workspace.store.state(f"carried:{name}") or {}).get(record.id) != (carried or None):
+        update_state(workspace.store, f"carried:{name}", lambda now: {
+            **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: carried} if carried else {})})
     # the names of the parties on it who are yours, as its source says, kept for the label its facts carry
     names = [str(n) for n in record.fields.get("ours") or [] if str(n).strip()]
     if (workspace.store.state(f"ours:{name}") or {}).get(record.id) != (names or None):
@@ -1891,14 +1897,16 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
     moved = redirects(workspace.store)
     keys: dict[str, dict[str, dict[str, list[str]]]] = {}
     ours: dict[str, dict[str, list[str]]] = {}  # who each record marks as the workspace's own, which binds no namesake
+    only: dict[str, dict[str, list[str]]] = {}  # the keys each record only carries: none, in a store without them
     learned = stamp(workspace.clock())
     for fact in workspace.extraction.facts():
         if fact.source not in keys:  # a source's records, or an app's kind's
             keys[fact.source] = workspace.store.state(f"keys:{fact.source}") or {}
             ours[fact.source] = workspace.store.state(f"ours:{fact.source}") or {}
+            only[fact.source] = workspace.store.state(f"carried:{fact.source}") or {}
         marked = ours[fact.source].get(fact.record)
         record = Record(id=fact.record, source=fact.source, revision="", keys=keys[fact.source].get(fact.record, {}),
-                        fields={"ours": marked} if marked else {})
+                        fields={"ours": marked} if marked else {}, carried=only[fact.source].get(fact.record, []))
         if changed and fact.source != TOLD:  # a told fact is tied by its target, which no key of its record gives
             for id in changed - set(reached(store, record)):
                 if RECORD in store.ties_of(fact.id).get(id, []):

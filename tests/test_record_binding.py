@@ -132,6 +132,26 @@ def test_a_note_filed_under_a_collection_binds_its_own_article_and_its_header_li
     assert link(store, fact, later) == ["things/alder"]
 
 
+def test_a_notes_facts_stay_on_the_article_its_header_names_when_that_articles_keys_change(tmp_path: Path) -> None:
+    root = tmp_path / "w"
+    (root / "sources").mkdir(parents=True)
+    (root / "settings.yaml").write_text("timezone: UTC\n")
+    (root / "sources" / "notes.yaml").write_text('kind: files\nselect:\n  - glob: "notes/*.md"\n    extract: facts\n')
+    (root / "notes").mkdir()
+    (root / "notes" / "call.md").write_text(  # a party's address, carried: it tells the note apart from nothing
+        "Parent: Alder Works\nWith: Bo <bo@birch.example>\nDate: 2026-11-02\n\nThe order is signed.\n")
+    with Cerebro(root, extraction=FakeExtraction()) as workspace:
+        workspace.store.create(Identity("things/alder", "things", "Alder Works", {"domain": ["alder.example"]}, "active"))
+        workspace.run_once(agents=False)
+        facts = [f.id for f in workspace.extraction.facts()]
+        assert facts and workspace.store.facts_of("things/alder") == facts
+        alder = workspace.store.article("things/alder").identity
+        alder.keys["alias"] = ["Alder"]
+        workspace.store.set_identity(alder)
+        workspace.run_once(agents=False)  # every fact is linked again, as landing linked it
+        assert workspace.store.facts_of("things/alder") == facts
+
+
 def test_a_files_entry_identity_still_names_its_records(tmp_path: Path) -> None:
     root = tmp_path / "w"
     (root / "notes").mkdir(parents=True)
