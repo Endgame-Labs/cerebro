@@ -1,6 +1,6 @@
 [project]
 name = "cerebro"
-version = "0.1.2"
+version = "0.1.3"
 description = "Builds a wiki from your sources and keeps it current."
 readme = "README.md"
 license = "MIT"

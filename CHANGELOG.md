@@ -2,6 +2,43 @@
 
 What changed in each release, newest first.
 
+## 0.1.3
+
+- Grounding no longer cuts or rewrites what a writer wrote. The decision model scores each sentence from 0 to 1 against the facts it cites, and the writer gets the sentences under the floor back once, with each score and why, while it can still revise. A sentence still under the floor lands with the footnote `[^unsupported]: Not fully backed by the facts it cites.`
+- The floor is 0.6. Set `min_grounding` in `settings.yaml` for every agent, or in an agent's front matter for that agent. A heading is read as context and never marked, a mark never lands inside code, and a Chinese or Japanese sentence ends at its full-width stop.
+- A run's line counts what grounding marked, as `grounding projects/atlas: marked 1 sentence not fully backed`, and each sentence's score and why stay on the run's row of the `agent-runs` log. `cerebro compile --article` prints that line too, and `cerebro status` counts from each agent's latest run. With no decision model, nothing is scored or marked, and the run says how many sentences it left unscored.
+- When you take a fact back, or a source removes its record, Cerebro takes out only the lines whose every cited fact was taken back.
+- A writer is told which article it writes, so one whose evidence holds the facts of many articles writes about the right one. It is also told of each bracketed number, such as `[1]`, that cites nothing, and asked to cite by id, take it out, or keep it when it is no citation.
+- When a second record states a fact again, the footnote shows each record's words under that record's name, as `a.md "..." · b.md "..."`, so no footnote quotes words its record does not hold. A writer, the judge, `read` over MCP and the JSON API show a fact the same way.
+- A writer whose model hands in no text and gives no reason, even when asked again, now fails its run, and a later pass tries it again. A subagent that does this keeps the part it had. An agent that says it has nothing to write still shows `wrote nothing` and is no failure.
+- When a run fails, is cut or stops after a writer's first hand-in, that text still lands. When the run failed, a `warning` line says why, in plain words.
+- Model replies stream, so a long reply that keeps coming finishes. A reply may take 10 minutes to start, as a model that thinks first can be silent, and then times out only after a minute with nothing new.
+- `retries` on a model, in `settings.yaml` or in an agent's `model:`, sets how many times a timeout, a rate limit or a server error is tried again. It is 3 by default, and a refused key is never tried again. Each try is checked against your cap before it starts, and each failed try counts in what its run spent.
+- A run's `ran` line splits its cost into writing and checks once the checks cost anything, as `$0.0155 (writing $0.0150, checks $0.0005)`. Its row in the `agent-runs` log keeps `input_tokens` and `output_tokens`.
+- Through a gateway, only a 401, 402 or 403 stops the pass. A 400 fails that one call, and the pass goes on.
+- A failed model call says what to do for its status, direct or through a gateway. A refused key points at the key, or at `providers:` in `settings.yaml` through a gateway. A 402 says payment is due at the provider, a busy or failing provider is named as busy or down, and any other status points at the model id and the request.
+- A first run is quicker. Each curator runs once, side by side, from what your sources hold of the last 14 days, and proposes what clearly matters. Later passes fill in the rest, and a curator that fails runs again on a later pass.
+- What you approve is written once, from those 14 days and from any older line you tick. On the list, an older record reads `not weighed yet: older than 14 days`. When older records wait, a `notice` line says how many, and `cerebro serve` reads them on its next passes.
+- The first run no longer asks what you want to see first, and `cerebro serve --see-first` is gone.
+- The first run's list counts under an article the records it would bind, as `4 records`. An article one curator proposes in another collection, such as what an item hangs off, is a line you can tick, joined with that collection's own proposal of it. A line you tick again on its own lands on its own.
+- `cerebro review --accept-from` decides each file it names on its own, and says which had nothing waiting. It also takes a curator's first list that a later pass filed.
+- A curator that carries out an approved admit by the article's path keeps the name you approved, and can bring back an archived article that way.
+- `cerebro agents new <collection>/curator` writes a `held: {}` line, so the new curator sees the records your sources hold for its collection.
+- No collection waits on another. An article gets every record its keys reach, whichever collection the record is held for. The record stays held for its own collection until that collection's curator decides.
+- A row's text leaves out a column with no value, or only spaces, so the facts layer no longer reads the next column's name as its value.
+- Each `sql` line's rows get ids of their own, so two `sql` lines on one source no longer drop each other's rows. A row's footnote quotes the row, and the same query spaced apart keeps its ids.
+- With Factoid 0.1.30, when you edit a record, the sentences you left alone keep their facts.
+- Salesforce reads each admitted account, contact, user and deal by its own id, with the tasks, events and emails logged on it. So `opportunities.closed_since` goes: delete it if your `sources/salesforce.yaml` sets it, or the source stops with a line that names it.
+- A Salesforce deal admitted and then deleted before the next pass is removed on that pass, and its article archived. A User is no longer asked for `IsDeleted`, which a real org's User lacks.
+- A `query` line on facts takes a list for `classes` and `kind`, as a `facts` line does. A collection query says how many articles it left out for lacking a field it filters on.
+- After a pass is killed, the next pass takes over every lease it held, not only the first, so no agent waits for one to lapse.
+- The table in the `AGENTS.md` that `cerebro init` writes into a new workspace renders as a table.
+- The gtm template's curators say what clearly matters first. Its calls, opportunities and people curators propose an item's account beside it when nobody has, and the opportunities and people curators follow a deal or a person that moved to another account. The opportunities curator also asks for an account's past-due deals and those closed in the last year, and the people curator for the contacts of each account the wiki keeps.
+- The docs say which article fields Cerebro keeps beside a source's own, where a one-article agent's title comes from, how two collections that read each other compile, and who may take a fact back.
+- `sql` row ids changed in 0.1.3. After an upgrade, every agent with a `sql` line runs once more, on the first pass its cooldown allows. Nothing is doubled or lost.
+- A subagent with no `model:` of its own is now charged at the model it runs on, the compilation model in `settings.yaml`, not at its composer's. If its composer names a cheaper model, a pass counts more toward your cap than before, and `cerebro status` and the `agent-runs` log name the model it ran on.
+- `repair` goes from `compile:` in `settings.yaml`, and from the gateway's `{call}` values, since grounding rewrites nothing. If your `settings.yaml` sets `compile: { repair: ... }`, delete it, or every command stops on it.
+
 ## 0.1.2
 
 - Salesforce email is cleaned the way Gmail's is, so quoted replies, forwarded headers and signatures no longer become facts. In Gmail and Salesforce alike, a forward with nothing written above it is kept whole, since it may be the only copy of a customer's words.
