@@ -24,9 +24,9 @@ the closest tie of a fact to an article, and `held_by` the articles of a collect
 
 A record binds the articles that hold a key that names it, and the article an admit made of it. A key its
 connector says it only carries (`Record.carried`), such as its parties' addresses, binds nothing: `bound_to` skips
-it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does. A value that
-is an article's title binds no record that a key naming one thing tells apart from it, as `_apart` reads it, so two
-things of one name stay two.
+it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does. A record that
+shares with an article only its title, or values of keys that name no one thing, as a name, binds it only while no
+key that names one thing tells the two apart, as `_apart` reads it, so two things of one name stay two.
 
 A record's fields land on its own articles alone, as `own_articles` gives them: those of its own collection, `into`,
 that it is bound to, so a part's stage lands on the part and never on its parent, while its facts link to both.
@@ -149,8 +149,9 @@ def naming_keys(record: Record) -> dict[str, list[str]]:
 
 def bound_to(store: Store, record: Record) -> list[str]:
     """The articles a record is bound to: by the keys that name it, then by a value one of them holds that is one
-    article's title, unless `_apart` tells the two apart. A key the record only carries binds it to nothing, though
-    its facts link by it. Merged articles are followed to their survivors."""
+    article's title, unless it shares no value of a key that names one thing with the article and `_apart` tells the
+    two apart. A key the record only carries binds it to nothing, though its facts link by it. Merged articles are
+    followed to their survivors."""
     return _bound(store, record, naming_keys(record))
 
 
@@ -173,7 +174,7 @@ def admitted_from(store: Store, record: Record) -> list[str]:
 
 
 def _bound(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str]:
-    found = _by_keys(store, keys)
+    found = _keyed(store, record, keys)
     found += [id for id in admitted_from(store, record) if id not in found]
     for name in _header_names(record, keys):
         named = store.named(name)
@@ -190,23 +191,45 @@ def _apart(store: Store, record: Record, article: str | Mapping[str, Iterable[ob
     the record only carries, or one no source declares, tells nothing apart."""
     from .curate import same_thing, weights_of  # curate reads this module
 
-    naming, weights = naming_keys(record), weights_of(store)
-    if not any(weights.get(k, 0) > 0 for k in naming):
-        return False  # no key names the record as one thing, so no article need be read
-    return same_thing(naming, _keys_of(store, article), weights) is False
+    return _may_be_apart(store, record) and \
+        same_thing(naming_keys(record), _keys_of(store, article), weights_of(store)) is False
+
+
+def _may_be_apart(store: Store, record: Record) -> bool:
+    """Whether a key that names the record names one thing, one the workspace's weights put above 0: with none,
+    nothing tells the record apart from an article, so no article need be read."""
+    from .curate import weights_of  # curate reads this module
+
+    weights = weights_of(store)
+    return any(weights.get(k, 0) > 0 for k in naming_keys(record))
+
+
+def _keyed(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str]:
+    """The articles `keys` bind, but one they bind only by keys that name no one thing, as a name, that `_apart` tells
+    from the record: a record that shares only its name with an article binds it no more by a key than by its title."""
+    from .curate import weights_of  # curate reads this module
+
+    found, weights = _by_keys(store, keys), weights_of(store)
+    if not found or not _may_be_apart(store, record):
+        return found
+    strong = set(_by_keys(store, {k: vs for k, vs in keys.items() if weights.get(k, 0) > 0}))
+    return [id for id in found if id in strong or not _apart(store, record, id)]
 
 
 def would_bind(store: Store, keys: dict[str, list[object]], title: str, record: Record) -> bool:
     """Whether an article with these keys and this title, once admitted, binds `record`, by the rules `bound_to` reads
     the store by: a key value the record carries, matched without regard to case, or a name it carries that is the
-    title, unless a key that names one thing tells the two apart."""
+    title, unless it shares no value of a key that names one thing and `_apart` tells the two apart."""
+    from .curate import weights_of  # curate reads this module
+
     want = {(k, str(v).lower()) for k, values in keys.items() for v in values}
     naming = naming_keys(record)
-    if want & {(k, str(v).lower()) for k, values in naming.items() for v in values}:
+    shared = want & {(k, str(v).lower()) for k, values in naming.items() for v in values}
+    if any(weights_of(store).get(k, 0) > 0 for k, _ in shared):
         return True
-    return bool(title) and not _apart(store, record, keys) and any(
+    return not _apart(store, record, keys) and (bool(shared) or bool(title) and any(
         name.lower() == title.strip().lower() and not _namesake(store, record, name, keys)
-        for name in _header_names(record, naming))
+        for name in _header_names(record, naming)))
 
 
 def link(store: Store, fact: Fact, record: Record | None = None, at: str = "") -> list[str]:

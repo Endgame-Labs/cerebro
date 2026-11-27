@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from cerebro.agent import load_agent
 from cerebro.app import Cerebro
 from cerebro.article import Identity
@@ -70,18 +72,21 @@ def test_an_admit_by_record_takes_the_keys_that_name_it_and_a_later_record_of_th
     assert link(store, fact, same) == []  # a fact of a later record is not the first one's
 
 
-def test_an_admit_by_name_binds_a_record_of_that_name_only_when_no_key_that_names_one_thing_differs(
-        tmp_path: Path) -> None:
+@pytest.mark.parametrize("by_record", [False, True])  # an admit by record takes the name as a key
+def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_no_key_that_names_one_thing_differs(
+        tmp_path: Path, by_record: bool) -> None:
     store = MemoryStore()
     store.weights = {"code": 100, "serial": 100}  # declared by a source to name one thing: never `tag`
     one, other, bare = (Record(id=id, source="src", revision="1", keys={"name": ["Unit 7"], **keys}, into="parts")
                         for id, keys in (("1", {"code": ["A1"]}), ("2", {"code": ["A2"]}),
                                          ("3", {"serial": ["S9"], "tag": ["blue"]})))
     _hold(store, "src", one, other, bare)
-    keys = {"code": ["A1"], "tag": ["red"]}
+    keys = one.keys if by_record else {"code": ["A1"], "tag": ["red"]}
     assert [r.id for r in (one, other, bare) if would_bind(store, keys, "Unit 7", r)] == ["1", "3"]  # a first run's count
-    assert "'admitted': 'parts/unit-7'" in _admit(store, tmp_path, None, name="Unit 7", keys=keys)
+    admitted = _admit(store, tmp_path, one) if by_record else _admit(store, tmp_path, None, name="Unit 7", keys=keys)
+    assert "'admitted': 'parts/unit-7'" in admitted
     assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["2"]
+    assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # a thing of its own
 
 
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:

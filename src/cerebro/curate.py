@@ -1262,13 +1262,17 @@ class _Curation:
 
     def _existing(self, name: str, keys: dict[str, list[str]], at_path: Identity | None = None,
                   record: tuple[str, str] | None = None) -> Identity | None:
-        """The article an admit names, archived or not: one a key that names the thing binds, under any name; else
-        `at_path`, the one at the path it gave; else the one its name or an alias it gives finds, as `_named` reads
-        them, unless an admit by name alone is another thing by `one_thing`. So an admit finds an archived article by
-        every name it answers to."""
-        moved = redirects(self.store)
-        by_key = list(dict.fromkeys(id for key, values in keys.items() for value in values
-                                    if (id := holder(self.store, self.collection, key, value))))
+        """The article an admit names, archived or not: one a key that names the thing binds, under any name, but not
+        one it binds only by keys that name no one thing, as a name, that `same_thing` tells apart from it, as binding
+        does; else `at_path`, the one at the path it gave; else the one its name or an alias it gives finds, as
+        `_named` reads them, unless an admit by name alone is another thing by `one_thing`. So an admit finds an
+        archived article by every name it answers to."""
+        moved, weights = redirects(self.store), weights_of(self.store)
+        held = [(key, id) for key, values in keys.items() for value in values
+                if (id := holder(self.store, self.collection, key, value))]
+        strong = {id for key, id in held if weights.get(key, 0) > 0}
+        by_key = list(dict.fromkeys(id for _, id in held if id in strong
+                                    or same_thing(keys, self.find(id).keys, weights) is not False))
         if len(by_key) > 1:
             raise CurateError(f"the keys of {name} bind {', '.join(by_key)}: admit one article, or merge them first")
         if by_key:
@@ -1280,7 +1284,7 @@ class _Curation:
             named += [id for id in self._named(wanted, moved) if id not in named]
         # a held record admitted under an article's name pairs with it, as a recording with its meeting, unless
         # the two hold values of a key that identifies and share none, as two dates of one weekly meeting
-        named = [id for id in named if one_thing({"keys": keys}, {"keys": self.find(id).keys}, weights_of(self.store))]
+        named = [id for id in named if one_thing({"keys": keys}, {"keys": self.find(id).keys}, weights)]
         if len(named) > 1:
             raise CurateError(f"{name} names {', '.join(named)}: give keys that tell them apart")
         return self.find(named[0]) if named else None
