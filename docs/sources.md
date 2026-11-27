@@ -131,7 +131,7 @@ select:
 
 A row gives facts from its `fields:` alone, since rows take `extract: records` by default. Whole files take `extract: facts`. Set `extract: facts` on the entry to read each row's text too, as one `column: value` line per column, with a column that has no value left out.
 
-Each field becomes one fact, and the field's name becomes its words. A row with `thing_id` A1 and `seats_active` 42 gives "The seats active of A1 is 42." The fact names the row by its `name:`, `title:` or `subject:` field, or else by its id. So name each field in words, and put a unit in the value, as `disk: "{row.disk_gb} GB"`.
+A field's name becomes the words of its fact, so `seats_active` 42 reads as "The seats active of A1 is 42." The fact names the row by its `name:`, `title:` or `subject:` field, else by the title of the one article it binds, else by its id, as A1 here. So name each field in words, and put a unit in the value, as `disk: "{row.disk_gb} GB"`.
 
 Give each row an `id:` of its own. Without one, a row is known by its line, and a new row above it makes every row below look new.
 
