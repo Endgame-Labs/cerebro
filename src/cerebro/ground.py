@@ -44,8 +44,8 @@ from .facts import Fact
 from .models import Answer, Decider, DecisionError, DecisionTooLarge, Score
 
 __all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "bounded",
-           "citation_of", "counted", "fields_of", "own_sides", "quote_for", "quote_line", "split_sentences", "tallied",
-           "unmarked"]
+           "citation_of", "counted", "fields_of", "own_sides", "quote_for", "quote_line", "quote_named",
+           "split_sentences", "tallied", "unmarked"]
 
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
@@ -240,6 +240,13 @@ def citation_of(fact: Fact) -> Citation:
     """A citation of `fact`: the record named before its words, the fact's own unless none of the words `quote_for`
     gives are its own, and those words."""
     return Citation("fact", fact.id, next((record for record, _ in _quoted(fact)), fact.record), quote_for(fact))
+
+
+def quote_named(fact: Fact) -> str:
+    """`quote_for` as it stands beside the fact's record: as it is, or when none of its words are the fact's own, after
+    the name of the record they start in, as the footnote has it: `b.md "…"`."""
+    cited = citation_of(fact)
+    return cited.quote if cited.source == fact.record else f'{inert(cited.source)} "{cited.quote}"'
 
 
 def quote_line(fact: Fact) -> str:

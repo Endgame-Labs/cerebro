@@ -14,7 +14,9 @@ from cerebro.connector import Record
 from cerebro.evidence import _item
 from cerebro.facts import Fact, Quote
 from cerebro.ground import QUOTE_BOUND, fields_of, quote_for
+from cerebro.lookup import ReadResult
 from cerebro.mcp import _fact_line
+from cerebro.reply import outside
 
 HARBOR = ("Mara Okafor said the Harbor beta moves from 2 December to 9 December, because the data export is not "
           "finished.\nBen Ito owns the data export and expects to finish it by 4 December.\nThe beta starts with "
@@ -69,6 +71,7 @@ def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_recor
         f"[^{told.id}]: local/b.md {again}"]
     assert _item(alone).text == f"- [^{told.id}] {told.text} (quote: local/b.md {again})"
     assert _fact_line(alone).endswith(f"] {told.text} local/b.md {again}")
+    assert outside(ReadResult([], facts=[alone]))["facts"][0]["quote"] == f"local/b.md {again}"
 
 
 def test_a_fact_that_kept_a_whole_passage_shows_it_and_never_a_sentence_guessed_from_shared_words() -> None:
