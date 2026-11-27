@@ -133,6 +133,8 @@ A row gives facts from its `fields:` alone, since rows take `extract: records` b
 
 A field's name becomes the words of its fact, so `seats_active` 42 reads as "The seats active of A1 is 42." The fact names the row by its `name:`, `title:` or `subject:` field, else by the title of the one article it binds, else by its id, as A1 here. So name each field in words, and put a unit in the value, as `disk: "{row.disk_gb} GB"`.
 
+Cerebro keeps [some article fields](agents.md#article-fields) itself, so an agent can't set `id`, `title`, `status`, `compiled_at`, `identity`, `keys` or `in_source` from your facts. For a value you want an agent to set on the article, pick another name, as `state: "{row.status}"` instead of `status: "{row.status}"`.
+
 Give each row an `id:` of its own. Without one, a row is known by its line, and a new row above it makes every row below look new.
 
 ## Read from any MCP server
