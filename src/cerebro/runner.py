@@ -70,8 +70,8 @@ from .budget import (
     HeldForRoom,
     Stopped,
     UnpricedModel,
-    places,
     read_caps,
+    spend_digits,
     stop_line,
     stopping,
 )
@@ -2482,7 +2482,7 @@ def _usd(workspace: Cerebro, runs: list[Run], checks: float = 0.0) -> str:
             total += cost(spec.provider, spec.model, run.usage)
     if not checks:
         return f"${total:.4f}"
-    digits = places(total + checks, [total, checks], least=4)
+    digits = spend_digits(total + checks, [total, checks], least=4)
     return f"${total + checks:.{digits}f} (writing ${total:.{digits}f}, checks ${checks:.{digits}f})"
 
 

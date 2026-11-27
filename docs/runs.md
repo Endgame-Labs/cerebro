@@ -163,7 +163,7 @@ Every model call is checked against its cap before it starts. Past a cap, that j
 spent     today $0.007 of $50.00: extraction $0.003, compilation $0.004
 ```
 
-Each run's `ran` line says what it cost. Once the [checks](agents.md#how-cerebro-checks-what-an-agent-writes) of its sentences cost anything, the line splits the cost into writing and checks:
+As each run in a pass ends, the pass prints a `ran` line that says what the run cost. Once the [checks](agents.md#how-cerebro-checks-what-an-agent-writes) of its sentences cost anything, that line splits the cost into writing and checks:
 
 ```text
 ran       projects/launch: wrote articles/projects/launch.md, $0.0155 (writing $0.0150, checks $0.0005)

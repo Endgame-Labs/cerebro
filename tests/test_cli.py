@@ -410,14 +410,14 @@ def test_connect_keeps_a_login_given_on_standard_input_and_off_a_terminal_asks_n
 
 
 def test_a_days_spend_reads_as_parts_that_add_up_to_its_total() -> None:
-    from cerebro.budget import places
+    from cerebro.budget import spend_digits
     from cerebro.cli import _money
 
     for extraction, compilation in ((0.0047, 0.0056), (0.005, 0.005), (1.234, 2.345), (0.0, 0.0), (0.00004, 0.0)):
-        digits = places(extraction + compilation, [extraction, compilation])
+        digits = spend_digits(extraction + compilation, [extraction, compilation])
         parts = [float(_money(v, digits)[1:]) for v in (extraction, compilation)]
         assert round(sum(parts), digits) == float(_money(extraction + compilation, digits)[1:]), (extraction, digits)
-    assert places(0.0047 + 0.0056, [0.0047, 0.0056]) == 4 and places(1.25, [1.0, 0.25]) == 2
+    assert spend_digits(0.0047 + 0.0056, [0.0047, 0.0056]) == 4 and spend_digits(1.25, [1.0, 0.25]) == 2
 
 
 def test_eval_runs_a_suite_on_the_workspace_and_prints_its_scores(tmp_path: Path) -> None:

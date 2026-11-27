@@ -78,9 +78,9 @@ __all__ = [
     "cancelling",
     "estimate",
     "first_run_cap",
-    "places",
     "read_caps",
     "run_estimate",
+    "spend_digits",
     "spent_by_runs",
     "stop",
     "stop_line",
@@ -323,7 +323,7 @@ def spent_by_runs(store: Store, runs: list[str]) -> float:
     return sum(store.total(LOG, "usd", {"run": run}) for run in dict.fromkeys(runs) if run)
 
 
-def places(total: float, parts: list[float], least: int = 2) -> int:
+def spend_digits(total: float, parts: list[float], least: int = 2) -> int:
     """The fewest places, `least` at least, at which the parts of a spend read as adding up to its total and no
     amount spent reads as nothing."""
     for digits in range(least, 7):

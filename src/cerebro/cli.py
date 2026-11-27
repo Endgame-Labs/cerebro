@@ -40,7 +40,7 @@ from . import review as reviewing
 from . import trust as trusting
 from .agent import Agent, refusal_of, refused_ids
 from .app import Cerebro, PassResult
-from .budget import BudgetSpent, places
+from .budget import BudgetSpent, spend_digits
 from .caller import KIND_WORDS, Caller
 from .compile import Compiled, keep_grounding, left_alone, made_safe, out_of_working_set, targets
 from .connector import one_line
@@ -1118,7 +1118,7 @@ def status(root: Path | None, as_json: bool) -> None:
         click.echo("search    search.rerank is on, and with no decision model matching keeps its search order")
     shown = ["extraction", "compilation"] + (["evaluation"] if spent.get("evaluation") else []) + (
         ["rerank"] if rerank["on"] or spent.get("rerank") else [])  # evals when run, re-ranking when on
-    digits = places(spent["total"], [spent[layer] for layer in shown])
+    digits = spend_digits(spent["total"], [spent[layer] for layer in shown])
     layers = [f"{layer} {_money(spent[layer], digits)}" + (f" of {_money(caps[layer])}" if caps[layer] is not None
                                                             else "") for layer in shown]
     _echo(f"spent     today {_money(spent['total'], digits)} of {_money(caps['total'])}: {', '.join(layers)}")
