@@ -1435,7 +1435,7 @@ def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_
     assert label(gone) != gone
     store = MemoryStore()
     store.create(Identity("things/halden", "things", "Halden"))
-    store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].\nIt has a dock [^{kept}].\n",
+    store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].[^unsupported]\nIt has a dock [^{kept}].\n",
                                 by="things/parts", citations=[Citation("fact", gone), Citation("fact", kept)]))
     grounding = _Grounding("things/halden", lookup=SimpleNamespace(extraction=Facts()),  # type: ignore[arg-type]
                            root=Path("."), ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,

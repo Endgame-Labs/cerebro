@@ -38,7 +38,8 @@ def _body(store: Any, article: str) -> str:
 # -- a kept body -----------------------------------------------------------------------------------------------------
 
 
-def test_a_retract_by_an_agent_or_a_source_drops_a_kept_citation(tmp_path: Path) -> None:
+def test_a_retract_by_an_agent_or_a_source_drops_a_kept_citation_and_an_earlier_save_keeps_its_own(
+        tmp_path: Path) -> None:
     def fact(id: str, status: str) -> Fact:
         return Fact(id=id, text="x", subject="the pump", kind="event", at="2026-11-10", source="notes", record="n0",
                     status=status)
@@ -52,7 +53,7 @@ def test_a_retract_by_an_agent_or_a_source_drops_a_kept_citation(tmp_path: Path)
     cites = [Citation("fact", id) for id in ("f_you", "f_agent", "f_source", "f_gone", "f_kept")]
     cites.append(Citation("record", "r0"))
     retired, retracted = grounding.withdrawn(cites)
-    assert (retired, retracted) == ({"f_gone"}, {"f_you", "f_agent", "f_source"})
+    assert (retired, retracted) == ({"f_gone"}, {"f_you", "f_agent"})  # an earlier save still says what was
 
 
 def test_a_kept_body_drops_a_line_citing_only_a_record_taken_back(tmp_path: Path) -> None:
@@ -185,11 +186,8 @@ class Facts:
         if how == "retracted":
             fact = next(f for fs in self.extraction.by_record.values() for f in fs if f.text == PUMP)
             self.workspace.retract(Caller("you", "person"), fact.id, "the wrong pump")
-        elif how == "removed":
+        else:
             self.notes.remove("n0")
-        else:  # superseded: the record's next save no longer gives the fact
-            self.notes.add(Record(id="n0", source="notes", revision="2", at="2026-11-15T09:00:00Z",
-                                  body="The pump in hall two is working."))
 
 
 WRITER = EVIDENCE + "# Instructions\n\nWrite it.\n\n# Output\n\n## Summary\n"
@@ -208,7 +206,7 @@ def test_a_writers_only_cited_fact_taken_back_leaves_the_article(tmp_path: Path,
     assert PUMP[:-1] not in space.text(), result.warnings
 
 
-@pytest.mark.parametrize("how", ["retracted", "superseded", "removed"])
+@pytest.mark.parametrize("how", ["retracted", "removed"])
 def test_a_composers_verdict_that_cites_a_fact_taken_back_goes(tmp_path: Path, how: str) -> None:
     files = {"briefs/article.md": BRIEF.replace("[risks, people]", "[risks]"), "briefs/subagents/risks.md": RISKS}
     space = Facts(tmp_path, files, "briefs/alder")

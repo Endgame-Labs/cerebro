@@ -24,7 +24,7 @@ A curator does not need a step for each record. Once an article has the right ke
 
 An article's agents write its text from the evidence their file asks for: facts, records, other articles. Every sentence cites the fact behind it. An editor scores each sentence from 0 to 1 by what its facts mean, in any words, language or style, and the writer sees the scores once while it can still revise.
 
-Cerebro never cuts or rewrites what a writer wrote. A sentence that still scores under the floor, `min_grounding`, lands marked with a footnote that says it is not fully backed by the facts it cites. You read the whole article, and see which claims are weak.
+Cerebro does not cut or rewrite what a writer wrote for its score. A sentence that still scores under the floor, `min_grounding`, lands marked with a footnote that says it is not fully backed by the facts it cites. You read the whole article, and see which claims are weak. A line goes only when every fact it cites was taken back.
 
 Cerebro hides nothing from a writer. When a fact is old, retired, or from another article, Cerebro labels it and lets the writer judge. What makes a fact relevant is what it says, not where it came from.
 

@@ -78,7 +78,7 @@ from .evidence import (
     gather,
 )
 from .facts import Fact
-from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, tallied
+from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, tallied, unmarked
 from .identity import in_working_set
 from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
@@ -512,7 +512,7 @@ def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[
     by_label = {label(c.id): c.id for s in mine for c in s.citations}
 
     def cited(text: str) -> list[str]:
-        return [by_label.get(found, found) for found in CITE.findall(text)]
+        return [by_label.get(found, found) for found in CITE.findall(unmarked(text))]
 
     retired, retracted = grounding.withdrawn([c for s in mine for c in s.citations])
     gone = retired | retracted
@@ -613,8 +613,8 @@ class _Grounding:
 
     def withdrawn(self, citations: list[Citation]) -> tuple[set[str], set[str]]:
         """Of the facts `citations` name, those withdrawn since: retired, a fact the extraction no longer holds at
-        all, and retracted, one taken back by a person, an agent or its source, whose record was removed or saved
-        again, and a cited record an accepted `record.retract` took back."""
+        all, and retracted, one taken back by a person, an agent or its source, and a cited record an accepted
+        `record.retract` took back. A fact of an earlier save of its record is none of them: it still says what was."""
         store = getattr(self.lookup, "store", None)
         taken = {p.target for p in proposals(store, "accepted") if p.kind == "record.retract"} if store else set()
         retracted = {c.id for c in citations if c.id in taken}  # a record a person or a source took back
@@ -623,7 +623,7 @@ class _Grounding:
             return set(), retracted
         found = {f.id: f for f in self.lookup.extraction.facts(ids=ids)}
         return ({id for id in ids if id not in found},
-                retracted | {id for id, f in found.items() if f.status != "current"})
+                retracted | {id for id, f in found.items() if f.status == "retracted"})
 
     def stale(self, facts: Mapping[str, Fact]) -> dict[str, str]:
         """The line a read shows under each of `facts` whose document a person marked out of date, or flagged, by id,

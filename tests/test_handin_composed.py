@@ -270,26 +270,6 @@ def test_a_pass_that_stored_facts_beside_a_run_that_failed_exits_0(
 
 # -- a run that lands nothing leaves the article byte for byte, and is counted as a run that wrote nothing
 
-def test_a_writer_whose_run_lands_nothing_over_text_citing_only_an_earlier_save_takes_that_text_out(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    w = Workspace(tmp_path / "w", monkeypatch, {"agents/reports/weekly.md": WRITER})
-    w.run.how["reports/weekly"] = cited
-    assert w.cli("serve", "--once", "--plain").exit_code == 0
-    before, parts = w.article("reports/weekly"), w.stored("reports/weekly")
-    assert before is not None and "A note on yard, number 0." in before
-    w.revise()
-    w.run.how["reports/weekly"] = ""
-    told = w.cli("serve", "--once", "--plain")
-    lines = told.output.splitlines()
-    assert any(line.startswith("ran       reports/weekly: wrote nothing: ") for line in lines), lines
-    assert not any(line.startswith("wrote ") for line in lines), lines
-    assert lines[-1] == "Done: 1 ran and wrote nothing.", lines
-    # the fact it cites is an earlier save's now, which counts as withdrawn: its line goes
-    assert "A note on yard, number 0." not in (w.article("reports/weekly") or "") and parts
-    assert w.stored("reports/weekly") == []
-    assert any("so the article holds none of its text now" in line for line in lines), lines
-
-
 def test_a_run_that_lands_nothing_still_takes_out_a_line_whose_facts_were_all_retracted(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     w = Workspace(tmp_path / "w", monkeypatch, {"agents/reports/weekly.md": WRITER})
@@ -321,23 +301,6 @@ def test_a_run_that_lands_nothing_takes_out_a_part_left_with_only_its_heading_an
     assert "## Summary" not in (w.article("reports/weekly") or "")
     assert not any("so the article keeps what it held" in line for line in lines), lines
     assert any("so the article holds none of its text now" in line for line in lines), lines
-
-
-def test_a_composer_whose_run_lands_nothing_over_a_part_citing_only_an_earlier_save_drops_that_part(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    workspace = composed(tmp_path, monkeypatch)
-    said: list[str] = []
-    workspace.run.how["things/subagents/overview"] = lambda prompt: said.append(cited(prompt)) or said[-1]
-    assert workspace.cli("agents", "run", "things/article").exit_code == 0
-    before, parts = workspace.article("things/alpha"), workspace.stored("things/alpha")
-    workspace.revise()  # what it cites is an earlier save now, which counts as withdrawn
-    workspace.run.how["things/subagents/overview"] = ""
-    told = workspace.cli("agents", "run", "things/article")
-    lines = told.output.splitlines()
-    assert told.exit_code == 0 and lines[0].startswith("ran      things/article on things/alpha: wrote nothing: "), lines
-    assert before is not None and parts  # it wrote once, and its one line cites what was withdrawn since
-    assert "A note on yard, number 0." not in (workspace.article("things/alpha") or "")
-    assert any("its earlier text: took out" in line and "withdrawn since" in line for line in lines), lines
 
 
 # -- a curator's run that ends failed is a failure

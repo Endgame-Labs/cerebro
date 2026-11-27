@@ -217,13 +217,15 @@ In an agent file, `linked: this` finds what links to the article being written, 
 
 When an agent hands in its text, the decision model scores each sentence from 0 to 1 against the facts it cites. It reads meaning, not wording, so a fair summary, a translation or a quote in another style scores as well as a plain restatement. If any sentence scores under the floor, the agent gets those sentences back once, with each score and why, and hands in again. That text lands whole.
 
-Cerebro never cuts a sentence. One that still scores under the floor lands with a footnote, and the article defines it once:
+Cerebro does not cut a sentence for its score. One that still scores under the floor lands with a footnote, and the article defines it once:
 
 ```text
 Atlas moves to spring because the audit runs late [^fact_01m7p4qga4pxpjkgvf].[^unsupported]
 
 [^unsupported]: Not fully backed by the facts it cites.
 ```
+
+A line goes from an article only when every fact it cites was taken back, such as when its record was deleted.
 
 The floor is 0.6. Set `min_grounding` in an agent's front matter to change it for that agent, or in `settings.yaml` for every agent:
 
