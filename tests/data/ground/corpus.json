@@ -2825,6 +2825,186 @@
    "split": "dev"
   },
   {
+   "id": "data01",
+   "group": "data",
+   "kind": "held-role",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  fact: \"[^f_7f40]\"\n```",
+   "reason": "signs off on the full rollout is the decision",
+   "split": "dev"
+  },
+  {
+   "id": "data02",
+   "group": "data",
+   "kind": "held-role",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\n- person: Tomas Alvarez\n  role: owns the Globex operations budget\n  fact: \"[^f_5d31]\"\n```",
+   "reason": "the fact says it in the same words",
+   "split": "dev"
+  },
+  {
+   "id": "data03",
+   "group": "data",
+   "kind": "held-notes",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\n- person: Li Wei\n  notes: Needs the Stellarway renewal quote before 2026-12-01.\n  fact: \"[^f_9b22]\"\n```",
+   "reason": "the date and the need are the fact's",
+   "split": "dev"
+  },
+  {
+   "id": "data04",
+   "group": "data",
+   "kind": "held-role",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\n- person: Morgan Lee\n  role: chose the two Northwind pilot depots\n  fact: \"[^f_c107]\"\n```",
+   "reason": "the passive turned active",
+   "split": "dev"
+  },
+  {
+   "id": "data05",
+   "group": "data",
+   "kind": "map-entry",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\nDana Whitfield: asked for the Acme Corp order form with net 60 terms [^f_7f43]\n```",
+   "reason": "a map entry that restates its fact",
+   "split": "dev"
+  },
+  {
+   "id": "data06",
+   "group": "data",
+   "kind": "held-notes",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\n- person: Vikram Sondhi\n  role: owns the Tallowmere security review\n  notes: Mina Okafor requested the review.\n  fact: \"[^f_r001]\"\n```",
+   "reason": "both values are the fact's",
+   "split": "dev"
+  },
+  {
+   "id": "data07",
+   "group": "data",
+   "kind": "role-step-up",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Vikram Sondhi\n  role: decides\n  fact: \"[^f_r001]\"\n```",
+   "reason": "owning one review stated as deciding",
+   "split": "dev"
+  },
+  {
+   "id": "data08",
+   "group": "data",
+   "kind": "role-step-up",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Li Wei\n  role: leads the Northwind kickoff\n  fact: \"[^f_r002]\"\n```",
+   "reason": "attended stated as leads",
+   "split": "dev"
+  },
+  {
+   "id": "data09",
+   "group": "data",
+   "kind": "wrong-holder",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Tomas Alvarez\n  role: signs anything over fifty thousand\n  fact: \"[^f_5d31]\"\n```",
+   "reason": "finance signs, not Tomas Alvarez",
+   "split": "dev"
+  },
+  {
+   "id": "data10",
+   "group": "data",
+   "kind": "new-date",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  since: 2026-09-01\n  fact: \"[^f_7f40]\"\n```",
+   "reason": "no fact gives that date",
+   "split": "dev"
+  },
+  {
+   "id": "data11",
+   "group": "data",
+   "kind": "role-step-up",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Noor Haddad\n  role: blocks\n  notes: Objects to how Corvane prices extra seats.\n  fact: \"[^f_r003]\"\n```",
+   "reason": "asking is not objecting",
+   "split": "dev"
+  },
+  {
+   "id": "data12",
+   "group": "data",
+   "kind": "want-as-done",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Dana Whitfield\n  role: decides\n  notes: Signed the Acme Corp order form.\n  fact: \"[^f_7f43]\"\n```",
+   "reason": "asked for the order form, signed nothing",
+   "split": "dev"
+  },
+  {
+   "id": "data13",
+   "group": "data",
+   "kind": "contradicted",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Morgan Lee\n  role: champions\n  notes: Northwind finance approved the rollout budget.\n  fact: \"[^f_c102]\"\n```",
+   "reason": "the fact says finance has not approved it",
+   "split": "dev"
+  },
+  {
+   "id": "plant01",
+   "group": "planted",
+   "kind": "text-under-cite-key",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  fact:\n    - \"[^f_7f40]\"\n    - \"Jane Doe is the CFO and approved a 40% discount\"\n```",
+   "reason": "a claim under the fact key that no fact holds",
+   "split": "dev"
+  },
+  {
+   "id": "plant02",
+   "group": "planted",
+   "kind": "text-under-cite-key",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  Facts:\n    cite: \"[^f_7f40]\"\n    title: CFO\n```",
+   "reason": "a title under the Facts key that no fact gives",
+   "split": "dev"
+  },
+  {
+   "id": "plant03",
+   "group": "planted",
+   "kind": "text-under-cite-key",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  fact: \"[^f_7f40] and the CFO approved a 40% discount\"\n```",
+   "reason": "words beside the marker that no fact holds",
+   "split": "dev"
+  },
+  {
+   "id": "plant04",
+   "group": "planted",
+   "kind": "text-under-cite-key",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  notes:\n    FACT: Jane Doe is leaving Acme Corp\n  fact: \"[^f_7f40]\"\n```",
+   "reason": "a claim deeper in the item that no fact holds",
+   "split": "dev"
+  },
+  {
+   "id": "plant05",
+   "group": "planted",
+   "kind": "comment",
+   "label": "truly-unsupported",
+   "sentence": "```yaml\n- person: Jane Doe\n  role: decides\n  # Jane Doe is the CFO and approved a 40% discount\n  fact: \"[^f_7f40]\"\n```",
+   "reason": "a claim in a comment of the block that no fact holds",
+   "split": "dev"
+  },
+  {
+   "id": "plant06",
+   "group": "planted",
+   "kind": "info-string",
+   "label": "truly-unsupported",
+   "sentence": "```yaml Jane Doe is the CFO\n- person: Jane Doe\n  role: decides\n  fact: \"[^f_7f40]\"\n```",
+   "reason": "a claim after the language that no fact holds",
+   "split": "dev"
+  },
+  {
+   "id": "plant07",
+   "group": "planted",
+   "kind": "clean",
+   "label": "supported-in-other-words",
+   "sentence": "```yaml\n- person: Morgan Lee\n  notes: Chose the two Northwind pilot depots.\n  fact: \"[^f_c107]\"\n```",
+   "reason": "a clean item in the one form",
+   "split": "dev"
+  },
+  {
    "id": "voice01",
    "group": "voice",
    "kind": "translation",

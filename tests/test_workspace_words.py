@@ -406,11 +406,11 @@ def test_what_grounding_tells_its_judge_a_writer_a_reader_and_a_runs_log_says_no
     from cerebro.article import NOT_FOUND, UNSUPPORTED
     from cerebro.fakes import FakeDecider
 
-    editor = ground.Editor(ground.Judge(FakeDecider({"s1": 0, "s2": 2})), lambda ids: {}, heading="Where it stands")
+    editor = ground.Editor(ground.Judge(FakeDecider({"s2": 0, "s3": 2})), lambda ids: {}, heading="Where it stands")
     told = editor.review("Alder renews in March [^f_1]. Alder signs for ten years.")
     editor.marked("Alder renews in March [^f_1]. Alder signs for ten years.")
     lines = [ground.CONTRACT, ground.QUESTION, *ground.LEVELS, told, *editor.scores, UNSUPPORTED, NOT_FOUND,
-             ground.KEPT_UNDER, ground.KEPT_OVER, ground.counted({"marked": 2, "unscored": 1})]
+             ground.counted({"marked": 2, "unscored": 1})]
     words = re.compile(r"\b(brains?|pages?|sections?|accounts?|deals?|opportunit(?:y|ies)|contacts?|crm)\b",
                        re.IGNORECASE)
-    assert told and len(editor.scores) == 2 and not [line for line in lines if words.search(line)]
+    assert told and len(editor.scores) == 3 and not [line for line in lines if words.search(line)]

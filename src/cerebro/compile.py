@@ -96,7 +96,6 @@ __all__ = ["CompileError", "CompileRefused", "Compiled", "agent_surface", "birth
 ARTICLE_ID = re.compile(r"[\w.@-]+(?:/[\w.@-]+)+")  # a collection and a name, as notes/weekly
 MAX_VALUE = 4096  # bytes of one value `override` sets, as JSON: long text belongs in the article
 DRAFTS = "What your subagents returned"
-BEFORE_ANY = "(before the first heading)"  # how a line names text that stands before any heading
 BY_TOOL = "Facts you read through your tools"
 INBOX = "What people asked of you"
 
@@ -605,7 +604,7 @@ class _Grounding:
                  decider: Decider | None, decision: ModelSpec | None, zone: tzinfo, floor: float):
         self.article, self.lookup, self.root, self.ledger = article, lookup, root, ledger
         self.clock, self.decider, self.decision, self.zone, self.floor = clock, decider, decision, zone, floor
-        self.known: dict[str, list[Verdict]] = {}
+        self.known: dict[tuple[str, str], list[Verdict]] = {}
 
     def linked(self) -> list[Fact]:
         """The current facts linked to the article, as `read` gives them."""
@@ -1423,7 +1422,7 @@ class _Composing:
                                                                                                    run.ended_at)
         held[n] = {"text": text, "digest": self.stamps[n] if run.status != "budget spent" else "", "run": run.id,
                    "started": written[0], "at": written[1], "landed": False,
-                   **({"kept": True} if n in self.kept_parts else {})}
+                   **({"kept": True} if n in self.kept_parts else {"scores": editor.kept(text)} if text else {})}
 
     def run_own(self) -> Compiled | None:
         """Run the agent itself on what its subagents returned, when it has instructions of its own and what it reads
@@ -1441,8 +1440,8 @@ class _Composing:
             own_wait = _backs_off(store, composer, article, own_now, self.now)
         if own_wait:  # its own run failed on what the subagents returned again: the article's run waits as a whole
             return Compiled(None, self.current, skipped=True, waiting=own_wait, runs=compiled.runs)
-        for held in self.held:  # a part handed in as a subagent returned it keeps the scores it was given
-            self.editor.seed(held.get("text", ""))
+        for sub, held in zip(subs, self.held):  # a part handed in as a subagent returned it keeps its scores
+            self.editor.seed(held.get("text", ""), held.get("scores") or [], sub.output[0])
         if own_due:
             try:
                 own = c.run(replace(composer, target=article, prompt=prompts.fill("composer", c.root, drafts=DRAFTS)

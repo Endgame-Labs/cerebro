@@ -44,7 +44,7 @@ def lay_out_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     extraction = FakeExtraction()
     monkeypatch.setattr(cli, "open_workspace", lambda root: Cerebro(root, agent_run=Uncited(), extraction=extraction,
                                                                 clock=lambda: datetime(2026, 11, 18, 9, tzinfo=UTC),
-                                                                decider=FakeDecider({"s1": 0})))
+                                                                decider=FakeDecider({"s2": 0})))
     root = tmp_path / "team"
     assert CliRunner().invoke(cli.main, ["init", str(root), "--daily-usd", "1"]).exit_code == 0
     (root / "local" / "kickoff.md").write_text(NOTE)

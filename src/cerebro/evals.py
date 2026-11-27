@@ -544,7 +544,7 @@ def _ground_case(suite: Suite, case: Case, ctx: _Run) -> Scored:
         return {id: fields_of(id, None, suite.facts[id], stale=suite.stale.get(id, "")) or {"text": ""}
                 for id in ids if id in suite.facts}
 
-    verdicts = Editor(Judge(recording, GROUND_ARTICLE, suite.context, suite.today), found, heading="Case").judged(
+    verdicts = Editor(Judge(recording, GROUND_ARTICLE, suite.context, suite.today), found).judged(
         case.sentence)
     usd = ctx.spend.add(recording) if ctx.spend is not None and recording is not None else 0.0
     calls = recording.calls if recording is not None else 0

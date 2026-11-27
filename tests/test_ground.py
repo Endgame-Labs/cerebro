@@ -46,18 +46,41 @@ TEXT = """Alder renews in March [^f_1]. Alder signs for ten years [^f_1].
 
 > Ines Calder: "Renovamos en marzo." [^f_1]
 
+<!-- Alder signs for ten years [^f_1]. -->
+
+| Term | ten years [^f_1] |
+
+Write `[^unsupported]` as code. Run `make ten years. Then ship` now [^f_1].
+
+## Signed for ten years [^f_1]
+
 ```yaml
 term: ten years
 ```
 """
+MARKED = TEXT.replace("ten years [^f_1].", "ten years [^f_1].[^unsupported]").replace(
+    "now [^f_1].", "now [^f_1].[^unsupported]").replace(
+    "ten years [^f_1] |", "ten years [^f_1][^unsupported] |").replace(
+    "## Signed for ten years [^f_1]", "## Signed for ten years [^f_1][^unsupported]").replace(
+    "ten years\n```\n", "ten years\n```\n[^unsupported]\n")
 
 
-def test_each_sentence_under_the_floor_lands_whole_with_one_mark_after_it_and_nothing_else_moves() -> None:
-    decider = FakeDecider({"s2": 0, "s3": 4})  # the second sentence and the second row made up, the rest backed
-    marked = editor(decider).marked(TEXT)
-    assert marked == TEXT.replace("ten years [^f_1].", "ten years [^f_1].[^unsupported]").replace(
-        "ten years [^f_1] |", "ten years [^f_1][^unsupported] |")
-    assert editor(FakeDecider()).marked(marked) == TEXT  # a mark a later score does not call for comes off
+class Weak(FakeDecider):
+    """Scores made up each sentence that holds `words`, and backs the rest."""
+
+    def __init__(self, words: str):
+        super().__init__()
+        self.words = words
+
+    def decide(self, state: Any, questions: dict[str, Question]) -> Decision:
+        self.answers = {s["id"]: 0 for s in state["passage"] if self.words in s["sentence"]}
+        return super().decide(state, questions)
+
+
+def test_each_line_a_reader_sees_under_the_floor_lands_whole_with_one_mark_after_it_and_nothing_else_moves() -> None:
+    assert editor(Weak("ten years")).marked(TEXT) == MARKED  # a heading, a row, a comment and a fence among them
+    copied = MARKED + "[^unsupported]: Not fully backed by the facts it cites.\n"
+    assert editor(FakeDecider()).marked(copied) == TEXT  # a mark a later score does not call for comes off
 
 
 def test_the_judge_reads_one_passage_a_request_each_cited_fact_once_and_an_id_read_nowhere_as_not_found() -> None:
@@ -80,16 +103,20 @@ def test_the_first_hand_in_hears_of_each_sentence_under_the_floor_and_one_with_n
     assert editor(FakeDecider()).review("Alder renews in March [^f_1].") == ""
 
 
-def test_a_passage_scored_once_or_handed_back_with_its_marks_is_not_asked_about_again() -> None:
-    decider, known = FakeDecider({"s2": 0}), {}
+def test_a_passage_scored_once_or_seeded_with_its_scores_is_not_asked_again_and_each_reader_marks_by_its_floor(
+        ) -> None:
+    decider, known = FakeDecider({"s2": 2}), {}  # the second sentence 0.5, a reframe
     text = "Alder renews in March [^f_1]. Alder signs for ten years [^f_1]."
-    landed = editor(decider, known=known).marked(text)
-    again = editor(decider, known=known)
-    assert again.marked(f"## Renewal\n\n{text}") == f"## Renewal\n\n{landed}" and len(decider.asked) == 1
-    later = editor(decider)  # a later compile, handed the text as it landed
-    later.seed(landed)
-    assert later.marked(text) == landed and len(decider.asked) == 1
-    assert later.scores[1].startswith('(before the first heading): kept "Alder signs')
+    first = editor(decider, known=known)
+    landed = first.marked(text)
+    assert landed == text.replace("years [^f_1].", "years [^f_1].[^unsupported]")
+    assert editor(decider, known=known, floor=0.3).marked(text) == text and len(decider.asked) == 1  # its own floor
+    editor(decider, known=known).marked(f"## Renewal\n\n{text}")
+    assert len(decider.asked) == 2  # under another heading, it is another passage
+    later = editor(decider)  # a later compile, handed the text as it landed, with its scores
+    later.seed(landed, first.kept(landed), "")
+    assert later.marked(text) == landed and len(decider.asked) == 2
+    assert later.review(text).count("0.50, a reframe") == 1
 
 
 class Spent(FakeDecider):
@@ -102,8 +129,8 @@ def test_with_no_decision_model_or_past_the_cap_a_sentence_is_unscored_and_lands
     text = "Alder signs for ten years [^f_1].\n\n## Next\n\nAlder renews in March [^f_1]."
     assert quiet.marked(text) == spent.marked(text) == text
     assert quiet.scores == [] and quiet.tally == {}
-    assert [line.split('"')[0] for line in spent.scores] == ["(before the first heading): unscored ", "Next: unscored "]
-    assert spent.scores[0].endswith("compilation spent its cap") and spent.tally["unscored"] == 2
+    assert [line.split('"')[0] for line in spent.scores] == ["(before the first heading): unscored ", *["Next: unscored "] * 2]
+    assert spent.scores[0].endswith("compilation spent its cap") and spent.tally["unscored"] == 3
 
 
 class Bounded(FakeDecider):
