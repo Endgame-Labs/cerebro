@@ -1,7 +1,6 @@
-"""Who is asking. Every operation, field write, proposal, and first-party record carries a caller.
-
-A caller is a person, a context agent, an app, or a source. A person is anyone who sends a command: at the command line,
-or over MCP or the JSON API with a live token. Locally the person is you.
+"""Who is asking. Every operation, field write, proposal, and first-party record carries who asked: a person, a context
+agent, an app, or a source. A person is anyone who sends a command at the command line, over local MCP, or over the
+network with a live token, and is what AGENTS.md calls a caller. Locally the person is you.
 """
 
 from __future__ import annotations
