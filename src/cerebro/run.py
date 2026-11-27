@@ -1483,10 +1483,12 @@ class PydanticRun(AgentRun):
         if result.status == STOPPED and asked.asking > 0:  # no count came back: what it read is held as spent
             result.usage.requests += asked.asking
             result.usage.input_tokens += room.held
+        if result.status == "failed" and OUTPUT_RETRIES in result.note:  # the library's words, in plain ones
+            result.note = MALFORMED
         if result.status not in ("done", WROTE_NOTHING, "budget spent") and takes.held is not None:
-            if result.status in ("failed", "refused"):  # why it failed stays, in plain words for retries spent
-                why = MALFORMED if OUTPUT_RETRIES in result.note else result.note
-                result.note = f"{FAILED_AFTER} ({f'{REFUSED_CALL}: ' if result.status == 'refused' else ''}{why})"
+            if result.status in ("failed", "refused"):  # why it failed stays
+                why = f"{REFUSED_CALL}: {result.note}" if result.status == "refused" else result.note
+                result.note = f"{FAILED_AFTER} ({why})"
             result.note += takes.kept(result)  # a hand-in is never lost, however the run ends after it
             result.status = "done"
         result.transcript = _entries(kept)

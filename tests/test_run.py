@@ -195,6 +195,7 @@ def test_a_reply_in_text_and_a_broken_hand_in_are_each_asked_again_before_and_af
     assert mended.result is not None and mended.result.text == "Cited [^f_1]."
     assert early.status == "done" and early.result is not None and early.result.text == "Cited [^f_1]."
     assert again.status == "failed" and again.result is None  # a broken hand-in is asked again once, as text is
+    assert again.note == "its hand-in was malformed, also after the turn that asked for it again"  # in plain words
 
 
 def test_a_held_hand_in_that_lands_after_the_run_failed_says_in_plain_words_that_it_failed_and_why() -> None:
