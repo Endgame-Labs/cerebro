@@ -1966,6 +1966,8 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         return "fresh"
     if compiled.article is not None:
         _echo(f"wrote    {article}  articles/{article}.md")
+        for line in compiled.notes:  # its notes, as agents run says them
+            _echo(f"warning  {article}: {line}")
         if did := counted(compiled.grounding):
             _echo(f"grounding {article}: {did}")
         if compiled.cleaned:  # each line of it kept on its run's line, as a pass keeps it
