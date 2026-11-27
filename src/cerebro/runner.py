@@ -104,6 +104,7 @@ from .curate import (
     yes_left,
 )
 from .errors import CerebroError
+from .evidence import IN_FIRST_BUILD, RECENT_DAYS, recent_since
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
 from .ground import LINES as GROUND_LINES
 from .ground import TALLY, counted
@@ -175,6 +176,7 @@ class PassResult:
 
     listed: dict[str, int] = field(default_factory=dict)
     from_start: set[str] = field(default_factory=set)  # each source listed with no cursor kept: its whole window
+    older: set[str] = field(default_factory=set)  # each source/id a first run's build held as older than its cut
     read: int = 0
     extracted: int = 0
     retracted: int = 0
@@ -1299,6 +1301,7 @@ def _settle_curated(workspace: Cerebro, agent: Agent, curated: Any, why: str, re
 
 TAKE, HOLD, DROP, NOTHING, REFUSE = "take", "hold", "drop", "nothing", "refuse"
 FIRST_HOLD = "the first run holds it until its list is decided"  # why a record is held while the first run is undecided
+OLDER_HOLD = f"the first run's build reads the last {RECENT_DAYS} days: a later pass reads it"
 
 
 @dataclass(frozen=True)
@@ -1335,7 +1338,8 @@ def ahead_of(workspace: Cerebro) -> Ahead:
 def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None) -> Decision:
     """What a pass does with one record, changing nothing. Anything but a record is the id of one the last pass left to try again: dropped
     when its source says it is gone, else got and read. A record listed, or held before, is held while the first run
-    holds it or while it is out of scope, lands only its fields when its source reads it for that or for nothing, and
+    holds it, while it is out of scope, or while a first run's build runs when it is dated before the last
+    `RECENT_DAYS` days, lands only its fields when its source reads it for that or for nothing, and
     is got and read otherwise. With no `ahead` the record is one the pass got whole: its source reads it for nothing,
     the extraction cap refuses it, or it is read into facts."""
     if not isinstance(record, Record):
@@ -1353,6 +1357,8 @@ def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None)
     if not in_scope(workspace.store, record, curated=ahead.curated):
         return Decision(HOLD, "it binds only articles out of the working set" if reached(workspace.store, record) else
                         f"no article binds it, so it waits for the curator of {record.into}")
+    if IN_FIRST_BUILD.get() and record.at and record.at[:10] < recent_since(workspace.clock()):
+        return Decision(HOLD, OLDER_HOLD)
     if record.extract in ("records", "none"):
         return Decision(NOTHING, f"its source extracts it into {record.extract}")
     return Decision(TAKE)
@@ -1504,6 +1510,8 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
             decision = decide(workspace, record, ahead)
             if decision.act == HOLD:
                 held[record.id] = replace(record, body=None)
+                if decision.why == OLDER_HOLD:
+                    result.older.add(f"{name}/{record.id}")
                 continue
             held.pop(record.id, None)
             if waits_for_own(workspace.store, record, ahead.curated):  # read, and held for its own collection's curator

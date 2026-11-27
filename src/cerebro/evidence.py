@@ -200,7 +200,7 @@ def gather(agent: Agent, lookup: Lookup, functions: dict[str, Callable[..., Any]
 
 
 RECENT_DAYS = 14  # while the workspace's first run is open, a held list lists the records of these last days
-IN_FIRST_BUILD: ContextVar[bool] = ContextVar("in_first_build", default=False)  # while a first run's build runs curators
+IN_FIRST_BUILD: ContextVar[bool] = ContextVar("in_first_build", default=False)  # while a first run's build runs
 
 
 def recent_since(now: datetime) -> str:

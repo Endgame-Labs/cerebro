@@ -30,6 +30,7 @@ from . import keys as key_lobby
 from . import mcp_clients, scaffold
 from .agent import FRONT, read_yaml
 from .errors import CerebroError
+from .evidence import RECENT_DAYS
 from .models import JOBS, PRICES, PROVIDERS, ModelSettingsError, ModelSpec, _is_rune, read_model, read_models
 from .project import _identity_list
 from .shown import shown
@@ -522,9 +523,10 @@ def manual_lines(app: str, steps: Sequence[tuple[str, str]], printer: Printer | 
     return lines
 
 
-READY = ("This step proposes the initial set of articles for you to approve, reads your sources for them, and asks "
-         "once more about what those records name. Then it writes what you approve, each article once, and the rest "
-         "waits for you. The full run can take an hour or more on a busy workspace.")
+READY = (f"This step proposes the initial set of articles for you to approve, reads the last {RECENT_DAYS} days of "
+         "your sources for them, and asks once more about what those records name. Then it writes what you approve, "
+         "first from recent facts, then kept current: cerebro serve reads the older records over the next hours. The "
+         "rest waits for you. It can take half an hour on a busy workspace.")
 
 
 # -- the walk

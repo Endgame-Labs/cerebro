@@ -23,8 +23,10 @@ library call (`Cerebro.run_once`) never begins one: `serve --once` and the loop 
   choices. `LocalApproval` reads with the `query` operation and decides with `decide`, as the caller deciding. A ticked left-out candidate is filed as an admit and accepted in the same
   write; one left alone stays evidence. A decision is a new row of the `proposals` log.
 - **Build.** Once anything is approved, or nothing waits, each curator makes the accepted rows of its collection, then
-  a pass with no curator reads the sources for the articles and compiles them. A curator still in its own first run after that, as one that reads facts and found
-  none before they existed, runs once more in proposal mode: its list is late, and waits alone.
+  a pass with no curator reads the records of the same last `RECENT_DAYS` days for the articles and compiles each
+  once. The older records stay held: a later pass, under `serve`, reads them and rebuilds what they change. A curator
+  still in its own first run after that, as one that reads facts and found none before they existed, runs once more
+  in proposal mode: its list is late, and waits alone.
 - **The cap.** Discovery spends at most `budget.first_run_usd`, $10 when the key is left out, counted from the ledger
   by the curators' run ids, and every model call of discovery is metered against it: once it is reached the runs under
   way stop at their next call. A run's spend lands whole when it ends, so the cap is checked before each curator
@@ -1262,6 +1264,10 @@ def _run(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | None, sa
     if out.late is not None:
         _decide_late(workspace, out, out.late, out.result, choose, say)
         rest += [row.id for row in out.late.rows() if not row.left_out and row.id not in rest]  # it waits too
+    if older := len(out.result.older):
+        out.result.notices.append(f"The wiki starts from the last {RECENT_DAYS} days. cerebro serve reads "
+                                  f"{_n(older, 'older record')} over the next hours and rewrites the articles "
+                                  f"{'it changes' if older == 1 else 'they change'}.")
     out.lines += held_lines(workspace)
     out.after = rest_lines(workspace, rest)
     return out
@@ -1312,8 +1318,10 @@ def _build(workspace: Cerebro, say: Callable[[str], None] | None, then: Callable
 def build(workspace: Cerebro, *, say: Callable[[str], None] | None = None, only: list[str] | None = None) -> PassResult:
     """Build what the person approved, once nothing of the list waits: each curator makes the rows of its collection
     that were accepted, in as many runs as it takes while each carries out more, then a pass reads the sources for
-    the articles and compiles them, with no curator. With `only`, the ids of the proposals a late list accepted, the
-    pass compiles only the articles those made, so no article of the first build is built twice."""
+    the articles and compiles them, with no curator. The curators and the pass read the records of the last
+    `RECENT_DAYS` days, as discovery did, and a later pass the older ones. With `only`, the ids of the proposals a
+    late list accepted, the pass compiles only the articles those made, so no article of the first build is built
+    twice."""
     _done(workspace)
     told = None if say is None else (lambda line: say(workspace.mask_every()(line)))
     made = PassResult(say=told, on=_heard(workspace))
@@ -1324,11 +1332,11 @@ def build(workspace: Cerebro, *, say: Callable[[str], None] | None = None, only:
             run_curators(workspace, due, made)
             now = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in due}
             left = {id: n for id, n in now.items() if n < left[id]}  # a curator that carried out nothing more stops
+        made_by = None if only is None else {str(p.applied["article"]) for p in proposals(workspace.store, "accepted")
+                                             if p.id in only and p.applied.get("article")}
+        result = run_pass(workspace, say=told, curators=False, on=_heard(workspace), articles=made_by)
     finally:
         IN_FIRST_BUILD.reset(building)
-    made_by = None if only is None else {str(p.applied["article"]) for p in proposals(workspace.store, "accepted")
-                                         if p.id in only and p.applied.get("article")}
-    result = run_pass(workspace, say=told, curators=False, on=_heard(workspace), articles=made_by)
     _merge(made, result)
     return _masked(workspace, made)
 
@@ -1352,6 +1360,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     for name, count in more.listed.items():
         into.listed[name] = into.listed.get(name, 0) + count
     into.from_start |= more.from_start
+    into.older |= more.older
     into.read += more.read
     into.extracted += more.extracted
     into.retracted += more.retracted
