@@ -1013,7 +1013,7 @@ class FactoidExtraction(Extraction):
         from factoid import Factoid, Settings
 
         self.root = Path(root)
-        self.speakers = speakers
+        self.speakers, self.gateway = speakers, gateway
         self.classes = list(kinds) if kinds is not None else load_kinds(self.root)
         self._kinds = [kind_name(k) for k in self.classes] or ["fact"]
         self.data = self.root / STATE
@@ -1108,9 +1108,12 @@ class FactoidExtraction(Extraction):
             said = f"record {record.id} of {record.source}: factoid failed: {error}"
             if _factoids_own(error):
                 # Factoid's error carries its status only in its words, ahead of the reply's: `<model>: HTTP <status>:`
-                refused = re.match(r"\S+: HTTP 40[13]:", str(error)) is not None
-                return (f"{said}: check the extraction model{' and its key' if refused else ''}; the record is tried "
-                        "again next pass")
+                refused = re.match(r"([^/\s]+)/\S+: HTTP 40[13]:", str(error))
+                if refused and self.gateway is not None and self.gateway.route(refused[1]).base_url:
+                    advice = "check providers in settings.yaml"  # a gateway is sent no provider's key
+                else:
+                    advice = f"check the extraction model{' and its key' if refused else ''}"
+                return f"{said}: {advice}; the record is tried again next pass"
             return said
 
         with _active(self.app) as app:

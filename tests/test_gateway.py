@@ -135,6 +135,10 @@ ROADS: dict[str, tuple[Callable[[Cerebro], Any], str, str]] = {
                   "/inference/v1/chat/completions"),
 }
 
+# What a road whose key the gateway refused says last: no provider's key was sent, so it points at the gateway's settings
+KEY_REFUSED = {"decision": ": check providers in settings.yaml",
+               "facts layer": ": check providers in settings.yaml; the record is tried again next pass"}
+
 
 def test_every_road_goes_to_base_url_on_its_own_path_with_the_merged_headers_and_no_key(
         tmp_path: Path, gateway: Gateway, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -165,12 +169,13 @@ def test_every_road_goes_to_base_url_on_its_own_path_with_the_merged_headers_and
 
 
 @pytest.mark.parametrize(("road", "status"), [("decision", 401), ("agent run", 402), ("facts layer", 402),
-                                              ("key proof", 403)])
+                                              ("facts layer", 403), ("key proof", 403)])
 def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_and_stops_every_call_after_it(
         tmp_path: Path, gateway: Gateway, road: str, status: int) -> None:
     """Breaks caught: a road that tries a refused call again, or goes on making calls after the refusal, a status of
     `STOP` that does not stop the pass, what a road says of the refusal holding the secret header's value that the
-    reply echoes, and a decision's refused key that does not send the person to the gateway's settings."""
+    reply echoes, and a decision's or a record's refused key that does not send the person to the gateway's
+    settings."""
     call, _, path = ROADS[road]
     gateway.status = status
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
@@ -180,7 +185,7 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
             said = workspace.mask_every()(str(error)) if road == "facts layer" else str(error)  # as a pass prints it
         assert len(gateway.sent) == 1 and gateway.sent[0][0] == HOST + path and gateway.sent[0][1]["x-example-key"]
         assert str(status) in said and VALUE[:8] not in said and VALUE[-8:] not in said, said
-        assert road != "decision" or said.endswith(f"answered HTTP {status}: check providers in settings.yaml"), said
+        assert status == 402 or road not in KEY_REFUSED or said.endswith(KEY_REFUSED[road]), said
         assert workspace.gateway.said.startswith(f"Model calls stopped: {HOST} refused a ")
         assert f"HTTP {status} at 09:00 UTC" in workspace.gateway.said
         with pytest.raises(CallRefused):
