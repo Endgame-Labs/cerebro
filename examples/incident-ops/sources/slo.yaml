@@ -1,0 +1,3 @@
+# Hourly error-budget burn and p99 latency metrics per service.
+kind: database
+url: sqlite:data/slo.sqlite

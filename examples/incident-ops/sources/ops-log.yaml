@@ -1,0 +1,16 @@
+# Structured deployment and alert-firing logs, one record per JSONL row.
+kind: files
+window: { behind: 90d }
+select:
+  - glob: "logs/deployments-and-alerts.jsonl"
+    rows: jsonl
+    id: "{row.event_id}"
+    at: "{row.at}"
+    into: services
+    identity: { service_slug: "{row.service_slug}" }
+    fields:
+      service_name: "{row.service_name}"
+      event_type: "{row.event_type}"
+      release_sha: "{row.release_sha}"
+      severity: "{row.severity}"
+      alert_name: "{row.alert_name}"
