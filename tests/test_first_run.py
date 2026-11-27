@@ -76,6 +76,7 @@ class Script(AgentRun):
         self.spend = spend
         self.store: Any = None  # the workspace's, once open: each curator's run carries out the yeses there
         self.ran: list[str] = []
+        self.shown: dict[str, list[str]] = {}  # the keys of the items each agent was last shown
         self.replied = threading.Event()
         self.started = threading.Event()  # another curator's run of the round is under way
 
@@ -95,6 +96,7 @@ class Script(AgentRun):
                 return Run(id=f"run_{uuid.uuid4().hex[:8]}", agent=agent.id, target=agent.target, status="cut",
                            note=str(error))
         self.ran.append(agent.id)
+        self.shown[agent.id] = [item.key for entry in evidence for item in entry.items]
         calls: list[tuple[str, dict[str, Any]]] = []
         if agent.id == "topics/curator":
             if any("fact_" in line for entry in evidence for line in entry.lines):
@@ -561,19 +563,25 @@ def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: P
         assert runs.count("things/alder-works") == 1  # built once: its new record waits for a later pass
 
 
-def test_the_build_reads_the_first_runs_14_days_however_late_its_list_is_decided_and_serve_reads_the_older_records(
+def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_however_late_and_serve_reads_the_rest(
         tmp_path: Path) -> None:
     on_the_cut = account("001E", "Birch Yard", "birch.example", at="2026-11-04T09:00:00Z")  # 14 days before NOW
     older = account("001O", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z")
+    ticked = account("001D", "Cedar Mill", "cedar.example", at="2026-09-01T09:00:00Z")  # older, and a person ticks it
+    fields = replace(account("001R", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z"), extract="records")
     script, extraction, clock = Script({"things/curator": list(ADMITS)}), FakeExtraction(), [NOW]
     with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=extraction, clock=lambda: clock[0],
-                 connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older])]) as workspace:
+                 connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older, ticked, fields])]) as workspace:
         script.store = workspace.store
         assert run(workspace, choose=None).waits  # off a terminal, the list waits
         clock[0] = NOW + timedelta(days=8)  # a person decides it a week later
-        workspace.decide(YOU, accept=[p.id for p in proposals(workspace.store, "waiting")])
+        pile = LocalApproval(workspace).pile()
+        LocalApproval(workspace).apply(Choices([[row.id] for row in pile.rows() if row.record and row.record["id"] in
+                                                {"001A", "001B", "001D"}]))
         out = run(workspace, choose=None)  # the pass that builds
-        assert {f.record for f in extraction.facts()} == {"001A", "001B", "001E"}
+        assert {f.record for f in extraction.facts()} == {"001A", "001B", "001D", "001E"}
+        held = {key.split(":")[2] for key in script.shown["things/curator"] if key.startswith("held:")}
+        assert held == {"001A", "001B", "001C", "001E"}  # what its curator is shown: the same 14 days
         assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 1 older record "
                                           "over the next hours and rewrites the articles it changes.")
         clock[0] += timedelta(hours=5)
