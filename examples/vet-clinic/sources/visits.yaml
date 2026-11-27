@@ -1,0 +1,7 @@
+# Visit notes, one file a visit. Each opens with Patient:, Owner:, Clinician: and Date: lines, and the Patient: line
+# ties the note's facts to that patient's article.
+kind: files
+window: { behind: all }
+select:
+  - glob: "visits/**/*.md"
+    extract: facts

@@ -1,0 +1,6 @@
+# Phone calls from owners, pharmacies and anyone else, written up by whoever took them, one file a call.
+kind: files
+window: { behind: all }
+select:
+  - glob: "calls/**/*.md"
+    extract: facts

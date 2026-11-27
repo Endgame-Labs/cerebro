@@ -1,0 +1,6 @@
+# Internal memos: hours, equipment, staffing. They are about the clinic, not a patient.
+kind: files
+window: { behind: all }
+select:
+  - glob: "memos/**/*.md"
+    extract: facts

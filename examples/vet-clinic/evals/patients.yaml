@@ -1,0 +1,22 @@
+# Questions the next clinician would ask the wiki. Run after a pass with: cerebro eval evals/patients.yaml
+context: A small animal clinic's wiki of patient articles, read by the vet about to see the patient.
+questions:
+  - id: insulin-dose
+    ask: What insulin dose is Biscuit Alvarez on now?
+    find: Biscuit Alvarez
+    expect:
+      article: patients/biscuit-alvarez
+      holds: ["7 units"]
+      judge: The answer says Vetsulin 7 units every 12 hours, and that the 12 units in the first note was an error.
+  - id: allergy
+    ask: Can I give Juniper Hale Clavamox?
+    find: Juniper Hale
+    expect:
+      article: patients/juniper-hale
+      judge: The answer says no, because she had hives and facial swelling after amoxicillin clavulanate in 2025.
+  - id: surgery-decision
+    ask: Is Pepper Nakamura having his spleen removed?
+    find: Pepper Nakamura
+    expect:
+      article: patients/pepper-nakamura
+      judge: The answer says the splenectomy was cancelled and the owners chose palliative care, with an oncology consult booked for 4 December.
