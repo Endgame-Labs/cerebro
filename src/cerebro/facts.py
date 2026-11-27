@@ -51,7 +51,7 @@ import httpx
 from .clock import stamp, system_clock
 from .connector import Record
 from .errors import CerebroError
-from .models import DEFAULTS, PROVIDERS, ModelSpec
+from .models import DEFAULTS, PROVIDERS, ModelSpec, advice_for
 from .private import make_folder, owner_only, write_file
 from .search import Hit
 
@@ -1108,12 +1108,12 @@ class FactoidExtraction(Extraction):
             said = f"record {record.id} of {record.source}: factoid failed: {error}"
             if _factoids_own(error):
                 # Factoid's error carries its status only in its words, ahead of the reply's: `<model>: HTTP <status>:`
-                refused = re.match(r"([^/\s]+)/\S+: HTTP 40[13]:", str(error))
-                if refused and self.gateway is not None and self.gateway.route(refused[1]).base_url:
-                    advice = "check providers in settings.yaml"  # a gateway is sent no provider's key
-                else:
-                    advice = f"check the extraction model{' and its key' if refused else ''}"
-                return f"{said}: {advice}; the record is tried again next pass"
+                http = re.match(r"([^/\s]+)/\S+: HTTP (\d{3}):", str(error))
+                if http is None:
+                    return f"{said}: check the extraction model; the record is tried again next pass"
+                via = self.gateway is not None and self.gateway.route(http[1]).base_url
+                said += f": {advice_for(int(http[2]), None if via else 'the extraction model and its key')}"
+                return f"{said}; the record is tried again next pass"
             return said
 
         with _active(self.app) as app:
