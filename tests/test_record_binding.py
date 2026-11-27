@@ -152,6 +152,20 @@ def test_a_fact_tied_by_its_records_own_name_comes_off_an_article_once_a_key_tel
     assert workspace.store.facts_of("things/ann-lee") == []
 
 
+def test_a_fact_named_as_its_record_is_by_a_field_ties_to_no_article_it_is_told_apart_from_when_linked_again(
+        tmp_path: Path) -> None:
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    other = Record(id="2", source="src", revision="1", at="2026-11-10", body="Unit 7 moved to the north bay.",
+                   keys={"email": ["desk@birch.example"]}, fields={"subject": "Unit 7"})  # its name is no key
+    workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=["Unit 7"]),
+                        connectors=[FakeConnector("src", [other])])
+    workspace.store.create(Identity("things/unit-7", "things", "Unit 7", {"email": ["desk@alder.example"]}, "active"))
+    workspace.run_once(agents=False)
+    workspace.store.create(Identity("things/bay", "things", "Bay", {}, "active"))  # every fact is linked again
+    workspace.run_once(agents=False)
+    assert workspace.store.facts_of("things/unit-7") == []
+
+
 def test_a_record_is_held_for_its_own_collection_while_another_collections_article_holds_a_key_it_carries() -> None:
     store = MemoryStore()
     record = _part("4", "ann@alder.example")
