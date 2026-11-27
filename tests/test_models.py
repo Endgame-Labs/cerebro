@@ -209,7 +209,8 @@ def test_a_reply_that_does_not_fit_its_questions_is_refused(break_it: Any) -> No
 
 
 @pytest.mark.parametrize(("refusal", "said", "busy"), [(401, "check the fireworks key", 500),
-                                                       (402, "payment is due at the provider", 429),
+                                                       (402, "payment is due at the provider", 503),
+                                                       (403, "check the fireworks key", 429),
                                                        (404, "check the model id and the request", 408)])
 def test_a_rate_limit_is_tried_again_and_a_refusal_is_not(refusal: int, said: str, busy: int) -> None:
     net = Network(429, 503)

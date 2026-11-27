@@ -118,7 +118,8 @@ def test_a_sql_rows_ids_follow_its_query_and_never_its_spacing_outside_quotes(ro
             return Rows(["n"], [[1]])
 
     postgres = DatabaseConnector(read_source(root / "sources" / "warehouse.yaml"), root, engine=Echo(lambda: "", "pg"))
-    for source, alike in [(warehouse(root), ["select 1 as [it's], 'x  y' as v", "select 1 as [it's], 'x y' as v"]),
+    for source, alike in [(warehouse(root), ["select 1 as [it's], 'x  y' as v", "select 1 as [it's], 'x y' as v",
+                                             "select 1 as\u00a0n", "select 1 as n"]),  # a space past ASCII names
                           (postgres, ["select $$one  two$$ as name", "select $$one two$$ as name"])]:
         lines = "".join(f'  - sql: {{ source: warehouse, query: "{q}" }}\n' for q in [PIPELINE, *alike])
         entries = gather(agent(root, f"evidence:\n{lines}"), Lookup(), {}, root=root, sources={"warehouse": source})
