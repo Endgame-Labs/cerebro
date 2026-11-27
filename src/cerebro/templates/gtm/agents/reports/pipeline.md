@@ -53,9 +53,9 @@ slipped: the deals of the quarter that ended are closed or past due.
 At risk: each open deal still due this quarter that a fact puts at risk, such
 as a blocker, an objection nobody answered, a competitor, a decision maker
 gone quiet, or a close date the facts no longer support. For those facts, call
-query with { from: facts, articles: <the deal's id> }, and again with its
-account's id, the one in its linked list that starts with accounts/. Never call a deal at risk from its stage, its amount
-or silence alone.
+query with source facts and filters { articles: <the deal's id> }, and again
+with its account's id, the one in its linked list that starts with accounts/.
+Never call a deal at risk from its stage, its amount or silence alone.
 
 Needs attention this week: the three open deals where a step taken this week
 matters most to how they end, the sooner close first when two weigh the same.
@@ -71,8 +71,8 @@ as [Halcyon Platform Expansion](../opportunities/halcyon-mills-platform-expansio
 Copy each value as the deal's front matter holds it, and leave the cell empty
 for a null. Put the deal's currency after its amount when the deal names one.
 The owner is You when the front matter says me, a link to their article for a
-people/ path, and the name otherwise. A deal can sit in two parts, with a row
-in each.
+people/ path, such as [Jane Doe](../people/jane-doe.md), and the name
+otherwise. A deal can sit in two parts, with a row in each.
 
 The row cites the deal by its link and carries no footnote. A deal's own values
 decide its part: nothing open goes under Closed, and no close date still ahead

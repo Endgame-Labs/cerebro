@@ -159,7 +159,7 @@ def test_a_whole_article_file_with_random_footnote_sources_and_quotes_has_nothin
     landing = Store.landed.__get__(type("S", (), {"scrubbing": lambda self: mask})())
     for _ in range(30):
         cited = [Citation("record", f"f_{n}", piece(), piece()) for n in range(3)]
-        part, _ = landing(Compilation("t/a", "Overview", piece() + " [^f_0] [^f_1] [^f_2]", by="x", citations=cited))
+        part, _, _ = landing(Compilation("t/a", "Overview", piece() + " [^f_0] [^f_1] [^f_2]", by="x", citations=cited))
         claim = Property(piece(), Caller("you", "person"), "2026-11-19T00:00:00Z")
         empty = Article(Identity("t/a", "t", "A"), [], properties={"source": claim})
         for article in (Article(Identity("t/a", "t", "A"), [part]), empty):

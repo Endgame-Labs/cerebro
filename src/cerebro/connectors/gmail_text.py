@@ -1,14 +1,15 @@
-"""A message's text as the Gmail connector reads it, with the standard library alone: its header block, a text part
+"""A mail message's text as a source reads it, with the standard library alone: its header block, a text part
 in its transfer encoding and charset, HTML turned into text, and the message reduced to what its sender newly wrote.
 
 `reduce` is the one place that decides what is new. It drops quoted lines, the "On ... wrote:" line that introduces
 them, an Outlook header block or "-----Original Message-----" and everything after it, and the signature: a "-- "
 line, however many spaces follow it, and what follows it, a "--" line or a sign-off such as "Best," with the few
 short lines under it, a mobile footer, or a closing block of a name with a title, company, phone or address line
-under it, which may end in a common abbreviation such as Inc. A P.S. under a sign-off stays. An "On ... wrote:" line
-with unquoted text under it ends the message only when a mail client wrote it, with an address, a time or a year in
-it, or when the text under it is indented as some clients quote. A sentence of the message that ends in "wrote:"
-stays. Its rules are conservative: a line it cannot place as quote or signature stays.
+under it, which may end in a common abbreviation such as Inc. A P.S. under a sign-off stays, and so does a sign-off
+whose next line is a sentence of three words or more. An "On ... wrote:" line with unquoted text under it ends the
+message only when a mail client wrote it, with an address, a time or a year in it, or when the text under it is
+indented as some clients quote. A sentence of the message that ends in "wrote:" stays. Its rules are conservative: a
+line it cannot place as quote or signature stays.
 """
 
 from __future__ import annotations
@@ -64,6 +65,11 @@ _OUTLOOK_TO = re.compile(rf"^\*?\*?(to|subject|cc|à|an|objet|betreff):\*?\*?{_S
 _MOBILE_FOOTER = re.compile(r"^(sent from my |sent from mail for |sent from outlook for |get outlook for |sent via "
                             r"|sent from yahoo mail)", re.IGNORECASE)
 _POSTSCRIPT = re.compile(rf"^p\.?{_S}?p?\.?{_S}?s\b[.:]?", re.IGNORECASE | re.ASCII)
+# An address, a site or a phone number at the start of a line, after a short label such as "M:" or "Tel."
+_CONTACT = re.compile(r"(([a-z]{1,7}:|[a-z]{1,4}\.) *)?([^\s@<>]+@[^\s<>]*|www\.[^\s<>]*|https?://[^\s<>]*"
+                      r"|(?P<number>[+(]?[0-9][0-9 ().-]{5,}[0-9]))", re.IGNORECASE | re.ASCII)
+# A link's target in brackets, as a line holds it once its markup is read
+_TARGET = re.compile(r"[(<]([^()<>\s]+)[)>]")
 _CLIENT_ATTRIBUTION = re.compile(r"@|[0-9]{1,2}:[0-9]{2}|\b[0-9]{4}\b", re.ASCII)
 _LIST_MARKER = re.compile(rf"^([-*•]|[0-9]+[.)]){_S}")
 _SIGN_OFF = re.compile(
@@ -75,6 +81,10 @@ _SIGNATURE_LINES = 6  # how many lines under a sign-off may still be signature
 _SIGNATURE_WIDTH = 70  # the longest line, in characters, that counts as signature under a sign-off
 _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", "rd", "blvd", "dr", "ln", "ste", "jr",
                   "sr", "phd", "esq")
+# A mailto or tel link's target as a client writes it after the link's text, as in "Call me<tel:+15550100>", and an
+# inline image's "[cid:...]". No class takes its own opening bracket, so a long line is linear.
+_MARKUP = re.compile(r"<(?:mailto|tel):([^<>\n]*)>|\[cid:[^\[\]\n]*\]", re.IGNORECASE)
+_NOT_ALNUM_OR_AT = re.compile(r"[^\w@]+|_")
 
 # Public mail services. An address at one says nothing about a company, so its domain is never a key.
 
@@ -82,9 +92,84 @@ _ABBREVIATIONS = ("inc", "ltd", "co", "corp", "llc", "llp", "plc", "st", "ave", 
 # -- reduce
 
 def reduce(text: str) -> str:
-    """What a message's sender newly wrote: the message without its quoted replies and its signature. Line endings
-    become \\n, the end of each line is trimmed, and runs of blank lines shrink to one."""
-    return _collapse_blank("\n".join(_drop_signature(_drop_quoted(_split_lines(text)))))
+    """What a message's sender newly wrote: the message without its quoted replies and its signature. A forward or a
+    quote with nothing but a signature or a footer above it is kept from where it begins, less its own signature, so
+    its words are not lost. Each line is read first as a person sees it: a mailto or tel link's target goes where its
+    text shows it and stays in brackets where it does not, an inline image's cid reference goes, and a line that held
+    nothing else goes with it. Line endings become \\n, the end of each line is trimmed, and runs of blank lines
+    shrink to one."""
+    # a line emptied of its markup goes, so a logo inside a signature does not split it in two
+    lines = [clean for line in _split_lines(text)
+             if (clean := _MARKUP.sub(_markup_as_read, line)).strip() or not line.strip()]
+    kept = _drop_quoted(lines)
+    own = _drop_signature(kept)
+    # kept and lines part at the first line dropped: there the quote or forward begins
+    start = next((k for k, line in enumerate(kept) if line != lines[k]), len(kept))
+    if start < len(lines) and _signed_only(kept, own):
+        while start and not _written(lines[start - 1]):
+            start -= 1
+        own = _drop_signature(lines[start:])
+    return _collapse_blank("\n".join(own))
+
+
+def _markup_as_read(found: re.Match[str]) -> str:
+    """A link's target or an image's cid reference as it reads in a message's text. A cid reference goes, and so
+    does a target the text just before it on its line shows, compared on letters, digits and "@" alone and in any
+    case. Any other target stays: in brackets after the text glued to it, or as it is when the link has no text."""
+    target = found[1]
+    if target is None:
+        return ""
+    # A target written out for a reader is never three times as long, so only that much is read and a line is linear.
+    before = found.string[max(found.start() - 3 * len(target), 0):found.start()]
+    if _NOT_ALNUM_OR_AT.sub("", before.lower()).endswith(_NOT_ALNUM_OR_AT.sub("", target.lower())):
+        return ""
+    return f" ({target})" if before[-1:].strip() else target
+
+
+def _signed_only(kept: list[str], own: list[str]) -> bool:
+    """Whether the lines above a quote or a forward, `kept`, hold nothing their sender wrote, `own` being what is
+    left of them without their signature: only a footer, a signature, a sign-off with a name under it, or a closing
+    block with a line that an address, a site or a phone number starts. A sign-off with nothing but a footer or such
+    a block under it is the message."""
+    above = _trim_blank_end(_drop_contact_block(_drop_footer(kept)))
+    if above and _SIGN_OFF.match(above[-1].strip()):
+        return False
+    return not any(_written(line) for line in _drop_contact_block(own))
+
+
+def _drop_contact_block(lines: list[str]) -> list[str]:
+    """The lines without a closing block that holds a line of contact details: a short reply can read as a name and a
+    title, but none of its lines is contact details."""
+    start = _closing_block(lines)
+    return lines[:start] if any(_contact(line) for line in lines[start:]) else lines
+
+
+def _contact(line: str) -> bool:
+    """Whether a line is contact details: an address, a site or a phone number starts it, or is its last link
+    target, with fewer than two lowercase words after the one or before the other, as a sentence of a reply has. A
+    run of digits alone at the start is a phone number only with nine digits or more: shorter, it is a date or a sum."""
+    t = line.strip()
+    found = _CONTACT.match(t)
+    number = found["number"] if found else None
+    if number and found[1] is None and number[0].isdigit() and sum(c.isdigit() for c in number) < 9:
+        found = None
+    if found and _lowercase_words(t[found.end():]) < 2:
+        return True
+    targets = list(_TARGET.finditer(t))
+    if not targets or _CONTACT.fullmatch(targets[-1][1]) is None:
+        return False
+    return _lowercase_words(t[:targets[-1].start()]) < 2
+
+
+def _lowercase_words(text: str) -> int:
+    return sum(word[0].islower() for word in text.split())
+
+
+def _written(line: str) -> bool:
+    """Whether a line holds words, other than a line a mail client puts above a forward, such as
+    "---------- Forwarded message ---------"."""
+    t = line.strip()
+    return t != "" and not (t.startswith("---") and t.endswith("---"))
 
 
 def _split_lines(text: str) -> list[str]:
@@ -175,16 +260,22 @@ def _trim_blank_end(lines: list[str]) -> list[str]:
     return lines[:end]
 
 
-def _drop_signature(lines: list[str]) -> list[str]:
-    """The lines without a signature at the end. A P.S. under a sign-off is the sender's words and stays."""
+def _drop_footer(lines: list[str]) -> list[str]:
+    """The lines without the blank lines and mobile footers at their end."""
     lines = _trim_blank_end(lines)
     while lines and _MOBILE_FOOTER.match(lines[-1].strip()):
         lines = _trim_blank_end(lines[:-1])
+    return lines
+
+
+def _drop_signature(lines: list[str]) -> list[str]:
+    """The lines without a signature at the end. A P.S. under a sign-off is the sender's words and stays."""
+    lines = _drop_footer(lines)
     i = len(lines) - 1
     while i >= 0 and len(lines) - i <= 21:
         # With a space after it, however much follows, it is the signature marker. Without one, as HTML gives it,
         # it is one only when what follows is short enough to be a signature: in the body it is a divider.
-        if lines[i].rstrip(" \t") == "--" and (lines[i].startswith("-- ") or _short_block(lines[i + 1:])):
+        if lines[i].rstrip(" \t") == "--" and (lines[i].startswith("-- ") or _short_block(_filled(lines[i + 1:]))):
             return lines[:i]
         i -= 1
     non_blank = 0
@@ -196,31 +287,42 @@ def _drop_signature(lines: list[str]) -> list[str]:
             if _SIGN_OFF.match(t):
                 under = lines[j + 1:]
                 ps = next((k for k, line in enumerate(under) if _POSTSCRIPT.match(line.strip())), len(under))
-                if _short_block(under[:ps]):
+                found = _filled(under[:ps])
+                sentence = (bool(found) and len(found[0].split()) >= 3 and found[0][-1] in ".?!"
+                            and not _ends_in_abbreviation(found[0]))
+                if _short_block(found) and not sentence:
                     return lines[:j] + [""] + under[ps:]
         j -= 1
     return _drop_closing_block(lines)
 
 
-def _short_block(lines: list[str]) -> bool:
-    found = [line.strip() for line in lines if line.strip()]
+def _filled(lines: list[str]) -> list[str]:
+    return [line.strip() for line in lines if line.strip()]
+
+
+def _short_block(found: list[str]) -> bool:
     return len(found) <= _SIGNATURE_LINES and all(len(line) <= _SIGNATURE_WIDTH for line in found)
 
 
 def _drop_closing_block(lines: list[str]) -> list[str]:
-    """The lines without a closing block: a last paragraph that starts with a full name, has a title, company,
-    phone or address line under it and holds no sentence, after the message's own text. Names alone stay."""
+    """The lines without a closing block, after the message's own text."""
+    start = _closing_block(lines)
+    return lines[:start] if any(line.strip() for line in lines[:start]) else lines
+
+
+def _closing_block(lines: list[str]) -> int:
+    """Where a closing block at the end of the lines begins, or their length for none: a last paragraph that starts
+    with a full name, has a title, company, phone or address line under it and holds no sentence. Names alone are
+    none."""
     start = len(lines)
     while start > 0 and lines[start - 1].strip():
         start -= 1
     block = lines[start:]
-    if not 2 <= len(block) <= _SIGNATURE_LINES or not any(line.strip() for line in lines[:start]):
-        return lines
-    if not _full_name(block[0]) or not all(_signature_line(line) for line in block):
-        return lines
-    if all(_full_name(line) for line in block):
-        return lines
-    return lines[:start]
+    if not 2 <= len(block) <= _SIGNATURE_LINES or not _full_name(block[0]):
+        return len(lines)
+    if not all(_signature_line(line) for line in block) or all(_full_name(line) for line in block):
+        return len(lines)
+    return start
 
 
 def _full_name(line: str) -> bool:
@@ -231,6 +333,8 @@ def _full_name(line: str) -> bool:
 
 def _signature_line(line: str) -> bool:
     t = line.strip()
+    if _contact(t):
+        return True
     if not t or len(t) > 60 or len(t.split()) > 8 or _LIST_MARKER.match(t):
         return False
     if t[-1] in ".?!:;," and not _ends_in_abbreviation(t):

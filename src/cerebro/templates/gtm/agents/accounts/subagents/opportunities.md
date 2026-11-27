@@ -34,4 +34,5 @@ A markdown table with the columns Name, Stage, Amount, Close date, Owner and
 Next step. The name links to the deal's article, such as
 [Halcyon Mills renewal](../opportunities/halcyon-mills-renewal.md). The amount carries
 its currency when the deal names one. The owner is You when the front matter
-says me, a link to their article for a people/ path, and the name otherwise.
+says me, a link to their article for a people/ path, such as
+[Jane Doe](../people/jane-doe.md), and the name otherwise.

@@ -24,7 +24,7 @@ The file follows a call through five ideas, in this order:
   people ask about that the wiki does not keep. A call is a miss when it fails, when `find` matches nothing, when
   `query` counts zero, or when `read` finds none of its ids.
 - What a session reads when it connects: `DATA`, the workspace and its tools, the person, each app's instructions,
-  and the proposals waiting, told again after a call when their count moves.
+  and the proposals waiting for a person, told again after a call that succeeds when their count moves.
 
 It runs two ways: `serve` over HTTP, on the loopback address unless told another, where on loopback the SDK refuses
 a request whose `Origin` or `Host` is another site, and where the JSON API of `api` sits beside MCP behind the same
@@ -94,7 +94,7 @@ from .errors import CerebroError
 from .facts import Fact, superseded
 from .ground import quote_for
 from .held import FIRST_RUN_KEY, stand_ins
-from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult, sizes
+from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult
 from .records import Decision
 from .reply import SINCE_WRITTEN, article_text, outside
 from .run import ids_kept, masked_error
@@ -257,7 +257,7 @@ class QueryArguments(ArgModelBase):
 
     def model_dump_one_level(self) -> dict[str, Any]:
         filters = dict(self.model_extra or {}) | ({"window": self.window} if self.window is not None else {})
-        options = {"limit": self.limit, "offset": self.offset} | (
+        options = {k: getattr(self, k) for k in ("limit", "offset") if k in self.model_fields_set} | (
             {"matching": self.matching} if self.matching is not None else {}) | (
             {"order_by": self.order_by, "descending": True} if self.order_by is not None else {})
         return {"source": self.source, "filters": filters, "options": options}
@@ -596,10 +596,9 @@ def _item_line(item: Any) -> str:
 
 
 def render_find(result: FindResult, budget: int = BUDGET) -> str:
-    """`find`'s reply as text: each article it resolved to, and what it matched on."""
+    """`find`'s reply as text: each article it resolved to, and what it matched on, or why it resolved to none."""
     if not result.matches:
-        return (f"find: nothing is named {result.name!r}: try another spelling, or query a collection with a "
-                "filter")
+        return "\n".join(f"warning: {w}" for w in result.warnings)
     lines = [f"- {id} (matched on {result.matched_on.get(id, 'name')})"
              + (f" [{PENDING}]" if id in result.pending else "") for id in result.matches]
     return _cut([f"{len(lines)} article{'' if len(lines) == 1 else 's'} named {result.name!r}:"], [], [_Part(line) for line in lines], budget,
@@ -925,7 +924,10 @@ class _Surface:
         given = {k: v for k, v in args.items() if v is not None}
         if (scrub := self.workspace.store.scrubbing()) is not None:  # before `_capped` cuts a value: after, none is found
             given = masked_with(given, scrub)
-        row = {"at": at, "tool": name, "args": _capped(masked(given) if name in SIX else sizes(given)),
+        if name not in SIX:  # an app's arguments may be the text of its records: the log keeps each one's size alone
+            given = {k: f"{len(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str))} "
+                        "characters" for k, v in given.items()}
+        row = {"at": at, "tool": name, "args": _capped(masked(given) if name in SIX else given),
                "caller": _capped(caller.name), "result": "hit" if hit else "miss", "surface": via}
         row |= {"resolved": _capped(ids)} if ids else {}
         row |= {"client": _capped(client)} if client else {}
@@ -1056,7 +1058,7 @@ def server(workspace: Cerebro, *, budget: int = BUDGET, log: bool | None = None,
                             lambda r: render_find(r, budget))
 
     def query(source: str, filters: dict[str, Any], options: dict[str, Any], ctx: Context) -> dict[str, Any]:
-        args = {"from": source, **filters, **{k: v for k, v in options.items() if v and k != "descending"}}
+        args = {"from": source, **filters, **{k: v for k, v in options.items() if k != "descending"}}
         one = max(budget, ONE_RECORD) if {"id", "name"} & set(filters) else budget  # one record asked for whole
         return surface.call(ctx, "query", args, lambda caller: workspace.query(caller, source, filters, **options),
                             lambda r: render_query(r, options.get("offset") or 0, one))
@@ -1281,19 +1283,15 @@ def _collections(counts: Counts, mask: Callable[[str], str]) -> list[str]:
 
 
 def proposals_note(waiting: int) -> str:
-    """The line that says how many proposals wait for a person, how to list them, and that the caller decides them
-    with `decide`."""
+    """The line that says how many proposals wait for a person, as `cerebro status` counts them, how to list them,
+    and that the caller decides them with `decide`."""
     if not waiting:
-        return "No proposals waiting."
+        return "No proposals waiting for a person."
     one = waiting == 1
     them = "it" if one else "them"
-    return f"{waiting} proposal{'' if one else 's'} waiting. List {them} with query from proposals and status waiting, " \
-        f"and decide {them} with decide."
-
-
-def _waiting(workspace: Cerebro) -> int:
-    """How many proposals wait for a person."""
-    return workspace.awaiting()
+    return f"{waiting} proposal{'' if one else 's'} waiting for a person. List {them} with query from proposals and " \
+        "status waiting, which also lists those that wait with their collections' curators or with another " \
+        f"proposal, and decide {them} with decide."
 
 
 STORE_MARK = own_key("counted", "store")  # a value made once per store, so a store replaced in place reads as another
@@ -1380,7 +1378,7 @@ class Counts:
                     self._waited = (at, self._waited[1], self._waited[2])
                     return self._waited[2]
             start = self._start()
-            waiting = _waiting(self.workspace)
+            waiting = self.workspace.awaiting()
             self._waited = (*start, waiting) if start is not None else None
             return waiting
 
@@ -1395,8 +1393,8 @@ class Counts:
 
 def _instructed(made: MCPServer, workspace: Cerebro) -> None:
     """Have each session read the instructions as they stand when it connects, not as they stood when the server
-    was made, with the proposals note when proposals wait; and after a call, the note as a second block of its reply
-    when the count differs from what that session was last told."""
+    was made, with the proposals note when proposals wait; and after a call that succeeds, the note as a second block
+    of its reply when the count differs from what that session was last told."""
     told: weakref.WeakKeyDictionary[Any, int] = weakref.WeakKeyDictionary()
     counts = Counts(workspace)
 
@@ -1418,7 +1416,7 @@ def _instructed(made: MCPServer, workspace: Cerebro) -> None:
                 lambda: (instructions(workspace, counts), counts.waiting_or_none()))
             said = note(ctx, waiting, opening=True)
             result = result | {"instructions": "\n\n".join([text, *([said] if said else [])])}
-        elif ctx.method == "tools/call" and (
+        elif ctx.method == "tools/call" and not result.get("isError") and (
                 said := note(ctx, await anyio.to_thread.run_sync(counts.waiting_or_none), opening=False)):
             note_block = {"type": "text", "text": said, "_meta": {NOTE: "proposals"}}
             result = result | {"content": [*result.get("content", []), note_block]}

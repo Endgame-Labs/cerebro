@@ -84,6 +84,7 @@ from .compile import (
     fixed,
     keep_grounding,
     left_alone,
+    made_safe,
     material_key,
     targets,
     unmirrored,
@@ -147,7 +148,8 @@ class Progress:
     `kind` is open, with the `total` the stage counts, or start or end of the work `key` names. An end's `mark` is
     done, failed, warning, skipped, or for a compile ran, a run that ran and wrote nothing, `text` what its row says
     after its key, `cost` what an agent's run spent, and `why` what went wrong. A check's end carries in `total` how many records it listed, and a
-    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts."""
+    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts. A
+    first run's discover `round` starts its round `done` of up to `total`."""
 
     stage: str
     kind: str
@@ -173,6 +175,7 @@ class PassResult:
     began, and `waiting_runs` the agent runs."""
 
     listed: dict[str, int] = field(default_factory=dict)
+    from_start: set[str] = field(default_factory=set)  # each source listed with no cursor kept: its whole window
     read: int = 0
     extracted: int = 0
     retracted: int = 0
@@ -200,6 +203,7 @@ class PassResult:
     # say each thing it repaired or dropped, which the run's line in the `agent-runs` log keeps
     grounding: dict[str, dict[str, int]] = field(default_factory=dict)
     grounded: set[str] = field(default_factory=set)
+    cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens
     on: Callable[[Progress], None] | None = field(default=None, repr=False, compare=False)  # an event as each happens
@@ -964,6 +968,8 @@ def _list_one(workspace: Cerebro, name: str, listed: _Listed, result: PassResult
     full = changes and _full_due(workspace, name, listed.cursor)
     relisted = False  # listed again in full, in this pass, after its cursor was dropped
     while True:
+        if listed.cursor is None:
+            result.from_start.add(name)
         try:
             if relisted:
                 listed.cursor = inner.cursor_for(None, full=True)
@@ -1001,7 +1007,8 @@ def _articles(connector: Connector, listed: _Listed, name: str, result: PassResu
         listing = connector.list(since=since)
         listed.back = listed.back or ([since] if listing.again else [])
         result.listed[name] += len(listing.records)
-        result.warnings += [f"sources/{name}: {line}" for line in listing.notices]
+        said = (f"sources/{name}: {line}" for line in listing.notices)  # a source may give each again on every page
+        result.warnings += [line for line in dict.fromkeys(said) if line not in result.warnings]
         listed.records += listing.records
         listed.removed += listing.removed
         listed.cursor, listed.moved = listing.cursor, True
@@ -2253,12 +2260,14 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         GROUND_LINES.reset(saying)
     compiled.grounding = dict(tally)
     # grounding's own lines of what went, as compile carries them in `dropped` among lines that are not
-    # grounding's, such as cleaning's, which are said as they come
+    # grounding's, which are said as they come
     compiled.grounded = [line for line in compiled.dropped if line in own or any(
         line.endswith(f": {said}") for said in own)]
     result.tell(_compiled_line(workspace, key, compiled))
     result.step("compile", "end", article, **_compiled_step(agent, compiled))
-    if said := counted(tally):  # what grounding did, as counts, under the article's row
+    # what grounding did and what landing made safe, as counts, under the article's row
+    safe = made_safe(len(compiled.cleaned)) if compiled.cleaned else ""
+    if said := ", ".join(n for n in (counted(tally), safe) if n):
         result.step("compile", "note", article, text=said)
     return compiled
 
@@ -2332,10 +2341,13 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
         turn.wrote.append(article)  # its clock moves; a failed run keeps it
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
-    if compiled.grounding:  # kept on its run's line, and counted for its end
-        keep_grounding(workspace.store, run, compiled.grounding, compiled.grounded)
+    # each line kept on its run's line, and counted for its end
+    keep_grounding(workspace.store, run, compiled.grounding, [*compiled.grounded, *compiled.cleaned])
+    if compiled.grounding:
         result.grounding[key] = compiled.grounding
         result.grounded.update(f"{key}: {line}" for line in compiled.grounded)
+    if compiled.cleaned:
+        result.cleaned[key] = len(compiled.cleaned)
     result.warnings += [f"{key}: {note}" for note in compiled.notes]
     if compiled.warning:
         result.warnings.append(compiled.warning)
@@ -2595,7 +2607,8 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     did not finish. Of those, one the budget cut before it handed in text waits while a daily cap holds, and with none
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
-    `held` line says it once, with when it runs."""
+    `held` line says it once, with when it runs. Each line of what landing made safe is kept on its run's line."""
+    keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]

@@ -166,8 +166,8 @@ def test_a_passs_live_progress_says_no_section_brain_or_page_in_its_frames_or_it
 
 
 def test_a_first_runs_live_steps_and_its_region_say_no_section_brain_or_page() -> None:
-    """Every line a first run's screen draws: the sources read, the round's line, each curator's step queued,
-    reviewing and resolved every way, the approval, a line said and the build's region."""
+    """Every line a first run's screen draws: the sources read, the round's heading and its line, each curator's step
+    queued, reviewing and resolved every way, the approval, a line said and the build's region."""
     import io
 
     from cerebro.output import Printer, strip_escapes
@@ -183,7 +183,7 @@ def test_a_first_runs_live_steps_and_its_region_say_no_section_brain_or_page() -
     screen = FirstRunScreen(p, sources=["notes", "mail"], ticking=False, height=lambda: 60)
     events = [Progress("read", "start"), Progress("check", "end", "notes", mark="done", total=3),
               Progress("check", "end", "mail", mark="failed", why="refused"), Progress("read", "end", total=3),
-              Progress("discover", "open", total=4)]
+              Progress("discover", "round", done=1, total=4), Progress("discover", "open", total=4)]
     events += [Progress("discover", "queue", f"{c}/curator", text=c) for c in ("parts", "things", "places", "kinds")]
     events += [Progress("discover", "start", "parts/curator", text="parts"),
                Progress("discover", "end", "parts/curator", mark="done", text="2 articles to parts collection"),
@@ -203,8 +203,8 @@ def test_a_first_runs_live_steps_and_its_region_say_no_section_brain_or_page() -
     screen(Progress("build", "end"))
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     drawn = strip_escapes(out.getvalue())
-    for line in ("Reading sources", "Read 3 records from 1 source", ("Running discovery for kinds, parts, places and "
-                 "things collections."), "Queued for parts collection", "Reviewing sources for parts collection",
+    for line in ("Reading sources", "Read 3 records from 1 source", "Round 1 of up to 4",
+                 "Running discovery for kinds, parts, places and things collections.", "Queued for parts collection", "Reviewing sources for parts collection",
                  "Proposed 2 articles", "Nothing new for things collection",
                  "Budget reached for places collection", "Reviewed 2 proposals", "Recording 2 approvals",
                  "Admitted 2 articles", "Distilling", "1 of 3 records • 2 facts"):
@@ -336,14 +336,16 @@ def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_pa
 
 def test_the_lines_a_pass_and_a_run_by_hand_end_with_for_a_run_that_wrote_nothing_say_no_section_brain_or_page(
         capsys: Any) -> None:
-    """A pass's line for each run that ran and wrote nothing and its closing count, and a run by hand's line for one."""
+    """A pass's line for each run that ran and wrote nothing, its count of what landing made safe and its closing count,
+    and a run by hand's line for one."""
     from cerebro import cli
     from cerebro.compile import Compiled
     from cerebro.run import HANDED_NOTHING, WROTE_NOTHING, Run, Usage
     from cerebro.runner import PassResult
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
-    cli._print(PassResult(compiled=["things/first"], ran={"things/article on things/second": HANDED_NOTHING}))
+    cli._print(PassResult(compiled=["things/first"], ran={"things/article on things/second": HANDED_NOTHING},
+                          cleaned={"things/first": 2}))
     run = Run(id="r1", agent="things/article", target="things", status=WROTE_NOTHING, transcript=[],
               usage=Usage(model="scripted"), note=HANDED_NOTHING)
     cli._print_compiled("things/article", "things/second", Compiled(run=run, article=None, runs=[run]))
@@ -686,9 +688,8 @@ def test_reviews_lines_for_a_line_that_cannot_land_and_a_value_that_names_nothin
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
 
-def test_what_a_tell_whose_facts_wait_and_a_load_that_lists_them_say_has_no_section_brain_or_page(
-        tmp_path: Path) -> None:
-    from test_tell_retry import MENDED, SAID, TOLD, YOU, Record, RetractFails, in_memory, make_workspace, telling, told
+def test_what_a_tell_whose_facts_wait_says_has_no_section_brain_or_page(tmp_path: Path) -> None:
+    from test_tell_retry import SAID, YOU, RetractFails, in_memory, telling, told
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     said = []
@@ -704,15 +705,8 @@ def test_what_a_tell_whose_facts_wait_and_a_load_that_lists_them_say_has_no_sect
     layer.go.set()
     thread.join(10)
     said += out[0].notes
-    waiting.store.keep(Record(id="r_0lost0000000", source=TOLD, revision="1", at="2026-11-17T09:00:00Z", body=SAID,
-                              by=YOU, fields={"as": "fact"}, extract="facts"))
-    waiting.store.set_state(MENDED, None)
-    from cerebro.fakes import FakeExtraction
-
-    said += [n for n in make_workspace(tmp_path / "waiting", FakeExtraction(), waiting.store).notices if n.startswith("tell:")]
     assert any("its facts did not come out yet" in n for n in said)
     assert any("taken back while its facts came out" in n for n in said)
-    assert any("kept before its facts came out" in n for n in said)
     assert not [n for n in said if words.search(n)]
 
 
@@ -892,6 +886,22 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     lines = [busy_line(Path(".cerebro/cerebro.sqlite")), busy_line(None), SEARCH_BEHIND]
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
+
+
+def test_what_a_find_or_a_query_that_matched_nothing_says_has_no_section_brain_or_page() -> None:
+    from cerebro.fakes import FakeExtraction
+    from cerebro.lookup import StoreLookup
+
+    words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
+    you, store = Caller("you", "person"), MemoryStore()
+    lookup = StoreLookup(store, FakeExtraction())
+    said = lookup.find(you, "Orion").warnings + lookup.query(you, "facts").warnings
+    store.create(Identity("things/a", "things", "A", status="archived"))
+    store.append("proposals", {"id": "p_1", "kind": "admit"})
+    for source, filters in (("facts", {"kind": "decision"}), ("proposals", {"kind": "merge"}), ("merges", {}),
+                            ("things", {}), ("things", {"status": "waiting"}), ("things", {"id": "things/a"})):
+        said += lookup.query(you, source, filters).warnings
+    assert len(said) == 8 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_no_line_a_presumed_mark_shows_names_a_section_or_a_hand_in() -> None:

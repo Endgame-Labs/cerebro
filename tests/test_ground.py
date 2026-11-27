@@ -476,6 +476,20 @@ def test_an_unsure_verdict_on_a_lead_does_not_keep_the_lead() -> None:
     assert unsure.parts.get("Overview", "") != body
 
 
+def test_a_label_over_a_list_stands_on_names_or_states_held_firm_or_lean_only_when_its_facts_hold_its_words() -> None:
+    item = "\n\n- Jane Doe signs off on the Acme Corp rollout [^f_2].\n"
+    for body, choice, stands in (("Ours:" + item, "names", True), ("Ours, all done:" + item, "states_held", True),
+                                 ("Ours, all done:" + item, "states_unheld", False),
+                                 ("Ours, at $4,000:" + item, "states_held", False),
+                                 ("**Jane Doe:**" + item.replace("- ", ""), "names", False)):
+        out = ground(agent(), {"Overview": body}, citable(RULE_FACTS), facts=RULE_FACTS,
+                     decider=Leaning({"l1": choice}, {"l1": JUDGE_MIN_CONFIDENCE - 0.01}))
+        assert (out.parts["Overview"] == body) is stands, (body, choice)
+    firm = ground(agent(), {"Overview": "Ours, at $4,000:" + item}, citable(RULE_FACTS), facts=RULE_FACTS,
+                  decider=FakeDecider({"l1": "states_held"}))
+    assert firm.parts == {"Overview": item.lstrip("\n")}
+
+
 def test_a_link_to_cited_evidence_that_is_not_an_article_counts_as_a_citation() -> None:
     body = "Jane Doe signs off on the [Acme Corp rollout](../calls/acme.md)."
     cited = citable(RULE_FACTS) | {"calls/acme": Citation("record", "calls/acme", "local/calls/acme.md")}

@@ -104,7 +104,7 @@ def test_a_pass_at_the_cap_fails_nothing_says_what_waits_and_exits_1_with_nothin
     assert not [line for line in lines if line.startswith("failed")], ran.output
     assert "BudgetSpent" not in ran.output
     assert "Daily budget: $60.00 of $50.00 spent at 00:05 UTC. 2 records and 1 agent run wait." in lines
-    assert lines[-1] == "Done: 0 written, 0 failed."
+    assert lines[-1] == "Done."
     assert space.called == []
     assert space.store.state("failed:things") == ["t3", "t4"]  # each waits for the next pass
     assert space.store.state("failing:reports/weekly:reports/weekly") is None  # no back off for having waited
@@ -135,7 +135,7 @@ def test_what_waited_at_the_cap_runs_on_the_next_pass_once_it_lifts(
     assert ran.exit_code == 0, ran.output
     lines = ran.output.splitlines()
     assert "facts     2 records read, 2 facts extracted" in lines and "wrote     reports/weekly  articles/reports/weekly.md" in lines
-    assert lines[-1] == "Done: 1 written, 0 failed."
+    assert lines[-1] == "Done: 1 written."
     assert space.store.state("failed:things") == []
     assert space.store.state("failing:reports/weekly:reports/weekly") is None
 
@@ -598,6 +598,24 @@ def test_serve_says_a_stop_once_and_says_when_calls_resume(tmp_path: Path, capsy
     assert [line for line in out if line.startswith("Daily budget:")] == [
         "Daily budget: $60.00 of $50.00 spent at 00:05 UTC. 2 records and 1 agent run wait.",
         "Daily budget: a new UTC day began, so model calls resume"]
+
+
+def test_serve_says_a_stop_once_beside_an_article_grounding_changed(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    space = Workspace(tmp_path, "budget: { extraction_daily_usd: 5 }\n")  # compilation goes on past extraction's cap
+    space.primed()
+    (space.root / "agents" / "reports" / "weekly.md").write_text(WEEKLY.replace("[daily]", "[hourly]"))
+    workspace = opener(space, ScriptedRun(lambda prompt: {"Summary": cited(prompt)["Summary"] + " Uncited."}))()
+    workspace.run_once()  # the writer's run of this hour
+    space.spent("2026-11-19T10:01:00Z", "extraction", 6.0)
+    space.things.add(Record(id="t5", source="things", revision="1", at="2026-11-19T10:00:00Z", body="Thing 5."))
+    printed, results = cli._passes(workspace), []
+    for at in (DAY + timedelta(minutes=30), DAY + timedelta(minutes=65)):  # the hourly writer is due on the second
+        space.clock.at = at
+        results.append(workspace.run_once(scheduled=False))
+        printed(results[-1])
+    assert results[0].stops == results[1].stops and results[1].grounding, results
+    assert [line for line in capsys.readouterr().out.splitlines() if line.startswith("Daily")] == results[0].stops
 
 
 def test_a_record_waiting_on_its_retry_list_and_listed_again_counts_once(tmp_path: Path) -> None:

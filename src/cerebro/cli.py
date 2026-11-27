@@ -42,7 +42,7 @@ from .agent import Agent, refusal_of, refused_ids
 from .app import Cerebro, PassResult
 from .budget import BudgetSpent
 from .caller import KIND_WORDS, Caller
-from .compile import Compiled, left_alone, out_of_working_set, targets
+from .compile import Compiled, keep_grounding, left_alone, made_safe, out_of_working_set, targets
 from .connector import one_line
 from .errors import CerebroError
 from .forget import Outside, claims_file, left_behind, of_workspace, remove, there
@@ -247,9 +247,11 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
             if said is not None:
                 said.add(line)
     for source, count in result.listed.items():
-        _echo(f"listed    {source}: {_count(count, 'record')}")
-    if result.read or result.extracted:
-        _echo(f"facts     {_count(result.read, 'record')} read, {_count(result.extracted, 'fact')} extracted")
+        if count or source in result.from_start:  # listed from the start, none says the source holds none
+            _echo(f"listed    {source}: {_count(count, 'record')}")
+    if counts := ", ".join(f"{_count(n, noun)} {verb}" for noun, verb, n in (
+            ("record", "read", result.read), ("fact", "extracted", result.extracted)) if n):
+        _echo(f"facts     {counts}")
     for agent, why in result.due.items():
         _echo(f"due       {agent}: {why}")
     if agents and not any(row for row in (result.due, result.skipped, result.failed, result.ran)) and not result.runs \
@@ -261,8 +263,10 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         from .ground import counted
 
         for key, tally in result.grounding.items():
-            if said := counted(tally):
-                _echo(f"grounding {key}: {said}")
+            if did := counted(tally):
+                _echo(f"grounding {key}: {did}")
+    for key, n in result.cleaned.items():  # each thing it made safe is kept on its run's line
+        _echo(f"cleaned   {key}: {made_safe(n)}")
     for agent, why in result.skipped.items():
         _echo(f"skipped   {agent}: {why}")
     for agent, why in result.held.items():
@@ -277,9 +281,10 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
     for line in result.stops:  # a daily cap reached kept work from starting: it waits, and none of it failed
         if said is None or line not in said:  # serve says a stop once, until it changes
             _echo(line)
-    _echo(f"Done: {len(result.compiled)} written, "
-          + (f"{len(result.ran)} ran and wrote nothing, " if result.ran else "") + f"{len(result.failed)} failed"
-          + (f", {len(result.held)} held for the next pass." if result.held else "."))
+    done = ", ".join(f"{n} {label}" for label, n in (
+        ("written", len(result.compiled)), ("ran and wrote nothing", len(result.ran)), ("failed", len(result.failed)),
+        ("held for the next pass", len(result.held))) if n)
+    _echo(f"Done: {done}." if done else "Done.")
     if result.next:  # a first run that failed under serve: what to run, as serve --once ends on it
         _echo(f"next      {result.next}")
 
@@ -352,6 +357,8 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
         _echo(f"wrote    {article}  articles/{article}.md")
     for line in [*compiled.dropped, *compiled.notes]:
         _echo(f"warning  {key}: {line}")
+    if compiled.cleaned:  # each line of it is kept on its run's line, as a pass keeps it
+        _echo(f"cleaned  {key}: {made_safe(len(compiled.cleaned))}")
     if compiled.warning:
         _echo(f"warning  {compiled.warning}")
     if nothing or compiled.article is not None:
@@ -1162,7 +1169,8 @@ def _closing(checks: list[str]) -> None:
     """The last line of `status` when something needs a look: done with warnings, and what to check, in the shape of
     `output.Printer`'s plain last line. It is written as every other line of `status` is, plain, so it carries no
     escape code and asks the terminal nothing."""
-    more = f" (and {len(checks) - 1} more above)" if len(checks) > 1 else ""
+    n = len(checks) - 1
+    more = f" (and {n} more warning{'' if n == 1 else 's'} above)" if n > 0 else ""
     _echo(f"[!] Done with warnings. Check: {checks[0]}{more}", err=True)
 
 
@@ -1956,6 +1964,9 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         return "fresh"
     if compiled.article is not None:
         _echo(f"wrote    {article}  articles/{article}.md")
+        if compiled.cleaned:  # each line of it kept on its run's line, as a pass keeps it
+            keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+            _echo(f"cleaned  {article}: {made_safe(len(compiled.cleaned))}")
         if compiled.warning:
             _echo(f"warning  {compiled.warning}")
         return "written"
@@ -3733,14 +3744,20 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
         if out.next:  # what to run next
             _echo(f"next      {out.next}")
         return
+    waiting = list(getattr(out, "after", ()))  # how many rows of the list wait
+    after = [*already, *waiting]  # said after the summary
     out.result.warnings += out.lines
+    if screen is not None:  # on a terminal the last line is last: what waits is to check first, which it names
+        out.result.notices += already
+        out.result.warnings[:0] = waiting
+        after = []
     agents = workspace.agents if workspace is not None else ()
     fails = _pass_fails(out.result, agents, admitted=sum(len(applied.accepted) for applied in out.applied))
-    if screen is not None:
-        _print_end(screen, _masked(out.result, root), fails, said=screen.lines_said)
+    if screen is not None:  # what waits is said once: by the last line, or above a last line that says it failed
+        _print_end(screen, _masked(out.result, root), fails, said=screen.lines_said | set([] if fails else waiting))
     else:
         _print(_masked(out.result, root))
-    for line in [*already, *getattr(out, "after", ())]:  # how many rows of the list wait, after the summary
+    for line in after:  # after the summary
         _echo(line)
     if fails:
         raise SystemExit(1)
@@ -3948,9 +3965,9 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
         return
     shown = screen.shown_keys() | said
     p = screen.p
-    p.table([["Sources checked", str(len(result.listed))], ["Records landed", str(result.read)],
-             ["Facts appended", str(result.extracted)], ["Articles written", str(len(result.compiled))],
-             ["Agents run", str(len(result.runs))]])
+    p.table([[label, str(n)] for label, n in (
+        ("Sources checked", len(result.listed)), ("Records landed", result.read), ("Facts appended", result.extracted),
+        ("Articles written", len(result.compiled)), ("Agents run", len(result.runs))) if n])
     width = p.width()
     for kind, lines in (("refused", result.refused), ("notice", result.notices)):
         for line in lines:
@@ -4137,8 +4154,9 @@ def _serving(workspace: Cerebro, holder: list[Any], host: str | None, port: int 
         threading.Thread(target=hold, name="cerebro-ending", daemon=True).start()
         done.wait(max(0.3, left()))
         if under_way and gave:
-            said = (f"stopped   a pass was still under way after {JOIN:g} seconds: cerebro gave back its "
-                    f"{_count(gave[0], 'lease')} and stopped without waiting for it")
+            said = (f"stopped   a pass was still under way after {JOIN:g} seconds: cerebro "
+                    + (f"gave back its {_count(gave[0], 'lease')} and " if gave[0] else "")
+                    + "stopped without waiting for it")
         elif under_way or not done.is_set():
             said = (f"stopped   {'a pass was still under way after ' + format(JOIN, 'g') + ' seconds, and ' if under_way else ''}"
                     "the store is locked by another command, so any lease this process holds is left: the next start "

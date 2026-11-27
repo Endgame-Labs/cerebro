@@ -68,10 +68,16 @@ class Proofs:
 
 
 def said(text: str, root: Path) -> str:
-    """Init's output with what changes from run to run in its place: the folder, the command and the repository."""
-    text = text.replace(str(root), "<root>").replace(shutil.which("cerebro") or "cerebro", "<cerebro>")
+    """Init's output with what changes from run to run in its place: the folder and the repository."""
+    text = text.replace(str(root), "<root>")
     return re.sub(r"made inside the git repository at [^:]+:", "made inside the git repository at <repository>:",
                   text)
+
+
+def recording(name: str) -> str:
+    """What init's output was recorded as, with the command it names in a client's entry, the `cerebro` on the PATH
+    or else the bare name, in place of `<cerebro>`: the bare name is also a word of the other lines."""
+    return (GOLDEN / f"{name}.txt").read_text().replace("<cerebro>", shutil.which("cerebro") or "cerebro")
 
 
 def in_a_repository(tmp_path: Path) -> Path:
@@ -93,7 +99,7 @@ def test_off_a_terminal_init_prints_exactly_what_its_recording_holds(
     monkeypatch.setattr("cerebro.clock.local_zone", lambda *a, **k: "Europe/Berlin")
     root = in_a_repository(tmp_path)
     got = CliRunner().invoke(cli.main, ["init", str(root), *args])
-    assert f"exit {got.exit_code}\n" + said(got.output, root) == (GOLDEN / f"{name}.txt").read_text()
+    assert f"exit {got.exit_code}\n" + said(got.output, root) == recording(name)
     assert not (root / "profile.md").exists()
 
 
@@ -103,7 +109,7 @@ def test_off_a_terminal_and_outside_any_repository_init_prints_the_same_with_no_
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))  # the search for a repository stops at the temp folder
     root = (tmp_path / "wiki").resolve()
     got = CliRunner().invoke(cli.main, ["init", str(root), "--daily-usd", "20"])
-    recorded = (GOLDEN / "budget-only.txt").read_text()
+    recorded = recording("budget-only")
     assert NOTICE.search(recorded)
     assert f"exit {got.exit_code}\n" + said(got.output, root) == NOTICE.sub("", recorded)
 
@@ -124,7 +130,7 @@ def test_at_a_terminal_that_draws_nothing_init_asks_one_question_at_a_time_then_
         size=(24, 500))  # wide enough that no line wraps: the recording holds each line whole
     assert b"\x1b" not in got
     text = said(got.decode().replace("\r\n", "\n"), root)
-    assert text == (GOLDEN / "plain-terminal.txt").read_text()
+    assert text == recording("plain-terminal")
     assert read_ours(root) == Ours(("rowan@quillmoor.example",), ("quillmoor.example",))
     assert front(root / "workspace.md")["identity"]["name"] == "Quillmoor"
 
@@ -146,7 +152,7 @@ def test_on_a_colour_terminal_an_option_or_plain_sends_no_byte_to_the_terminal_a
         (b"Team or organization web domain", 1, b"\r"), *(() if "--daily-usd" in args else ((b"Daily budget", 1, b"7\r"),)),
         (b"Time zone", 1, b"UTC\r")), size=(24, 500))  # wide enough that no line wraps
     assert b"\x1b" not in got  # no query, no style: not one escape byte
-    want = (GOLDEN / "plain-terminal.txt").read_text()
+    want = recording("plain-terminal")
     if "--daily-usd" in args:
         want = want.replace("Daily budget in dollars [50.0]: 7\n", "")
     assert said(got.decode().replace("\r\n", "\n"), root) == want

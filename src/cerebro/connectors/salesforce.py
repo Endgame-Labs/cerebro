@@ -15,9 +15,11 @@ YYYY-MM-DD, an amount and a probability as numbers, whether it is closed and won
 account's is, and its account by the account's id. Its account is no key, so a deal is held until its own article is
 admitted, and its fields never land on the account's article. Its facts reach its account through its links, which
 name its id. Its owner is a field of the deal, never a link: a fact of the deal is not about its owner. Opportunities, tasks, events and emails are read for
-extraction: their body is their text as header lines and then their long text. A deal
+extraction: their body is their text as header lines and then their long text, an email's reduced to what its
+sender newly wrote, as `gmail_text.reduce` says. A deal
 read only for being closed inside `closed_since` lands and is not extracted. A task is a logged activity and its
-text opens `Logged activity: <subject>`.
+text opens `Logged activity: <subject>`. One logged from an email has its description reduced to what its sender
+newly wrote.
 
 Every request is a GET, and every query a SELECT. A refusal for the org's request limit stops the pass, with no
 retry, and every request after it is refused without asking until a pause has passed on the clock handed in. The
@@ -65,6 +67,7 @@ from ..connector import CursorError as SharedCursorError
 from ..errors import CerebroError
 from ..source import SourceError, SourceFile
 from .connecting import CliLogin, KeyRefused, KeyUnproven, Need
+from .gmail_text import reduce
 from .questions import Days, Text, Word, asked
 
 __all__ = [
@@ -164,8 +167,8 @@ DISTILL = {
     OPPORTUNITY: ("Id", "Name", "StageName", "Amount", "CloseDate", "Probability", "Type", "NextStep", "Description",
                   "IsClosed", "IsWon", "CreatedDate", "LastModifiedDate", "SystemModstamp", "AccountId",
                   "Account.Name", "OwnerId", "Owner.Name", "Owner.Email"),
-    TASK: ("Id", "Subject", "Status", "ActivityDate", "Description", "CreatedDate", "SystemModstamp", "AccountId",
-           "Account.Name", "WhoId", "Who.Name", "OwnerId", "Owner.Name"),
+    TASK: ("Id", "Subject", "Status", "ActivityDate", "Description", "TaskSubtype", "CreatedDate", "SystemModstamp",
+           "AccountId", "Account.Name", "WhoId", "Who.Name", "OwnerId", "Owner.Name"),
     EVENT: ("Id", "Subject", "StartDateTime", "EndDateTime", "Location", "Description", "ActivityDate", "CreatedDate",
             "SystemModstamp", "AccountId", "Account.Name", "WhoId", "Who.Name", "OwnerId", "Owner.Name"),
     EMAIL: ("Id", "Subject", "FromName", "FromAddress", "ToAddress", "CcAddress", "MessageDate", "TextBody",
@@ -664,6 +667,7 @@ def record_text(object: str, row: dict[str, Any]) -> str:
                             ("With", "Who.Name"), ("Owner", "Owner.Name")):
             line(label, path)
         body = _text(row, "Description")
+        body = reduce(body) if _text(row, "TaskSubtype") == "Email" else body
     elif object == EVENT:
         lines.append("Event: " + _flat(_text(row, "Subject")))
         for label, path in (("Account", "Account.Name"), ("Starts", "StartDateTime"), ("Ends", "EndDateTime"),
@@ -676,7 +680,7 @@ def record_text(object: str, row: dict[str, Any]) -> str:
             lines.append("From: " + sender)
         for label, path in (("To", "ToAddress"), ("Cc", "CcAddress"), ("Date", "MessageDate"), ("Subject", "Subject")):
             line(label, path)
-        body = _text(row, "TextBody")
+        body = reduce(_text(row, "TextBody"))
     text = "".join(f"{entry}\n" for entry in lines)
     return text + (f"\n{body}\n" if body else "")
 

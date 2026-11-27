@@ -3,7 +3,7 @@ what a pass does with the records and facts a changed key binds."""
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
@@ -102,15 +102,27 @@ def test_link_adds_fixes_and_takes_off_keys_and_replaces_a_writers_link_and_says
                                                   "2026-11-20T09:00:00Z"))
     [reply] = curate(store, tmp_path, [("link", {
         "article": "Alder", "reason": "its new address, and a code fixed", "keys": {
-            "email": ["ops@alder.example"], "code": ["t-2"], "alias": None, "Domain": None},
+            "email": ["ops@alder.example"], "code": ["t-2"], "alias": None, "tag": None},
         "wrong": {"code": ["t-9"]}, "linked": ["parts/birch"], "unlinked": ["parts/ash"]})])
     assert store.article("things/alder").identity.keys == {"domain": ["alder.example"], "code": ["t-1", "t-2"],
                                                            "email": ["ops@alder.example"]}
     assert store.article("things/alder").properties["linked"].value == ["parts/birch"]
     for said in ("email ops@alder.example added", "code t-2 added", "code t-9 taken off", "alias Alder Co taken off",
-                 "link parts/birch added", "link parts/ash taken off", "Domain was not on it"):
+                 "link parts/birch added", "link parts/ash taken off", "tag was not on it"):
         assert said in reply, reply
     assert [(p.kind, p.status) for p in proposals(store)] == [("article.link", "accepted")]
+
+
+def test_a_null_or_a_take_off_in_another_spelling_acts_on_each_spelling_the_article_holds_its_key_in(
+        tmp_path: Path) -> None:
+    store = MemoryStore()
+    things(store, alder={"domain": ["alder.example"], "Thing Code": ["T-1"], "thing_code": ["T-2"], "Code": ["c-1"],
+                         "code": ["c-1"]})
+    store.set_state("held:src", [asdict(thing("h-1", "Alder", thing_code=["T-3"]))])
+    [reply] = curate(store, tmp_path, [("link", {"article": "Alder", "reason": "not its own", "keys": {"Domain": None},
+                                                 "wrong": {"THING CODE": ["T-1", "T-2", "T-9"], "code": ["c-1"]}})])
+    assert store.article("things/alder").identity.keys == {"Code": ["c-1"]}
+    assert reply.count("was not on it") == 1 and "Thing Code T-9 was not on it" in reply, reply
 
 
 def test_an_admit_of_an_article_in_the_working_set_is_refused_and_names_link(tmp_path: Path) -> None:

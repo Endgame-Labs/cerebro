@@ -171,7 +171,7 @@ def test_a_first_run_whose_every_failure_ran_again_and_wrote_nothing_exits_0(
     cli._print_first_run(SimpleNamespace(applied=[], quit=False, result=into, lines=[], failed=[]))
     out = capsys.readouterr().out.splitlines()
     assert "ran       reports/weekly: wrote nothing: n2" in out and not any(line.startswith("failed") for line in out)
-    assert out[-1] == "Done: 0 written, 1 ran and wrote nothing, 0 failed."
+    assert out[-1] == "Done: 1 ran and wrote nothing."
 
 
 # -- a pass in which a run ran is no failure

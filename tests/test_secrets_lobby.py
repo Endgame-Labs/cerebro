@@ -149,7 +149,7 @@ def test_a_key_that_does_not_verify_is_not_kept_its_reason_is_said_without_the_k
     assert "[x] Typesafe did not verify: 401 unauthorized (the key was ****)\n" in got.output
     assert "0 of 2 model keys set" in got.output
     assert got.output.rstrip().endswith("Check: no Fireworks key yet for extraction and compilation: run cerebro "
-                                        "secrets set fireworks (and 1 more above)")
+                                        "secrets set fireworks (and 1 more warning above)")
     assert kept(root) == [] and STAND_IN not in got.output
 
 
@@ -159,7 +159,7 @@ def test_naming_nothing_or_typing_no_key_keeps_nothing_and_says_what_to_set(
     got, root = plain(tmp_path, monkeypatch, "\n", proofs)
     assert got.exit_code == 0 and "0 of 2 model keys set" in got.output and proofs.calls == []
     assert got.output.rstrip().endswith("Check: no Fireworks key yet for extraction and compilation: run cerebro "
-                                        "secrets set fireworks (and 1 more above)")
+                                        "secrets set fireworks (and 1 more warning above)")
     got = CliRunner().invoke(cli.main, ["secrets", "--workspace", str(root)], input="fireworks\n\n")
     assert got.exit_code == 0 and proofs.calls == [] and kept(root) == []
 

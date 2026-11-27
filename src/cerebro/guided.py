@@ -524,7 +524,7 @@ def manual_lines(app: str, steps: Sequence[tuple[str, str]], printer: Printer | 
 
 READY = ("This step proposes the initial set of articles for you to approve, reads your sources for them, and asks "
          "once more about what those records name. Then it writes what you approve, each article once, and the rest "
-         "waits for you. The full run may take several minutes, depending on how much source activity is available.")
+         "waits for you. The full run can take an hour or more on a busy workspace.")
 
 
 # -- the walk

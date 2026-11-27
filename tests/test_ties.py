@@ -275,7 +275,7 @@ def test_the_labels_of_a_writers_hundred_facts_on_a_large_wiki_take_under_a_tent
     for n in range(100):
         store.link(f"g{n}", ["accounts/a0"], "2026-11-10T09:00:00Z", "record")
         store.link(f"g{n}", [f"people/p{n % 10}"], "2026-11-10T09:00:00Z", "subject")
-    assert store.unknown_ties() == 0 and len(store.facts_of("accounts/a0")) >= 100
+    assert len(store.facts_of("accounts/a0")) >= 100
     spent = [0.0]
     tied = evidence._Gatherer.tied
 

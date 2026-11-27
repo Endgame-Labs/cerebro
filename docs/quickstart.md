@@ -14,7 +14,7 @@ uv tool install .
 
 ```text
 $ cerebro version
-cerebro 0.1.1
+cerebro 0.1.2
 ```
 
 ## 2. Make a workspace
@@ -118,7 +118,7 @@ listed    local: 1 record
 facts     1 record read, 2 facts extracted
 due       projects/atlas: change
 wrote     projects/atlas  articles/projects/atlas.md
-Done: 1 written, 0 failed.
+Done: 1 written.
 ```
 
 Run it again and nothing happens, because nothing changed. You pay for a model call only when there's something new to write.

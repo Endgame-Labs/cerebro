@@ -66,7 +66,9 @@ __all__ = [
 ]
 
 # The fields the system relies on, each with what keeps it. The system's value always wins: a writer's value of one
-# never shows as it and never changes what the engine reads, and every other field is the writers' to set.
+# never shows as it and never changes what the engine reads, and every other field is the writers' to set. A store
+# indexes a field as `protected` reads its name when it is written: a change to the names that read as protected
+# raises `store.SCHEMA_VERSION` with it.
 PROTECTED = {
     "id": "it is the article's address, which links and redirects depend on",
     "title": "it is the article's name, which its curator gives and facts link by",
