@@ -48,7 +48,7 @@ import posixpath
 import threading
 import uuid
 import weakref
-from collections import Counter, deque
+from collections import deque
 from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
@@ -66,6 +66,7 @@ from .budget import (
     BudgetError,
     BudgetSpent,
     Caps,
+    Held,
     HeldForRoom,
     Stopped,
     UnpricedModel,
@@ -106,8 +107,7 @@ from .curate import (
 from .errors import CerebroError
 from .evidence import IN_FIRST_BUILD, RECENT_DAYS
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
-from .ground import LINES as GROUND_LINES
-from .ground import TALLY, counted
+from .ground import counted
 from .held import (
     OWN_WEIGHED,
     before_cut,
@@ -120,7 +120,6 @@ from .held import (
 )
 from .identity import (
     DecisionJudge,
-    Judged,
     follow,
     link,
     link_ties,
@@ -209,10 +208,7 @@ class PassResult:
     crossed: dict[str, dict[str, Any]] = field(default_factory=dict)  # by layer, the crossing its first refusal met
     tried: dict[str, list[str]] = field(default_factory=dict)  # each retry list the pass tried, as it began
     paused: set[str] = field(default_factory=set)  # each source a daily cap stopped reading, at its first model record
-    # what grounding did on each article compiled, by its run's key, counted by kind, and the lines of `warnings` that
-    # say each thing it repaired or dropped, which the run's line in the `agent-runs` log keeps
-    grounding: dict[str, dict[str, int]] = field(default_factory=dict)
-    grounded: set[str] = field(default_factory=set)
+    grounding: dict[str, dict[str, int]] = field(default_factory=dict)  # what grounding did, by the run's key and kind
     cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens
@@ -1829,38 +1825,28 @@ LINKED = own_key("linked", "articles")  # each article every current fact was li
 def _link(workspace: Cerebro, landed: list[tuple[Fact, Record]], result: PassResult) -> None:
     """Link each fact to its articles, in order, on this thread. The ties of up to `compile.concurrency` facts are
     worked out at once, so their judge calls wait side by side. With a decision model, a near match goes to its judge,
-    held to the extraction cap before each fact's ties start and each call's cost kept at the fact's turn, priced on
-    the decision model. The working set is read once for every near match. Results match one fact at a time only
-    while `ties` reads nothing `link_ties` writes, and linking changes no article."""
+    each call held to the extraction cap as `budget.Held` holds it, under the fact's id, priced on the decision
+    model. The working set is read once for every near match. Results match one fact at a time only while `ties`
+    reads nothing `link_ties` writes, and linking changes no article."""
     learned, model = stamp(workspace.clock()), workspace.models["decision"]
     width = max(1, int((workspace.settings.get("compile") or {}).get("concurrency") or 8))
     waiting, among = iter(landed), near_pool(workspace.store) if workspace.decider is not None else []
-    asked: deque[tuple[Fact, list[Judged], Future[list[tuple[str, str]]]]] = deque()
+    asked: deque[tuple[Fact, Future[list[tuple[str, str]]]]] = deque()
 
-    def ask(fact: Fact, record: Record) -> tuple[Fact, list[Judged], Future[list[tuple[str, str]]]]:
-        spent: list[Judged] = []
-        judge = (DecisionJudge(workspace.decider) if workspace.decider is not None
-                 and workspace.ledger.may_spend("extraction", workspace.clock(), model) else None)
-        return fact, spent, pool.submit(ties, workspace.store, fact, record, judge, spent=spent, among=among)
+    def ask(fact: Fact, record: Record) -> tuple[Fact, Future[list[tuple[str, str]]]]:
+        judge = None if workspace.decider is None else DecisionJudge(
+            Held(workspace.decider, workspace.ledger, "extraction", model, workspace.clock, fact.id))
+        return fact, pool.submit(ties, workspace.store, fact, record, judge, among=among)
 
-    def book(fact: Fact, spent: list[Judged], _: Any = None) -> None:
-        for judged in spent:
-            workspace.ledger.record("extraction", workspace.clock(), model, judged.usage, fact.id)
-
-    try:
-        with ThreadPoolExecutor(max_workers=width) as pool:
-            asked.extend(ask(*pair) for pair in islice(waiting, width))
-            while asked:
-                fact, _, made = asked[0]
-                try:
-                    result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
-                except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
-                    result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
-                book(*asked.popleft())
-                asked.extend(ask(*pair) for pair in islice(waiting, 1))
-    finally:  # the pool has let every call end: those whose turn never came are paid for all the same
-        for left in asked:
-            book(*left)
+    with ThreadPoolExecutor(max_workers=width) as pool:
+        asked.extend(ask(*pair) for pair in islice(waiting, width))
+        while asked:
+            fact, made = asked.popleft()
+            try:
+                result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
+            except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
+                result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
+            asked.extend(ask(*pair) for pair in islice(waiting, 1))
     own_facts(workspace, landed)
 
 
@@ -2240,9 +2226,6 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
     the cooldown, and one owed only its `parts` runs only the part marked."""
     key = _key(agent, article)
     result.step("compile", "start", article)
-    tally: Counter[str] = Counter()  # what grounding does while this article compiles, and its lines
-    own: list[str] = []
-    counting, saying = TALLY.set(tally), GROUND_LINES.set(own)
     try:
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
                                  hold=_hold(workspace, agent, article, served) if change else None,
@@ -2260,19 +2243,11 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         result.tell(f"ran       {key}: failed, {type(error).__name__}: {error}")
         result.step("compile", "end", article, mark="failed", why=f"{agent.id}: {type(error).__name__}: {error}")
         raise
-    finally:
-        TALLY.reset(counting)
-        GROUND_LINES.reset(saying)
-    compiled.grounding = dict(tally)
-    # grounding's own lines of what went, as compile carries them in `dropped` among lines that are not
-    # grounding's, which are said as they come
-    compiled.grounded = [line for line in compiled.dropped if line in own or any(
-        line.endswith(f": {said}") for said in own)]
     result.tell(_compiled_line(workspace, key, compiled))
     result.step("compile", "end", article, **_compiled_step(agent, compiled))
     # what grounding did and what landing made safe, as counts, under the article's row
     safe = made_safe(len(compiled.cleaned)) if compiled.cleaned else ""
-    if said := ", ".join(n for n in (counted(tally), safe) if n):
+    if said := ", ".join(n for n in (counted(compiled.grounding), safe) if n):
         result.step("compile", "note", article, text=said)
     return compiled
 
@@ -2347,10 +2322,9 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
     # each line kept on its run's line, and counted for its end
-    keep_grounding(workspace.store, run, compiled.grounding, [*compiled.grounded, *compiled.cleaned])
+    keep_grounding(workspace.store, run, compiled.grounding, compiled.cleaned)
     if compiled.grounding:
         result.grounding[key] = compiled.grounding
-        result.grounded.update(f"{key}: {line}" for line in compiled.grounded)
     if compiled.cleaned:
         result.cleaned[key] = len(compiled.cleaned)
     result.warnings += [f"{key}: {note}" for note in compiled.notes]
@@ -2613,7 +2587,7 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
     `held` line says it once, with when it runs. Each line of what landing made safe is kept on its run's line."""
-    keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+    keep_grounding(workspace.store, compiled.run, compiled.grounding, compiled.cleaned)
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]

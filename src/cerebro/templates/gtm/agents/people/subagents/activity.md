@@ -26,9 +26,9 @@ An ask is something this person asked of us: a question, a document, an
 introduction, a decision. It stays open until a fact shows we answered it.
 What they asked of their own team is not an ask of us.
 
-Grounding keeps only what a cited fact states, and no fact states that
-something is still open, that we still owe it, or how many days off a date is.
-So list the open items without saying so: write what was asked or promised,
+Write only what a cited fact states. No fact states that something is still
+open, that we still owe it, or how many days off a date is, so list the open
+items without saying so: write what was asked or promised,
 by whom, and the date the fact gives, as "On 14 November Tomas Weir asked for
 SSO and a data retention policy." Their place in this part says they are
 open.

@@ -16,7 +16,6 @@ from cerebro.agent import Agent, Authority, load_agent
 from cerebro.article import Compilation, Identity, Property
 from cerebro.caller import Caller
 from cerebro.clock import stamp
-from cerebro.compile import _Grounding
 from cerebro.connector import Record
 from cerebro.curate import Curated, in_scope, run_curator
 from cerebro.evidence import gather, render
@@ -1016,9 +1015,6 @@ def test_a_merged_path_is_followed_by_every_reader_and_a_proposer_is_shown_where
     curate(store, keeper, [("instruct", {"article": "things/alder-works", "text": "Say what it is."})], tmp_path,
            at=hour(3))
     assert [p.target for p in proposals(store) if p.kind == "article.instruct"] == ["things/alder"]
-    grounding = _Grounding(lambda *a: None, "parts/bolt", lookup=lookup, root=tmp_path, ledger=None,
-                           clock=lambda: NOW, decider=None, decision=None, zone=UTC)
-    assert grounding.written({"x": "See [Alder](../things/alder-works.md)."}) == {"things/alder-works"}
     assert held_by(store, "parts/bolt", "things") == ["things/alder"]  # the label on what holds it
     bolt = Group([Row("p_1", "parts/curator", "parts", "Bolt", path="parts/bolt", linked=["things/alder-works"])])
     [top] = tree([bolt], {"things/alder": "Alder"}, redirects(store))  # the first-run tree

@@ -142,7 +142,7 @@ Lena Ortiz said the Atlas launch moves from 2 December to 9 December, because th
 [^fact_173qeej9188evygsx0]: local/2026-11-16-atlas-sync.md "Sam Reyes owns the Atlas security review and expects to finish it by 4 December."
 ```
 
-Before anything lands, Cerebro checks each sentence against the facts it cites. A sentence that says more than its facts hold is fixed or dropped, and the run tells you which with a `warning` line, such as `dropped "...": it cites nothing`.
+Before anything lands, Cerebro scores each sentence against the facts it cites. A sentence that says more than its facts hold lands marked with a footnote: `[^unsupported]: Not fully backed by the facts it cites.`
 
 `cerebro status` shows what the wiki holds and what today cost:
 

@@ -104,7 +104,7 @@ questions:
 
 ```text
 $ cerebro eval atlas.yaml --no-model
-atlas: questions, 2 cases, judge none: rules and words alone, score 1.00
+atlas: questions, 2 cases, judge none: rules alone, score 1.00
 evaluation: 0 decision calls, 0 input and 0 output tokens, $0.0000, 0.0s
 ```
 

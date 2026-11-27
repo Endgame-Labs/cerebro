@@ -143,26 +143,70 @@ def test_a_run_that_answers_in_plain_text_is_asked_once_more_and_its_hand_in_lan
     assert "Your reply handed in nothing. Hand in your text now" in asked[1] and run.usage.requests == 2
 
 
-def test_a_hand_in_that_cites_nothing_is_held_and_the_run_is_told_once_so_it_may_hand_in_again() -> None:
-    seen: list[int] = []
+def test_the_first_hand_in_is_held_while_the_run_is_told_once_what_the_editor_said_and_the_next_lands_as_it_is(
+        ) -> None:
+    from cerebro.run import REVIEW
+
+    seen, said = [], []
     turns = [[("write_article", {"text": "Brightwater Logistics"})],
              [("write_article", {"text": "Brightwater Logistics [^accounts/brightwater]."})]]
-    run = PydanticRun(_talker(turns, seen)).run(AGENT, EVIDENCE, [], Budget())
+
+    def review(text: str) -> str:
+        said.append(text)
+        return "These sentences score under 0.6: Brightwater Logistics" if "[^" not in text else ""
+
+    reviewing = REVIEW.set(review)
+    try:
+        run = PydanticRun(_talker(turns, seen)).run(AGENT, EVIDENCE, [], Budget())
+        held = PydanticRun(_talker(turns[:1], [])).run(AGENT, EVIDENCE, [], Budget())  # talks after: the held lands
+        twice = PydanticRun(_talker([turns[0], turns[0]], [])).run(AGENT, EVIDENCE, [], Budget())  # told once only
+        clean = PydanticRun(_talker(turns[1:], [])).run(AGENT, EVIDENCE, [], Budget())  # nothing to say: lands at once
+        declined = PydanticRun(_talker([turns[0], [("nothing_to_write", {"reason": "nothing backs more"})]], [])).run(
+            AGENT, EVIDENCE, [], Budget())  # it declines once told: the held lands
+    finally:
+        REVIEW.reset(reviewing)
     told = [e.text for e in run.transcript if e.role == "tool" and e.tool == "write_article"]
-    assert told[0].startswith("Your text cites nothing, so grounding would drop every line of it") and seen == [0, 1]
+    assert told[0].startswith("These sentences score under 0.6") and seen == [0, 1]
     assert run.status == "done" and run.result is not None
     assert run.result.text == "Brightwater Logistics [^accounts/brightwater]."
-    held = PydanticRun(_talker(turns[:1], [])).run(AGENT, EVIDENCE, [], Budget())  # talks after: the held text lands
     assert held.status == "done" and held.result is not None and held.result.text == "Brightwater Logistics"
-    twice = PydanticRun(_talker([turns[0], turns[0]], [])).run(AGENT, EVIDENCE, [], Budget())  # told once only
     assert twice.status == "done" and twice.result is not None and twice.result.text == "Brightwater Logistics"
+    assert clean.result is not None and clean.result.text == turns[1][0][1]["text"]
+    assert declined.result is not None and declined.result.text == "Brightwater Logistics"
+    assert said == [turns[0][0][1]["text"]] * 3 + [turns[1][0][1]["text"], turns[0][0][1]["text"]]  # each first, once
+
+
+def test_once_the_editor_spoke_a_reply_in_text_or_a_broken_hand_in_is_still_asked_again_and_its_next_hand_in_lands(
+        ) -> None:
+    from suites.agent_run import citing_nothing
+
+    from cerebro.run import REVIEW
+
+    uncited, cited = [("write_article", {"text": "Uncited."})], [("write_article", {"text": "Cited [^f_1]."})]
+    broken = [("write_article", {"words": "Cited [^f_1]."})]
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        talked, mended = (PydanticRun(_talker(turns, [])).run(AGENT, EVIDENCE, [], Budget()) for turns in (
+            [uncited, "I will cite it.", cited], [uncited, broken, cited]))
+    finally:
+        REVIEW.reset(reviewing)
+    assert talked.result is not None and talked.result.text == "Cited [^f_1]."
+    assert mended.result is not None and mended.result.text == "Cited [^f_1]."
 
 
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote_nothing_never_done() -> None:
     """A normal end with nothing to take ran and wrote nothing: no failure. Its last reply holds
-    no text to take."""
-    run = PydanticRun(_talker([], [], then="")).run(AGENT, EVIDENCE, [], Budget())
+    no text to take. It is asked once, though an editor reads its hand-ins: the editor's retry is its own."""
+    from cerebro.run import REVIEW
+
+    seen: list[int] = []
+    reviewing = REVIEW.set(lambda text: "")
+    try:
+        run = PydanticRun(_talker([], seen, then="")).run(AGENT, EVIDENCE, [], Budget())
+    finally:
+        REVIEW.reset(reviewing)
     assert run.status == "wrote nothing" and run.result is None and "handed in nothing" in run.note
+    assert len(seen) == 2
 
 
 def test_a_run_that_says_it_has_nothing_to_write_ends_as_wrote_nothing_with_its_reason_in_one_call() -> None:
@@ -222,19 +266,19 @@ def test_a_curator_run_is_told_it_curates_and_has_no_part_to_write() -> None:
     assert offered == [[]] and told[0].startswith("You are a curator.") and "hand in" not in told[0]
 
 
-def _talker(turns: list[list[tuple[str, dict[str, object]]]], seen: list[int],
+def _talker(turns: list[list[tuple[str, dict[str, object]]] | str], seen: list[int],
             then: str = "All four parts are written, and here is what each says.") -> object:
-    """A function model that makes each turn's calls in order, then keeps talking with text, `then`, and counts its
-    turns."""
+    """A function model that makes each turn's calls in order, or says a turn's text, then keeps talking with text,
+    `then`, and counts its turns."""
     from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
     from pydantic_ai.models.function import AgentInfo, FunctionModel
 
     def reply(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         n = sum(isinstance(m, ModelResponse) for m in messages)
         seen.append(n)
-        if n < len(turns):
+        if n < len(turns) and not isinstance(turns[n], str):
             return ModelResponse(parts=[ToolCallPart(name, args) for name, args in turns[n]])
-        return ModelResponse(parts=[TextPart(then)])
+        return ModelResponse(parts=[TextPart(turns[n] if n < len(turns) else then)])
 
     return FunctionModel(reply, model_name="talker")
 
@@ -339,10 +383,16 @@ def test_tool_calls_made_side_by_side_take_their_room_first_and_stay_inside_the_
 
 
 def test_a_run_whose_budget_ran_out_lands_only_a_text_it_handed_in_and_was_told_of() -> None:
-    from cerebro.run import _Room
+    from suites.agent_run import citing_nothing
+
+    from cerebro.run import REVIEW, _Room
 
     turns = [[("write_article", {"text": "Uncited."})], [("_note", {"id": "1"})], [("_note", {"id": "2"})]]
-    run = PydanticRun(_verbose(turns, 900)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        run = PydanticRun(_verbose(turns, 900)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
+    finally:
+        REVIEW.reset(reviewing)
     assert run.status == "budget spent" and run.result is not None and run.result.text == "Uncited."
     assert "so the text it handed in lands" in run.note
     none = PydanticRun(_verbose(turns[1:], 900)).run(AGENT, EVIDENCE, [_note], Budget(tokens_per_run=2000))
@@ -359,8 +409,8 @@ def test_a_run_holds_each_token_once_so_many_turns_do_not_count_the_conversation
     turns = [[("note", {"id": str(n)})] for n in range(8)] + [BOTH]
     seen: list[int] = []
     model = _talker(turns, seen)
-    run = PydanticRun(model).run(AGENT, EVIDENCE, [note], Budget(tokens_per_run=1000))
-    assert run.usage.input_tokens + run.usage.output_tokens > 1000  # the conversation, sent again on each turn
+    run = PydanticRun(model).run(AGENT, EVIDENCE, [note], Budget(tokens_per_run=1100))
+    assert run.usage.input_tokens + run.usage.output_tokens > 1100  # the conversation, sent again on each turn
     assert run.status == "done" and run.result is not None
     seen.clear()  # a budget the opening alone fills ends the run before its second request
     stopped = PydanticRun(_talker(turns, seen)).run(AGENT, EVIDENCE, [note], Budget(tokens_per_run=50))
@@ -371,7 +421,7 @@ def test_what_a_run_that_answered_in_text_is_told_says_to_hand_in_with_citations
     from cerebro.run import unwritten
 
     said = unwritten(AGENT)
-    assert "Hand in your text now" in said and "[^fact_" in said and "with no citation is cut" in said
+    assert "Hand in your text now" in said and "[^fact_" in said and "citing the evidence it rests on" in said
 
 
 def _verbose(turns: list[list[tuple[str, dict[str, object]]]], output_tokens: int) -> object:
@@ -433,31 +483,31 @@ class _Replied:
         monkeypatch.setattr(pydantic_ai.direct, "model_request_sync", request)
 
 
-def test_a_repair_call_sends_its_prompt_and_request_and_counts_what_it_read_and_wrote(
+def test_a_one_request_call_sends_its_prompt_and_request_and_counts_what_it_read_and_wrote(
         monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic_ai.messages import SystemPromptPart, UserPromptPart
 
     from cerebro.models import TokenCount
-    from cerebro.run import REPAIR_MAX_TOKENS, PydanticRewriter
+    from cerebro.run import ASK_MAX_TOKENS, PydanticRewriter
 
     replied = _Replied(monkeypatch)
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, key=lambda provider: "k-test")
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, what="ask", key=lambda provider: "k-test")
     text, spent = rewriter.rewrite("the prompt", "the claim")
     assert text == '{"claim": "x", "fact_ids": ["f_1"]}' and spent == TokenCount(300, 45, 7, 0)
     [(model, [message], settings)] = replied.asked
     assert model.model_id == "fireworks:accounts/fireworks/models/glm-5p3"
     assert [type(p) for p in message.parts] == [SystemPromptPart, UserPromptPart]
     assert [p.content for p in message.parts] == ["the prompt", "the claim"]
-    assert settings == {"openai_reasoning_effort": "low", "max_tokens": REPAIR_MAX_TOKENS}
+    assert settings == {"openai_reasoning_effort": "low", "max_tokens": ASK_MAX_TOKENS}
 
 
-def test_a_repair_call_keeps_the_effort_its_block_names_and_the_key_the_workspace_keeps(
+def test_a_one_request_call_keeps_the_effort_its_block_names_and_the_key_the_workspace_keeps(
         monkeypatch: pytest.MonkeyPatch) -> None:
     from cerebro.run import PydanticRewriter
 
     replied = _Replied(monkeypatch)
     asked: list[str] = []
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3", "effort": "high"},
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3", "effort": "high"}, what="ask",
                                 key=lambda provider: asked.append(provider) or "kept-test-key")
     rewriter.rewrite("the prompt", "the claim")
     [(model, _, settings)] = replied.asked

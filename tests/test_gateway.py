@@ -128,7 +128,6 @@ ROADS: dict[str, tuple[Callable[[Cerebro], Any], str, str]] = {
     "decision": (lambda w: w.decider.decide("The sky is blue.", {"q": YesNo("Is the sky blue?")}),
                  "decision", "/v1/systemone"),
     "agent run": (lambda w: w.agent_run.run(AGENT, [], [], Budget()), "agent_run", "/inference/v1/chat/completions"),
-    "repair": (lambda w: w.rewriter.rewrite("Reply ok.", "ok"), "repair", "/inference/v1/chat/completions"),
     "facts layer": (lambda w: w.extraction.extract(NOTE), "embedding", "/inference/v1/embeddings"),
     "key proof": (lambda w: w.prove_key("compilation", COMPILE, "sk-typed-by-a-person"), "key_proof",
                   "/inference/v1/chat/completions"),
@@ -160,7 +159,7 @@ def test_every_road_goes_to_base_url_on_its_own_path_with_the_merged_headers_and
                 assert all(isinstance(v, str) and v for v in context.values()), (name, context)
                 assert headers["x-example-key"] == VALUE, name
                 assert headers["authorization"] == "Bearer unused", (name, headers["authorization"])
-    assert calls == {"decision", "agent_run", "repair", "extraction", "embedding", "extraction_decision", "key_proof"}
+    assert calls == {"decision", "agent_run", "extraction", "embedding", "extraction_decision", "key_proof"}
 
 
 @pytest.mark.parametrize("road", list(ROADS))

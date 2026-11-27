@@ -1,7 +1,7 @@
 """A composed article, `agents run` and the exit code:
-a subagent's run that fails fails the article's whole run and nothing of it lands; a composer whose content
-grounding dropped whole says it wrote nothing and what the article holds; `agents run` runs every article, one
-with nothing to cite included; and a pass exits by what settled and what landed.
+a subagent's run that fails fails the article's whole run and nothing of it lands; a composer whose content was all
+withdrawn says it wrote nothing and what the article holds; `agents run` runs every article, one with nothing to cite
+included; and a pass exits by what settled and what landed.
 Fakes and stand-ins only."""
 
 from __future__ import annotations
@@ -161,17 +161,16 @@ def test_a_subagent_that_fails_by_hand_over_earlier_text_fails_the_run_exits_1_a
     assert workspace.article("things/alpha") == before  # byte for byte: nothing of the run landed
 
 
-# -- grounding dropped everything a composer and its subagents handed in
+# -- a composer whose content was all withdrawn
 
-@pytest.mark.parametrize("again", ["the same sentence", "nothing"])
-def test_a_composer_whose_content_grounding_dropped_whole_by_hand_says_it_wrote_nothing_and_what_the_article_holds(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, again: str) -> None:
+def test_a_composer_whose_content_was_all_withdrawn_by_hand_says_it_wrote_nothing_and_what_the_article_holds(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = composed(tmp_path, monkeypatch)
     said: list[str] = []
     workspace.run.how["things/subagents/overview"] = lambda prompt: said.append(cited(prompt)) or said[-1]
     assert workspace.cli("agents", "run", "things/article").exit_code == 0
     workspace.move()  # the note it cited is gone, so its sentence no longer stands
-    workspace.run.how["things/subagents/overview"] = (lambda prompt: said[0]) if again == "the same sentence" else ""
+    workspace.run.how["things/subagents/overview"] = ""
     told = workspace.cli("agents", "run", "things/article")
     assert told.exit_code == 0, told.output
     lines = told.output.splitlines()
@@ -179,7 +178,7 @@ def test_a_composer_whose_content_grounding_dropped_whole_by_hand_says_it_wrote_
     assert not any(line.startswith("wrote") for line in lines), lines
     assert "A note on yard, number 0." not in (workspace.article("things/alpha") or "")
     assert not any("so its subagents' content stands" in line for line in lines), lines  # it holds none of it
-    assert any("Overview: " in line and "nothing it wrote grounds now" in line for line in lines), lines
+    assert any("its earlier text: took out" in line and "withdrawn since" in line for line in lines), lines
 
 
 # -- in a pass, a subagent's run that fails fails the article's run, and nothing of it lands
@@ -271,27 +270,6 @@ def test_a_pass_that_stored_facts_beside_a_run_that_failed_exits_0(
 
 # -- a run that lands nothing leaves the article byte for byte, and is counted as a run that wrote nothing
 
-@pytest.mark.parametrize("again", ["nothing", "a claim grounding drops"])
-def test_a_writer_whose_run_lands_nothing_over_text_citing_only_an_earlier_save_takes_that_text_out(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, again: str) -> None:
-    w = Workspace(tmp_path / "w", monkeypatch, {"agents/reports/weekly.md": WRITER})
-    w.run.how["reports/weekly"] = cited
-    assert w.cli("serve", "--once", "--plain").exit_code == 0
-    before, parts = w.article("reports/weekly"), w.stored("reports/weekly")
-    assert before is not None and "A note on yard, number 0." in before
-    w.revise()
-    w.run.how["reports/weekly"] = "" if again == "nothing" else (lambda prompt: "The yard moved to the moon.")
-    told = w.cli("serve", "--once", "--plain")
-    lines = told.output.splitlines()
-    assert any(line.startswith("ran       reports/weekly: wrote nothing: ") for line in lines), lines
-    assert not any(line.startswith("wrote ") for line in lines), lines
-    assert lines[-1] == "Done: 1 ran and wrote nothing.", lines
-    # the fact it cites is an earlier save's now, which counts as withdrawn: its line goes
-    assert "A note on yard, number 0." not in (w.article("reports/weekly") or "") and parts
-    assert w.stored("reports/weekly") == []
-    assert any("so the article holds none of its text now" in line for line in lines), lines
-
-
 def test_a_run_that_lands_nothing_still_takes_out_a_line_whose_facts_were_all_retracted(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     w = Workspace(tmp_path / "w", monkeypatch, {"agents/reports/weekly.md": WRITER})
@@ -323,24 +301,6 @@ def test_a_run_that_lands_nothing_takes_out_a_part_left_with_only_its_heading_an
     assert "## Summary" not in (w.article("reports/weekly") or "")
     assert not any("so the article keeps what it held" in line for line in lines), lines
     assert any("so the article holds none of its text now" in line for line in lines), lines
-
-
-@pytest.mark.parametrize("again", ["the same sentence", "nothing"])
-def test_a_composer_whose_run_lands_nothing_over_a_part_citing_only_an_earlier_save_drops_that_part(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, again: str) -> None:
-    workspace = composed(tmp_path, monkeypatch)
-    said: list[str] = []
-    workspace.run.how["things/subagents/overview"] = lambda prompt: said.append(cited(prompt)) or said[-1]
-    assert workspace.cli("agents", "run", "things/article").exit_code == 0
-    before, parts = workspace.article("things/alpha"), workspace.stored("things/alpha")
-    workspace.revise()  # what it cites is an earlier save now, so its old sentence no longer grounds
-    workspace.run.how["things/subagents/overview"] = (lambda prompt: said[0]) if again == "the same sentence" else ""
-    told = workspace.cli("agents", "run", "things/article")
-    lines = told.output.splitlines()
-    assert told.exit_code == 0 and lines[0].startswith("ran      things/article on things/alpha: wrote nothing: "), lines
-    assert before is not None and parts  # it wrote once; grounded again, its part grounds no more
-    assert "A note on yard, number 0." not in (workspace.article("things/alpha") or "")
-    assert any("Overview: " in line and "nothing it wrote grounds now" in line for line in lines), lines
 
 
 # -- a curator's run that ends failed is a failure

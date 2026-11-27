@@ -11,7 +11,7 @@ from mcp import Client
 from test_mcp import YOU, over_mcp
 
 from cerebro import Cerebro, Record
-from cerebro.article import Citation, Compilation, Identity
+from cerebro.article import Article, Citation, Compilation, Identity
 from cerebro.fakes import FakeExtraction, MemoryStore
 from cerebro.ground import quote_for
 from cerebro.reply import pruned
@@ -105,8 +105,9 @@ def test_an_agent_may_cite_a_fact_whose_id_the_article_it_read_names(tmp_path: P
     seen: list[Any] = []
     _, read = agent_surface(workspace.lookup, Caller("projects/harbor", "agent"), seen)
     shown = read(["projects/harbor"])
-    assert "facts" not in shown and sorted(f.id for f in seen) == sorted(
+    assert "facts" not in shown and sorted(f.id for f in seen if not isinstance(f, Article)) == sorted(
         f.id for f in workspace.lookup.read(YOU, ["projects/harbor"]).facts)
+    assert [a.identity.id for a in seen if isinstance(a, Article)] == ["projects/harbor"]  # it may cite the article
 
 
 def test_an_agent_gets_a_persons_facts_from_a_facts_query_on_their_article_and_may_cite_them(

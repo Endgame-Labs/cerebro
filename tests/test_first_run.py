@@ -559,8 +559,9 @@ def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: P
         script.crm = workspace.connectors["crm"]
         out = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
         assert out is not None and out.late is not None and "topics/renewals" in articles(workspace)
-        runs = [row.data["target"] for row in workspace.store.rows("agent-runs") if row.data["agent"] == "things/article"]
-        assert runs.count("things/alder-works") == 1  # built once: its new record waits for a later pass
+        runs = {row.data["run"] for row in workspace.store.rows("agent-runs")
+                if row.data["agent"] == "things/article" and row.data["target"] == "things/alder-works"}
+        assert len(runs) == 1  # built once: its new record waits for a later pass
 
 
 def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_however_late_and_serve_reads_the_rest(
