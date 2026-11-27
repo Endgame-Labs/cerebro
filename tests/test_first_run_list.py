@@ -61,30 +61,30 @@ def test_a_held_record_sharing_only_a_domain_with_a_declined_row_is_on_the_next_
         assert "Kim Vale" not in _names(listed(workspace, "parts"))  # what a person declined stays decided
 
 
-# -- each held record an admit takes counts once, under the admit that takes it as the list lands, and none of them
-#    is left out
+# -- each admit counts the held records it binds when it alone is accepted, and none of them is left out
 
-@pytest.mark.parametrize("admit", [by_record("U1"), ("admit", {"name": "Unit 7", "keys": {"tag": ["x"]},
-                                                              "reason": "Named in three readings."})])
-def test_the_held_records_each_admit_takes_are_counted_under_its_row_as_accepting_the_list_lands_them(
-        tmp_path: Path, admit: tuple[str, dict[str, Any]]) -> None:
+def test_each_admit_counts_the_held_records_it_binds_when_it_alone_is_accepted(tmp_path: Path) -> None:
     records = [rec("U1", "Unit 7", "things", tag=["x"]), rec("U2", "Unit 8", "things", tag=["x"]),
                rec("U3", "Unit 7 log", "things", tag=["x"]), rec("U4", "Unit 9", "things")]
-    script = Script({"things/curator": [admit, by_record("U2"), by_record("U4")], "parts/curator": []})
-    with open_it(lay_out_workspace(tmp_path), script, records) as workspace:
-        run(workspace, choose=None, say=lambda line: None)
-        pile = LocalApproval(workspace).pile()
-        assert [row.name for row in pile.rows() if row.left_out] == []
-        shown, name = {}, ""
-        for line in lines(pile):  # each count is a line under the row it counts for
-            if line.startswith("    ["):
-                name = line[8:].rpartition("  ")[0]
-            elif counted := re.fullmatch(r" {10}(\d+) records", line):
-                shown[name] = int(counted[1])
-        run(workspace, choose=lambda pile: Choices([[row.id] for row in pile.rows() if not row.left_out]),
-            say=lambda line: None)
-        landed = Counter(workspace.store.article(id).identity.title for r in records
-                         for id in bound_to(workspace.store, r))
+    things = [("admit", {"name": "Unit 7", "keys": {"tag": ["x"]}, "reason": "Named in three readings."}),
+              by_record("U2"), by_record("U4")]
+    shown, landed = {}, Counter()
+    for title in ("Unit 7", "Unit 8", "Unit 9"):  # each in a workspace of its own, accepted alone
+        with open_it(lay_out_workspace(tmp_path / title), Script({"things/curator": things, "parts/curator": []}),
+                     records) as workspace:
+            run(workspace, choose=None, say=lambda line: None)
+            pile = LocalApproval(workspace).pile()
+            assert [row.name for row in pile.rows() if row.left_out] == []
+            name = ""
+            for line in lines(pile):  # each count is a line under the row it counts for
+                if line.startswith("    ["):
+                    name = line[8:].rpartition("  ")[0]
+                elif counted := re.fullmatch(r" {10}(\d+) records", line):
+                    shown[name] = int(counted[1])
+            run(workspace, choose=lambda pile, title=title: Choices([[row.id] for row in pile.rows()
+                                                                     if row.name == title]), say=lambda line: None)
+            landed += Counter(workspace.store.article(id).identity.title for r in records
+                              for id in bound_to(workspace.store, r))
     assert shown == {title: n for title, n in landed.items() if n > 1} and landed["Unit 9"] == 1, (shown, landed)
 
 

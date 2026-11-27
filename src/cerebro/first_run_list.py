@@ -45,7 +45,7 @@ def _label(g: Group) -> str:
 
 def _lines(g: Group) -> list[str]:
     """The lines under a group's name: its lead's reason, who proposed it when more than one proposal did, and how
-    many held records its admit takes, when more than one."""
+    many held records its admit binds if it lands alone, when more than one."""
     out = _reason(g.lead.reason) if g.lead else []
     if len(g.rows) > 1:
         out.append(f"{len(g.rows)} proposals, by {', '.join(sorted({_one(r.agent, NAME_CAP) for r in g.rows}))}")

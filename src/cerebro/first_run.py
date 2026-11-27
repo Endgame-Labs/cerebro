@@ -411,7 +411,7 @@ class LocalApproval(Approval):
         """The records held for the curator's collection that it neither proposed nor left out, each a left-out row,
         so no record it holds is on no list: under the reason an earlier run of the curator gave
         it, else `not weighed`, or `OLDER` when the first run's held list did not show it. A proposed row speaks for
-        each held record its admit takes, as `_taken_as_landed` gives it, and counts them under it. A row or a
+        each held record its admit binds alone, as `_bound_alone` gives it, and counts them under it. A row or a
         declined admit that names a record speaks for that record; one by name alone speaks for one held record of
         that name: the one a value of its keys names, or an address at a domain it gives, and none when its keys name
         none, or with no keys the first nothing spoke for yet. Every held record no admit takes is a row of its own,
@@ -431,8 +431,8 @@ class LocalApproval(Approval):
         taken = {(str(row.record["source"]), str(row.record["id"])) for row in mine if row.record}
         taken |= {d.record for d in theirs if d.record}
         seen: dict[str, dict[str, Any]] = {}
-        taken |= _taken_as_landed(self.workspace.store, [r for r in mine if not r.left_out],
-                                  [record_from(_held_row(self.workspace, h.source, h.id, seen)) for h in every])
+        taken |= _bound_alone(self.workspace.store, [r for r in mine if not r.left_out],
+                              [record_from(_held_row(self.workspace, h.source, h.id, seen)) for h in every])
 
         def fold(name: str) -> str:
             return " ".join(name.split()).casefold()
@@ -642,28 +642,20 @@ def _held_keys(workspace: Cerebro, source: str, id: str, seen: dict[str, dict[st
     return {str(k): [str(v) for v in vs] for k, vs in (row.get("keys") or {}).items()}
 
 
-def _taken_as_landed(store: Store, rows: list[Row], held: list[Record]) -> set[tuple[str, str]]:
-    """Give each proposed row, as `binds`, the held records its admit takes when the rows land in order, and all
-    they take: a record goes to the first admit that binds it, and a key to the first that holds it, since one key
-    binds one article. An admit from a record an earlier one took lands nothing."""
+def _bound_alone(store: Store, rows: list[Row], held: list[Record]) -> set[tuple[str, str]]:
+    """Give each proposed row, as `binds`, the held records its admit binds if it lands alone, and return all they
+    bind. Each is counted alone, since what lands first is the person's to choose, so two admits may count one record."""
     near: dict[str, set[int]] = {}  # each value a record is named by, and each part of it between commas
     for n, record in enumerate(held):
         for value in (str(v) for vs in naming_keys(record).values() for v in vs):
             for word in {value, *value.split(",")}:
                 near.setdefault(word.strip().lower(), set()).add(n)
-    keyed: set[tuple[str, str]] = set()
-    taken: set[tuple[str, str]] = set()
     for row in rows:
-        if row.record and (row.record["source"], row.record["id"]) in taken:
-            continue
-        keys = {k: [v for v in vs if (k, str(v).lower()) not in keyed] for k, vs in row.keys.items()}
         found = set().union(near.get(row.name.strip().lower(), set()),
-                            *(near.get(str(v).strip().lower(), set()) for vs in keys.values() for v in vs))
-        row.binds = [(held[n].source, held[n].id) for n in sorted(found) if (held[n].source, held[n].id) not in taken
-                     and would_bind(store, keys, row.name, held[n])]
-        taken |= set(row.binds)
-        keyed |= {(k, str(v).lower()) for k, vs in keys.items() for v in vs}
-    return taken
+                            *(near.get(str(v).strip().lower(), set()) for vs in row.keys.values() for v in vs))
+        row.binds = [(held[n].source, held[n].id) for n in sorted(found)
+                     if would_bind(store, row.keys, row.name, held[n])]
+    return {bound for row in rows for bound in row.binds}
 
 
 # -- the plain list ---------------------------------------------------------------------------------------------------
