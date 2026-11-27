@@ -76,6 +76,7 @@ __all__ = [
     "decide",
     "decided_by_caller",
     "extract_told",
+    "finish_retracts",
     "instructions_on",
     "proposal_from",
     "proposals",
@@ -535,6 +536,30 @@ def retract(store: Store, extraction: Extraction | None, caller: Caller, id: str
                            f"Retract {id} again to withdraw the rest.") from error
     propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
     return RetractResult(id, withdrew, row.kind, row.id, stands)
+
+
+def finish_retracts(store: Store, extraction: Extraction, at: str) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Finish each accepted retract of a record whose take-back stopped partway, as one whose withdrawal raised or
+    whose process ended before it filed what it withdrew: withdraw what still stands of what it took back, and file
+    its row as applied, so no retract stays half done. Gives the facts withdrawn, by record id, and a line for each
+    retract that failed again."""
+    withdrawn: dict[str, list[str]] = {}
+    failed: dict[str, str] = {}
+    for row in proposals(store, ACCEPTED):
+        if row.kind != "record.retract" or row.applied:
+            continue
+        standing = {f.id for f in extraction.facts(record=row.target, latest=False)}
+        try:
+            withdrew, _ = _take_back(store, extraction, row)
+        except NothingStands:
+            withdrew = []
+        except Exception as error:  # noqa: BLE001 - one retract's failure is reported, and the rest go on
+            failed[f"retracts/{row.id}"] = f"{type(error).__name__}: {error}"
+            continue
+        propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
+        if gone := [id for id in withdrew if id in standing]:
+            withdrawn[row.target] = gone
+    return withdrawn, failed
 
 
 def _take_back_accepted(store: Store, caller: Caller, row: Proposal, reason: str, at: str) -> RetractResult:

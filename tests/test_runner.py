@@ -916,6 +916,31 @@ def test_a_pass_withdraws_what_an_earlier_pass_saved_of_a_retracted_record_and_s
     assert cerebro.run_once().retracted == 1 and extraction.facts(record=kept.id) == []
 
 
+def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Path) -> None:
+    from cerebro.caller import Caller
+    from cerebro.errors import CerebroError
+
+    you, failed = Caller("you", "person"), []
+
+    class Failing(FakeExtraction):
+        def retract(self, fact_id: str) -> None:
+            if not failed:
+                failed.append(fact_id)
+                raise OSError("the disk is full")
+            super().retract(fact_id)
+
+    extraction = Failing()
+    cerebro = kept_notes(tmp_path, extraction)
+    kept = cerebro.handle.keep(you, "note", "The east gate opens at six.", {"collection": "notes"})
+    cerebro.run_once()
+    with pytest.raises(CerebroError, match="stopped partway"):
+        cerebro.retract(you, kept.id, "wrong")
+    passed = cerebro.run_once()  # the record did not change, and its retract is finished all the same
+    said = f"note/{kept.id}: record {kept.id} was retracted, so the facts read from it are withdrawn"
+    assert passed.retracted == 1 and said in passed.notices and extraction.facts(record=kept.id) == []
+    assert said not in cerebro.run_once().notices  # a finished retract is finished once
+
+
 def test_a_retract_is_filed_before_its_take_back_reads_the_records_facts(tmp_path: Path) -> None:
     from cerebro.caller import Caller
     from cerebro.records import retracted_records, was_retracted
