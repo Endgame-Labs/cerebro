@@ -318,7 +318,7 @@ def _passes(workspace: Cerebro) -> Callable[[PassResult], None]:
 
 
 def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool = True, workspace: Any = None) -> str:
-    """One agent's run by hand, and what grounding dropped and its notes, as a pass prints them. A run that ran and
+    """One agent's run by hand, and what did not land and its notes, as a pass prints them. A run that ran and
     wrote nothing says why and is no failure, also when its article holds its
     earlier text. Gives why a run failed, or "": for a composed article, a subagent's failure fails the article's
     run. A run by hand runs even when nothing moved, and when its evidence holds nothing to cite, so it skips only
@@ -3530,7 +3530,7 @@ def _connect(source: str | None, root: Path | None, from_stdin: bool, from_env: 
 @_root_option
 @click.option("--group", default="", help="Run only the cases of this group.")
 @click.option("--workers", type=int, default=4, show_default=True, help="How many cases run at once.")
-@click.option("--no-model", "no_model", is_flag=True, help="Judge by rules and words alone, with no model call.")
+@click.option("--no-model", "no_model", is_flag=True, help="Judge by rules alone, with no model call.")
 @click.option("--cap", type=float, default=None,
               help="The evaluation layer's dollars for today, in place of settings.yaml's evaluation_daily_usd.")
 @_json_option

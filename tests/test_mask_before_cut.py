@@ -349,8 +349,8 @@ def test_the_keep_judge_a_rerank_the_request_log_and_the_runs_log_mask_before_th
             ran = Run(f"run_{start}", "projects/said", "projects/harbor", "failed", note="it failed",
                       started_at="2026-11-17T09:00:00Z")
             workspace.store.append("agent-runs", {"run": ran.id, "agent": ran.agent, "status": "failed"})
-            _wrote_nothing(workspace.store, ran, ["x" * (300 - len("it failed; grounding dropped everything it handed "
-                                                                 "in: ") + start - 300) + secret])
+            _wrote_nothing(workspace.store, ran, ["x" * (300 - len("it failed; nothing it handed in lands: ") + start - 300)
+                                                  + secret])
         seen = {log: json.dumps([r.data for r in workspace.store.rows(log)], ensure_ascii=False)
                 for log in ("mcp-requests", "agent-runs")}
     seen |= {where: json.dumps([state for state, _ in decider.asked], ensure_ascii=False)
@@ -1226,35 +1226,6 @@ def test_an_unreadable_store_opens_the_session_refuses_the_call_and_leaves_no_ca
 
 
 # -- every other place text is cut or printed: the mask comes first
-
-
-def test_what_grounding_scores_is_masked_in_the_runs_log(tmp_path: Path) -> None:
-    from cerebro.apps import App, evidence
-
-    secret = SECRETS["plain"]
-
-    @evidence("items")
-    def items() -> list[dict[str, str]]:
-        """Items: a stand-in app's evidence, one record to cite."""
-        return [{"id": "r1", "text": "The review moved to Friday."}]
-
-    shapes = {"sentence": "x" * 230 + " said " + secret + " of the review [^r1].",
-              "table row": "| Who | Said |\n| --- | --- |\n| " + "y" * 230 + " | " + secret + " [^nope] |"}
-    for shape, text in shapes.items():
-        root = tmp_path / shape.replace(" ", "_")
-        (root / "agents" / "projects").mkdir(parents=True)
-        (root / "agents" / "projects" / "said.md").write_text(
-            "---\nevidence:\n  - items: {}\n---\n\n# Instructions\n\nWrite what was said.\n\n# Output\n\n## Said\n")
-        (root / "settings.yaml").write_text("timezone: UTC\n")
-        with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets(SECRETS),
-                     decider=FakeDecider({"s1": 0}), apps=[App("probe", functions=[items])],
-                     agent_run=ScriptedRun(lambda prompt, t=text: t, clock=lambda: DAY), clock=lambda: DAY) as workspace:
-            workspace.store.create(Identity("projects/said", "projects", "Said"))
-            compiled = workspace.compile(workspace.agent("projects/said"))
-            runs = json.dumps(workspace.call(YOU, "query", {"from": "agent-runs"}), ensure_ascii=False, default=str)
-        out = "\n".join([*(r.note for r in compiled.runs if r), runs])
-        assert MARK in runs and "made up" in runs, shape  # its score, on the run's line
-        assert not leaks(secret, out), (shape, leaks(secret, out))
 
 
 def test_a_scripts_output_cut_at_its_limit_keeps_no_head_of_a_secret(tmp_path: Path) -> None:

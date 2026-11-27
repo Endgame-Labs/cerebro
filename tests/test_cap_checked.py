@@ -176,14 +176,25 @@ def test_each_try_of_a_grounding_judge_call_is_checked_against_the_cap_before_it
         ) -> None:
     from test_models import Network
 
-    from cerebro.models import YesNo
+    from cerebro.models import HttpDecider, YesNo
 
     state, questions = {"passage": "a sentence " * 400}, {"q": YesNo("Is it backed?")}
-    store = SQLiteStore()
-    net = Network(503, 503)  # two tries fail, and the third answers
-    _Held(net.decider(), Ledger(store, Caps(compilation=10.0)), RUNE, lambda: NOW, "ground x").decide(state, questions)
+    store, net, sent = SQLiteStore(), Network(), []
+    drops: list[Any] = [503, ConnectionResetError()]  # a dropped connection, then a server error, then the answer
+
+    def flaky(url: str, headers: dict[str, str], data: bytes) -> tuple[int, dict[str, str], bytes]:
+        sent.append(url)
+        drop = drops.pop() if drops else None
+        if isinstance(drop, int):
+            return drop, {}, b""
+        if drop is not None:
+            raise drop
+        return net.send(url, headers, data)
+
+    decider = HttpDecider(RUNE, key=lambda: "k", send=flaky, sleep=lambda _: None)
+    _Held(decider, Ledger(store, Caps(compilation=10.0)), RUNE, lambda: NOW, "ground x").decide(state, questions)
     rows = store.rows(LOG, {"layer": "compilation"})
-    assert len(net.sent) == 3 and len(rows) == 3 and all(r.data["usd"] > 0 for r in rows)  # each failed try counts
+    assert len(sent) == 3 and len(rows) == 3 and all(r.data["usd"] > 0 for r in rows)  # each failed try counts
     one = rows[0].data["usd"]  # what a failed try is held to have spent
     store, net = SQLiteStore(), Network(503, 503)
     with pytest.raises(BudgetSpent):  # the first failed try meets the cap, so no try again starts

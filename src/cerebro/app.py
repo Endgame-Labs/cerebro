@@ -727,7 +727,7 @@ class Cerebro:
         self.need_key(agent)
         self.refresh_mask()
         began = self.clock()
-        with masking(self.mask_every()):  # what grounding drops is masked before it is cut for the lines that say so
+        with masking(self.mask_every()):  # what a source gives a compile is masked before a line that says it is cut
             compiled = compile_article(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run,
                                        root=self.root, functions=self.exposed.evidence,
                                        agent_tools=self.exposed.agent_tools, workspace=self.handle, ledger=self.ledger,

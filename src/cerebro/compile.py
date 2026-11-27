@@ -1087,7 +1087,7 @@ def _wrote_nothing(store: Store, run: Run, dropped: list[str]) -> None:
     `agent-runs` log, whose latest row for an agent is what `status` shows."""
     if run.status != WROTE_NOTHING:
         run.status = WROTE_NOTHING
-        why = f"grounding dropped everything it handed in: {dropped[0]}" if dropped else "it handed in nothing"
+        why = f"nothing it handed in lands: {dropped[0]}" if dropped else "it handed in nothing"
         run.note = f"{run.note}; {why}" if run.note else why
     if (first := _run_row(store, run)) is not None:
         store.append("agent-runs", {**first, "status": WROTE_NOTHING, "note": _kept_note(store, run.note)})

@@ -380,8 +380,8 @@ def test_a_run_holds_each_token_once_so_many_turns_do_not_count_the_conversation
     turns = [[("note", {"id": str(n)})] for n in range(8)] + [BOTH]
     seen: list[int] = []
     model = _talker(turns, seen)
-    run = PydanticRun(model).run(AGENT, EVIDENCE, [note], Budget(tokens_per_run=1000))
-    assert run.usage.input_tokens + run.usage.output_tokens > 1000  # the conversation, sent again on each turn
+    run = PydanticRun(model).run(AGENT, EVIDENCE, [note], Budget(tokens_per_run=1100))
+    assert run.usage.input_tokens + run.usage.output_tokens > 1100  # the conversation, sent again on each turn
     assert run.status == "done" and run.result is not None
     seen.clear()  # a budget the opening alone fills ends the run before its second request
     stopped = PydanticRun(_talker(turns, seen)).run(AGENT, EVIDENCE, [note], Budget(tokens_per_run=50))
@@ -392,7 +392,7 @@ def test_what_a_run_that_answered_in_text_is_told_says_to_hand_in_with_citations
     from cerebro.run import unwritten
 
     said = unwritten(AGENT)
-    assert "Hand in your text now" in said and "[^fact_" in said and "with no citation is cut" in said
+    assert "Hand in your text now" in said and "[^fact_" in said and "citing the evidence it rests on" in said
 
 
 def _verbose(turns: list[list[tuple[str, dict[str, object]]]], output_tokens: int) -> object:

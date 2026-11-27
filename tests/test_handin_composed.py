@@ -161,7 +161,7 @@ def test_a_subagent_that_fails_by_hand_over_earlier_text_fails_the_run_exits_1_a
     assert workspace.article("things/alpha") == before  # byte for byte: nothing of the run landed
 
 
-# -- grounding dropped everything a composer and its subagents handed in
+# -- a composer whose content was all withdrawn
 
 def test_a_composer_whose_content_was_all_withdrawn_by_hand_says_it_wrote_nothing_and_what_the_article_holds(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
