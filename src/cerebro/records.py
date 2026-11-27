@@ -515,7 +515,13 @@ def retract(store: Store, extraction: Extraction | None, caller: Caller, id: str
     row = Proposal(_new_id("p"), "record.retract" if what == "record" else "fact.retract", id, caller, at,
                    cites=[id] if what == "record" else [], reason=reason, status=ACCEPTED, decided_by=caller,
                    decided_at=at, decision_reason=reason)
-    withdrew, stands = _take_back(store, extraction, row)
+    try:
+        withdrew, stands = _take_back(store, extraction, row)
+    except Exception as error:
+        if _proposal(store, row.id) is None:  # nothing was filed, so the error says it all
+            raise
+        raise CerebroError(f"retract: {id} is retracted, but withdrawing what it gave stopped partway: {error}. "
+                           f"Retract {id} again to withdraw the rest.") from error
     propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
     return RetractResult(id, withdrew, row.kind, row.id, stands)
 
