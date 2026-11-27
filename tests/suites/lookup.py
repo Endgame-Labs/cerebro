@@ -286,7 +286,8 @@ def test_a_query_that_matches_nothing_says_why(parts: tuple[Lookup, Store]) -> N
         "no article of projects holds stage: won, which holds closed, open"]
     store.set_field("projects/apollo", "due", Property("2026-12-01", YOU, "2026-11-01T09:00:00Z"))
     assert lookup.query(YOU, "projects", {"due": "last_7_days"}).warnings == [
-        "no article of projects matches due: last_7_days"]
+        "no article of projects matches due: last_7_days",
+        "1 article of projects has no field due, so the query left it out"]
     assert lookup.query(YOU, "projects", {"compiled_at": "2020"}).warnings == [
         "no article of projects matches compiled_at: 2020"]  # a field of the article itself, not a property
     assert lookup.query(YOU, "proposals", {"owner": "west"}).warnings == [
@@ -296,6 +297,21 @@ def test_a_query_that_matches_nothing_says_why(parts: tuple[Lookup, Store]) -> N
     # a where predicate is named by no line, so none blames a filter or the data for what it kept out
     assert lookup.query(YOU, "projects", {"stage": "open"}, where=[Where("size", ">", 5)]).warnings == []
     assert lookup.query(YOU, "proposals", where=[Where("kind", "=", "merge")]).warnings == []
+
+
+def test_a_query_on_a_field_some_articles_lack_keeps_those_that_hold_it_and_counts_the_rest(
+        parts: tuple[Lookup, Store]) -> None:
+    lookup, store = parts
+    for path, title in (("projects/orion", "Orion"), ("projects/lyra", "Lyra")):
+        store.create(Identity(path, "projects", title))
+    store.set_field("projects/orion", "size", Property(3, YOU, "2026-11-01T09:00:00Z"))
+    store.set_field("projects/orion", "linked", Property(["projects/apollo"], YOU, "2026-11-01T09:00:00Z"))
+    some = lookup.query(YOU, "projects", {"stage": "open"})
+    assert [a.identity.id for a in some.items] == ["projects/apollo"]
+    assert some.warnings == ["2 articles of projects have no field stage, so the query left them out"]
+    assert lookup.query(YOU, "projects", {"stage": "open", "size": 3}).warnings == [
+        "1 article of projects that the other filters keep has no field stage, so the query left it out"]
+    assert lookup.query(YOU, "projects", {"linked": "projects/apollo"}).warnings == []  # no links, links to nothing
 
 
 def test_an_archived_article_is_left_out_unless_a_filter_names_status(parts: tuple[Lookup, Store]) -> None:
