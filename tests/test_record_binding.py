@@ -25,7 +25,7 @@ from cerebro.connector import Record, event_key
 from cerebro.connectors.files import FilesConnector
 from cerebro.curate import in_scope, run_curator
 from cerebro.facts import Fact
-from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore, ScriptedRun
+from cerebro.fakes import FakeConnector, FakeDecider, FakeExtraction, MemoryStore, ScriptedRun
 from cerebro.held import held_for, waits_for_own
 from cerebro.identity import bound_to, link, reached, would_bind
 from cerebro.lookup import StoreLookup
@@ -96,15 +96,17 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
     assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # back by its own record: no merge asked
 
 
-@pytest.mark.parametrize("names", [["Ann Lee"], None])  # a subject by its name alone, or with the record's keys
+@pytest.mark.parametrize("names, title", [(["Ann Lee"], "Ann Lee"), (None, "Ann Lee"), (["Ann Lee"], "Ann Lee Park")],
+                         ids=["by its name", "by the record's keys", "by a judge's near match"])
 def test_a_fact_whose_subject_is_its_records_own_name_ties_to_no_article_the_record_is_told_apart_from(
-        tmp_path: Path, names: list[str] | None) -> None:
+        tmp_path: Path, names: list[str] | None, title: str) -> None:
     (tmp_path / "settings.yaml").write_text("{}\n")
     other = Record(id="2", source="src", revision="1", at="2026-11-10", body="Ann Lee joined Birch as CFO.",
                    keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]}, fields={"subject": "Ann Lee"})
     workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=names),
                         connectors=[FakeConnector("src", [other])])  # no curator: every record is read
-    workspace.store.create(Identity("things/ann-lee", "things", "Ann Lee",
+    workspace.decider = FakeDecider()  # a judge that says yes to every near match it is asked about
+    workspace.store.create(Identity("things/ann-lee", "things", title,
                                     {"name": ["Ann Lee"], "email": ["ann@alder.example"]}, "active"))
     workspace.run_once(agents=False)
     assert [f.subject for f in workspace.extraction.facts(record="2")] == ["Ann Lee"]
