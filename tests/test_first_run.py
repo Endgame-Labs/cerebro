@@ -572,14 +572,21 @@ def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_howe
     fields = replace(account("001R", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z"), extract="records")
     own = account("001P", "Pine Row", "pine.example", at="2026-09-01T09:00:00Z")  # older, its curator admits it alone
     keyed = account("001K", "Elm Court", "elm.example", at="2026-09-01T09:00:00Z")  # older, its row admitted by keys
-    part = replace(keyed, id="002K", keys={"domain": ["elm.example"]}, carried=["domain"], into="parts")  # carries them
-    logged = replace(part, id="003K", carried=[], into="")  # of no collection, though its keys name the row
+    carries = replace(keyed, id="002K", keys={"domain": ["elm.example"]}, carried=["domain"],
+                      fields={"name": "Elm Court visit"})  # of the row's own collection, only carrying its key
+    part = replace(keyed, id="005K", keys={"domain": ["elm.example"]}, into="parts")  # its key names the row
+    logged = replace(part, id="003K", into="")  # of no collection, though its key names the row
+    topic = replace(carries, id="004K", keys={"domain": ["alder.example"], "topic": ["renewals"]}, into="topics",
+                    fields={"name": "Renewals"})  # older, of a row the late list approves
     by_keys = ("admit", {"name": "Elm Court", "keys": {"domain": ["elm.example"]}, "reason": "A row a source gave.",
                          "group": "you own (crm)"})
-    script, extraction, clock = Script({"things/curator": [*ADMITS, by_keys]}), FakeExtraction(), [NOW]
-    with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=extraction, clock=lambda: clock[0],
-                 connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older, ticked, fields, own, keyed, part,
-                                                   logged])]) as workspace:
+    late = ("admit", {"name": "Renewals", "keys": {"topic": ["renewals"]}, "reason": "Renewals.", "group": "topics"})
+    script = Script({"things/curator": [*ADMITS, by_keys], "topics/curator": [late]})
+    extraction, clock = FakeExtraction(), [NOW]
+    with Cerebro(lay_out_workspace(tmp_path, knowledge=True), agent_run=script, extraction=extraction,
+                 clock=lambda: clock[0], connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older, ticked, fields,
+                                                                         own, keyed, carries, part, logged,
+                                                                         topic])]) as workspace:
         script.store = workspace.store
         assert run(workspace, choose=None).waits  # off a terminal, the list waits
         clock[0] = NOW + timedelta(days=8)  # a person decides it a week later
@@ -588,15 +595,15 @@ def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_howe
                                                 {"001A", "001B", "001D"} or row.name == "Elm Court"]))
         script.calls["things/curator"] = [("admit", {"record": {"source": "crm", "id": "001P"}, "name": "Pine Row",
                                                      "reason": "Named in a fetched row."})]
-        out = run(workspace, choose=None)  # the pass that builds
-        assert {f.record for f in extraction.facts()} == {"001A", "001B", "001D", "001E", "001K", "001O"}
+        out = run(workspace, choose=lambda late: Choices([[row.id] for row in late.rows() if not row.left_out]))
+        assert {f.record for f in extraction.facts()} == {"001A", "001B", "001D", "001E", "001K", "001O", "004K"}
         held = {key.split(":")[2] for key in script.shown["things/curator"] if key.startswith("held:")}
         assert held == {"001A", "001B", "001C", "001E"}  # what its curator is shown: the same 14 days
-        assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 3 older "
+        assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 4 older "
                                           "records on its next passes and rewrites the articles they change.")
         clock[0] += timedelta(hours=5)
         workspace.run_once(scheduled=True)  # a pass of serve once the source is due
-        assert {"001P", "002K", "003K"} <= {f.record for f in extraction.facts()}
+        assert {"001P", "002K", "003K", "005K"} <= {f.record for f in extraction.facts()}
 
 
 def test_off_a_terminal_a_late_list_waits_with_the_line_that_names_the_review_command(tmp_path: Path) -> None:
