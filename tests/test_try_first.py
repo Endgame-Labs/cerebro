@@ -52,7 +52,7 @@ class Records(AgentRun):
         self.clock, self.root, self.sent = clock, root, []
 
     def run(self, agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], budget: Budget) -> Run:
-        self.sent.append((instructions(agent, self.root), opening(evidence, self.clock(), self.root),
+        self.sent.append((instructions(agent, self.root), opening(agent, evidence, self.clock(), self.root),
                           [getattr(t, "__name__", "") for t in tools]))
         return ScriptedRun(cited, clock=self.clock).run(agent, evidence, tools, budget)
 

@@ -81,7 +81,7 @@ def run(role: str, replies: str, limit: str = "none") -> Any:
     agent, forms = AGENTS[role], replies.split(",")
     budget = Budget(tool_calls=1) if limit == "calls" else Budget()
     if limit == "room@1":  # a budget the opening alone closes to tools, though it is not spent
-        held = tokens(instructions(agent) + opening(EVIDENCE, NOW))
+        held = tokens(instructions(agent) + opening(agent, EVIDENCE, NOW))
         budget = Budget(tokens_per_run=held + 10)
     first = {"room@2": int(budget.tokens_per_run * 0.85), "budget@2": budget.tokens_per_run}.get(limit, 0)
 

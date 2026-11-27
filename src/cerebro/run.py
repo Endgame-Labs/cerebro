@@ -7,10 +7,11 @@ reaches a tool or any other module. This is the only module that imports Pydanti
 The file follows the parts of a run:
 
 - What the model is told. Bundled prompts wrap the agent's own words: `rules`, or `curator` for a curator, then the
-  headings its `# Output` names, as guidance, or for a subagent the heading its content goes under. Evidence reaches
-  the model as data, inside one `<evidence>` block whose tags no evidence can spell, so nothing a source or a person
-  wrote reads as an instruction. The model hands in with the loop's own output tools, named for its role, and one
-  more to say there is nothing to write, with why. An agent file's `model:` replaces the settings' model.
+  headings its `# Output` names, as guidance, or for a subagent the heading its content goes under. The opening names
+  the article a writer writes, by its path. Evidence reaches the model as data, inside one `<evidence>` block whose
+  tags no evidence can spell, so nothing a source or a person wrote reads as an instruction. The model hands in with the
+  loop's own output tools, named for its role, and one more to say there is nothing to write, with why. An agent file's
+  `model:` replaces the settings' model.
 - Which text lands. A candidate is a hand-in, or a reply that holds text under a heading the agent was given: the
   model marks its article by writing those headings, and code only reads the mark. The run lands its latest candidate
   with the mark. A hand-in that cites nothing is held, and the model is told once that grounding would drop it; a
@@ -346,13 +347,18 @@ def _data(text: str, mask: Callable[[str], str] | None = None) -> str:
     return "\n".join([first, *(f"    {line}" for line in rest)])
 
 
-def opening(evidence: list[Evidence], now: datetime, root: Path | None = None,
+WRITES = "You write the article {}."  # its evidence may hold other articles' facts, and nothing else names it
+
+
+def opening(agent: Agent, evidence: list[Evidence], now: datetime, root: Path | None = None,
             mask: Callable[[str], str] | None = None) -> str:
-    """The run's first message: the day, then the evidence as data, inside one block no evidence can close: each
-    entry's heading, then each of its lines, as `_data` holds them, masked by `mask` when given."""
+    """The run's first message: the article it writes, but for a curator, then the day, then the evidence as data,
+    inside one block no evidence can close: each entry's heading, then each of its lines, as `_data` holds them,
+    masked by `mask` when given."""
     parts = [f"## {_data(entry.heading, mask)}\n\n"
              + "\n".join(_data(line, mask) for line in entry.lines or ["Nothing matched."]) for entry in evidence]
-    return prompts.fill("evidence", root, today=f"{now:%a %b %d, %Y}", evidence="\n\n".join(parts))
+    text = prompts.fill("evidence", root, today=f"{now:%a %b %d, %Y}", evidence="\n\n".join(parts))
+    return text if agent.role == "curator" else f"{WRITES.format(_data(agent.target, mask))}\n\n{text}"
 
 
 def unwritten(agent: Agent, root: Path | None = None) -> str:
@@ -1373,7 +1379,7 @@ class PydanticRun(AgentRun):
         model, name, settings, route = self._model(agent, result.id)
         takes = _Candidates(agent)
         writes = takes.writes
-        text = opening(evidence, self.clock().astimezone(self.zone), self.root, self._mask())
+        text = opening(agent, evidence, self.clock().astimezone(self.zone), self.root, self._mask())
         told = instructions(agent, self.root)
         room = _Room(budget.tokens_per_run, told + text, budget.tool_calls, deciding=not writes,
                      decisions=[getattr(t, "__name__", "") for t in tools if getattr(t, "decides", False)])

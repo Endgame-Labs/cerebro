@@ -236,3 +236,5 @@ class Decision(Fact):
 ```
 
 An agent then filters by kind with `classes:`, as `- facts: { classes: [decision] }`. The class `Decision` is the kind `decision`, and `NextStep` would be `next_step`.
+
+A `query` line on facts takes the same list, as `- query: { from: facts, classes: [decision, next_step] }`.

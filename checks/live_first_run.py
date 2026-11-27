@@ -162,7 +162,7 @@ class Openings:
         if agent.role == "curator":
             from datetime import UTC, datetime
 
-            size = tokens(opening(evidence, datetime.now(UTC)))
+            size = tokens(opening(agent, evidence, datetime.now(UTC)))
             self.tokens[agent.id] = max(size, self.tokens.get(agent.id, 0))
         return self.inner.run(agent, evidence, *args, **kwargs)
 
