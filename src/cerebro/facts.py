@@ -1112,8 +1112,8 @@ class FactoidExtraction(Extraction):
                 if http is None:
                     return f"{said}: check the extraction model; the record is tried again next pass"
                 via = self.gateway is not None and self.gateway.route(http[1]).base_url
-                said += f": {advice_for(int(http[2]), None if via else 'the extraction model and its key')}"
-                return f"{said}; the record is tried again next pass"
+                advice = advice_for(int(http[2]), None if via else "the extraction model and its key")
+                return f"{said}: {advice.removesuffix(', so try again later')}; the record is tried again next pass"
             return said
 
         with _active(self.app) as app:

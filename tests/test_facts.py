@@ -223,7 +223,7 @@ def test_a_chunk_whose_answer_is_cut_off_still_gives_its_records_facts(tmp_path:
 
 @pytest.mark.parametrize(("status", "advice"), [(401, "check the extraction model and its key"),
                                                 (402, "payment is due at the provider"),
-                                                (408, "the provider is busy or down, so try again later"),
+                                                (408, "the provider is busy or down"),
                                                 (400, "check the model id and the request")])
 def test_a_failed_model_call_fails_the_record_with_a_line_that_names_it(tmp_path: Path, status: int,
                                                                          advice: str) -> None:
