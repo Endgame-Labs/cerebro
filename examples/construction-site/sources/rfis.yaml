@@ -1,0 +1,17 @@
+# The RFI log, one record per row. Each row belongs to the rfis collection, keyed by its number.
+kind: files
+window: { behind: all }
+select:
+  - glob: "logs/rfis.jsonl"
+    rows: jsonl
+    id: "{row.number}"
+    at: "{row.updated}"
+    into: rfis
+    extract: facts          # read the question and answer too, not only the fields below
+    identity: { rfi: "{row.number}" }
+    fields:
+      name: "{row.number}"      # names the article, as RFI-014
+      subject: "{row.title}"
+      state: "{row.state}"
+      due: "{row.due}"
+      subcontractor: "{row.subcontractor}"

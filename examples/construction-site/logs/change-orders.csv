@@ -1,0 +1,7 @@
+co,date,subcontractor,description,requested,approved,state,note
+CO-001,2026-09-15,Keystone Concrete,Add a sump pit at the elevator pit per the elevator supplier,4850,4850,approved,none
+CO-002,2026-10-09,Cobalt Mechanical,Upsize the domestic water service from 3 inch to 4 inch at the utility's request,9200,9200,approved,none
+CO-003,2026-10-28,Ridgeline Steel,Stiffener plates and field welds at grid C-4 per RFI-007,18400,11900,approved,Negotiated: owner pays field welding and the second inspection. Ridgeline carries the plates.
+CO-004,2026-10-30,Owner,Replace the terracotta rainscreen with fiber cement panels (value engineering),-142000,none,void,Voided 2026-11-19: the library board kept the terracotta.
+CO-005,2026-11-14,Brightline Electric,Add conduit for four EV chargers in the parking lot at the owner's request,23700,none yet,pending,Owner reviewing. Martin Szabo to answer by 2026-12-05.
+CO-006,2026-11-21,Summit Roofing,Two extra crickets around the relocated RTU-2 curb,3300,none yet,pending,Depends on the RFI-014 answer.

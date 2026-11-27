@@ -1,0 +1,7 @@
+# Mail with subcontractors, the architect and the owner, saved as one markdown file each.
+# Subcontractor: and RFI: lines at the top tie a message's facts to those articles.
+kind: files
+window: { behind: all }
+select:
+  - glob: "mail/*.md"
+    extract: facts
