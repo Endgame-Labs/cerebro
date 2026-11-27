@@ -709,7 +709,8 @@ def _holder(workspace: Cerebro) -> str:
     """The id this process's leases on `workspace` name: a file under `.cerebro/holders/` it holds locked for as long as
     it runs. The kernel lets the lock go when the process ends, however it ends, so the next start can tell a holder
     that ended from one that runs, in any process or container on this machine. Empty where a file cannot be locked, and
-    a lease of no holder waits until it lapses."""
+    a lease of no holder waits until it lapses. The file is touched each time it is named, so one that is free and was
+    not touched for `LEASE` seconds names no lease that holds, and the next process to make its own file sweeps it."""
     if getattr(workspace, "root", None) is None:
         return ""
     root = str(workspace.root)
@@ -724,33 +725,46 @@ def _holder(workspace: Cerebro) -> str:
                 make_file(folder / f"{id}.lock")
                 held = open(folder / f"{id}.lock", "w")  # noqa: SIM115 - held open, and locked, while the process runs
                 fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                made = os.fstat(held.fileno()).st_mtime
+                for file in folder.glob("*.lock"):
+                    with contextlib.suppress(OSError):  # another process that starts may sweep it first
+                        if file.stat().st_mtime < made - LEASE and _free(file):
+                            file.unlink()
                 _HOLDERS[root] = (id, held)
             except (ImportError, OSError):
                 _HOLDERS[root] = ("", None)
-        return _HOLDERS[root][0]
+        id, held = _HOLDERS[root]
+        if held is not None:
+            with contextlib.suppress(OSError):  # a file that cannot be touched may be swept once its process ends:
+                os.utime(held.fileno())  # its leases then wait until they lapse
+        return id
 
 
 def _gone(workspace: Cerebro, held: dict[str, Any]) -> bool:
     """Whether the process that holds a lease ended without giving it back, as after a second Ctrl-C, a kill or a
     power cut: its holder file is there and its lock is free. A lease of a process that runs, of another machine
-    whose file this one cannot lock, or of no holder, waits until it lapses."""
+    whose file this one cannot lock, or of no holder, waits until it lapses. Only a sweep removes the file, so every
+    lease of a process that ended is taken over this way."""
     holder = held.get("holder")
     if not isinstance(holder, str) or len(holder) != 32 or not holder.isalnum() or holder == _holder(workspace):
         return False
+    return _free(workspace.root / ".cerebro" / "holders" / f"{holder}.lock")
+
+
+def _free(file: os.PathLike[str]) -> bool:
+    """Whether the holder file `file` is there and no process holds its lock."""
     try:
         import fcntl
 
-        file = os.open(workspace.root / ".cerebro" / "holders" / f"{holder}.lock", os.O_RDWR)
+        fd = os.open(file, os.O_RDWR)
     except (ImportError, OSError):
         return False
     try:
-        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         return False  # its process holds it: alive
     finally:
-        os.close(file)
-    with contextlib.suppress(OSError):
-        os.unlink(workspace.root / ".cerebro" / "holders" / f"{holder}.lock")
+        os.close(fd)
     return True
 
 
