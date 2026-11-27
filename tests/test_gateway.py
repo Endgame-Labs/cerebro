@@ -168,8 +168,8 @@ def test_every_road_goes_to_base_url_on_its_own_path_with_the_merged_headers_and
     assert calls == {"decision", "agent_run", "extraction", "embedding", "extraction_decision", "key_proof"}
 
 
-@pytest.mark.parametrize(("road", "status"), [("decision", 401), ("agent run", 402), ("facts layer", 402),
-                                              ("facts layer", 403), ("key proof", 403)])
+@pytest.mark.parametrize(("road", "status"), [("decision", 401), ("decision", 403), ("agent run", 402),
+                                              ("facts layer", 402), ("facts layer", 403), ("key proof", 403)])
 def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_and_stops_every_call_after_it(
         tmp_path: Path, gateway: Gateway, road: str, status: int) -> None:
     """Breaks caught: a road that tries a refused call again, or goes on making calls after the refusal, a status of

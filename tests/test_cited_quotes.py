@@ -10,6 +10,7 @@ from pathlib import Path
 from test_facts import on_factoid
 
 from cerebro.article import Article, Compilation, Identity, markdown
+from cerebro.compile import _by_tool
 from cerebro.connector import Record
 from cerebro.evidence import _item
 from cerebro.facts import Fact, Quote
@@ -70,6 +71,7 @@ def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_recor
     assert [line for line in copy_of([alone]).splitlines() if line.startswith("[^")] == [
         f"[^{told.id}]: local/b.md {again}"]
     assert _item(alone).text == f"- [^{told.id}] {told.text} (quote: local/b.md {again})"
+    assert _by_tool([alone])[0].citations == _item(alone).citations  # read through a tool, cited as evidence cites it
     assert _fact_line(alone).endswith(f"] {told.text} local/b.md {again}")
     alike = replace(alone, text=again[1:-1])  # its words are its text, and still another record's
     assert _fact_line(alike).endswith(f"] {alike.text} local/b.md {again}")
