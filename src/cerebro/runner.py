@@ -71,6 +71,7 @@ from .budget import (
     Stopped,
     UnpricedModel,
     read_caps,
+    spent_by_runs,
     stop_line,
     stopping,
 )
@@ -2471,14 +2472,17 @@ def _run_again(workspace: Cerebro, agent: Agent, article: str, who: list[str]) -
 
 
 def _usd(workspace: Cerebro, runs: list[Run]) -> str:
-    """What the runs cost on their agents' models, as a line says it."""
+    """What the runs cost, as a line says it: their writing on their agents' models, and once grounding's checks of
+    it cost anything, those too, as the spend log keeps them under the runs' ids beside their writing."""
     total = 0.0
     for run in runs:
         agent = workspace.agent(run.agent) if hasattr(workspace, "agent") else None
         if agent is not None:
             spec = workspace.model_of(agent)
             total += cost(spec.provider, spec.model, run.usage)
-    return f"${total:.4f}"
+    checks = spent_by_runs(workspace.store, [run.id for run in runs]) - total
+    return f"${total + checks:.4f} (writing ${total:.4f}, checks ${checks:.4f})" if round(checks, 4) > 0 \
+        else f"${total:.4f}"
 
 
 def _shown(compiled: Any) -> Run | None:

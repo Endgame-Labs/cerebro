@@ -73,10 +73,10 @@ if TYPE_CHECKING:
     from .gateway import Gateway, Route
 
 __all__ = [
-    "ASK_MAX_TOKENS", "HAND_INS", "REVIEW", "ROLES", "WROTE_NOTHING", "AgentRun", "Entry", "PydanticRewriter",
+    "ASK_MAX_TOKENS", "HAND_INS", "REVIEW", "ROLES", "RUN_ID", "WROTE_NOTHING", "AgentRun", "Entry", "PydanticRewriter",
     "PydanticRun", "Result", "RewriteFailed", "Rewriter", "Run", "Usage", "block_model_requests", "fit", "hand_in",
     "instructions", "joined", "model_name",
-    "model_settings", "opening", "refused", "tokens",
+    "model_settings", "new_run_id", "opening", "refused", "tokens",
 ]
 
 
@@ -387,6 +387,8 @@ def joined(agent: Agent, parts: dict[str, str]) -> str:
 # What a run's first hand-in is shown to, set around the run: what it gives back goes to the model, once, before the
 # run lands anything, and "" lets the hand-in land.
 REVIEW: ContextVar[Callable[[str], str] | None] = ContextVar("review", default=None)
+# The id a run takes, set around it when it was minted before the run, so what grounding spends on it is kept under it.
+RUN_ID: ContextVar[str] = ContextVar("run_id", default="")
 ENDS = " The run ends once it lands, so hand it in last, in the same reply as any field you set."
 
 
@@ -1374,7 +1376,7 @@ class PydanticRun(AgentRun):
         run.status, run.note = "failed", f"{type(error).__name__}: {_cut(str(error), 500, self._mask())}"
 
     def run(self, agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], budget: Budget) -> Run:
-        result = Run(id="run_" + uuid.uuid4().hex[:12], agent=agent.id, target=agent.target, status="done",
+        result = Run(id=RUN_ID.get() or new_run_id(), agent=agent.id, target=agent.target, status="done",
                      started_at=stamp(self.clock()))
         for tool in tools:
             if (name := getattr(tool, "__name__", "")) in HAND_INS:
@@ -1482,6 +1484,11 @@ class PydanticRun(AgentRun):
             result.result, result.note = masked(result.result, mask), masked(result.note, mask)
             result.transcript = masked(result.transcript, mask)
         return result
+
+
+def new_run_id() -> str:
+    """An id for a run, unique to it."""
+    return "run_" + uuid.uuid4().hex[:12]
 
 
 class RewriteFailed(CerebroError):

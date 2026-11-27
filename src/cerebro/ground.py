@@ -622,11 +622,12 @@ class Editor:
     by its own floor. A passage with a sentence left unscored, or an id not found, is not held there, and `asked`
     holds it for this run alone, by what it found of its ids. Text before any heading is read under `heading`, as a
     part is under the heading the article shows above it. `scores` keeps a line for each sentence of the text it marked, with its score and why, for the
-    run's log, and `tally` how many it marked and how many it left unscored."""
+    run's log, and `tally` how many it marked and how many it left unscored. `run` is the id of the run it scores,
+    which what its judge spends is kept under."""
 
     def __init__(self, judge: Judge, found: Found, floor: float = FLOOR,
-                 known: dict[tuple[str, str], list[Verdict]] | None = None, heading: str = ""):
-        self.judge, self.found, self.floor, self.heading = judge, found, floor, heading
+                 known: dict[tuple[str, str], list[Verdict]] | None = None, heading: str = "", run: str = ""):
+        self.judge, self.found, self.floor, self.heading, self.run = judge, found, floor, heading, run
         self.known = {} if known is None else known
         self.asked: dict[tuple[str, str, tuple[str, ...]], list[Verdict]] = {}
         self.scores: list[str] = []

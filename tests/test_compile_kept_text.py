@@ -104,7 +104,7 @@ def test_a_writer_that_returns_nothing_keeps_its_body_as_it_stands_and_settles(t
     items.clear()  # nothing to cite now
     again = compile_article(AGENT, agent_run=ScriptedRun(lambda p: ""), **common)  # run, told it has nothing to cite
     assert again.article is None and again.notes == [KEPT] and again.dropped == [] and _texts(store, article) == before
-    line = _compiled_line(SimpleNamespace(settings=SimpleNamespace(), ledger=None), AGENT.id, again)
+    line = _compiled_line(SimpleNamespace(settings=SimpleNamespace(), ledger=None, store=store), AGENT.id, again)
     assert "wrote nothing" in line and "wrote articles" not in line
     assert compile_article(AGENT, agent_run=ScriptedRun(lambda p: "never asked"), **common).skipped
 

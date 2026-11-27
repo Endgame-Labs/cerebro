@@ -319,7 +319,7 @@ def test_an_article_whose_evidence_empties_out_keeps_its_text_and_says_it_ran_an
     assert again.article is None and again.run.status == "wrote nothing" and KEPT in again.notes  # it ran
     kept = store.article(first.article.identity.id)
     assert [part.text for part in kept.compilations] == text  # its text stands
-    workspace = SimpleNamespace(settings=SimpleNamespace(), ledger=None)
+    workspace = SimpleNamespace(settings=SimpleNamespace(), ledger=None, store=store)
     assert "wrote nothing" in _compiled_line(workspace, AGENT.id, again) and "wrote articles" not in _compiled_line(
         workspace, AGENT.id, again)
     assert _compiled_step(AGENT, again)["mark"] == "ran"
