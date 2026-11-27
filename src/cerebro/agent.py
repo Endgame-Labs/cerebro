@@ -597,13 +597,16 @@ def _budget(file: _File, value: Any) -> Budget:
     return Budget(**value)
 
 
+def is_floor(value: Any) -> bool:
+    """Whether `value` can stand as `min_grounding`, in an agent file or in settings.yaml: a number from 0 to 1."""
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and 0 <= value <= 1
+
+
 def _floor(file: _File, value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+    if value is not None and not is_floor(value):
         raise file.fail(f"min_grounding is {value!r}: write a number from 0 to 1, such as min_grounding: 0.6",
                         "min_grounding")
-    return float(value)
+    return None if value is None else float(value)
 
 
 def _model(file: _File, value: Any) -> dict[str, Any] | None:
@@ -800,6 +803,9 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
     if curates and target_query is not None:
         raise file.fail("a curator keeps the articles of its folder, so it writes no query: delete the target: line",
                         "target")
+    if curates and front.get("min_grounding") is not None:
+        raise file.fail("a curator decides which articles exist and writes none, so nothing reads min_grounding: "
+                        "delete it", "min_grounding")
     file.at = ("authority",)
     authority = _authority(file, front.get("authority"))
     if authority is not None and not curates:

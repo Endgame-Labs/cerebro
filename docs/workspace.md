@@ -123,11 +123,12 @@ Other keys you may want, each with its own guide:
 | `schedule:` | How often sources are checked, and how long an article waits between rewrites | [Runs](runs.md) |
 | `serve:` | Port, host and the names a server is reached by | [Deploy](deploy.md) |
 | `providers:` | A gateway that model calls go through | [Above](#model-calls-through-a-gateway) |
+| `min_grounding:` | The score under which a sentence lands marked as not fully backed | [Agents](agents.md#how-cerebro-checks-what-an-agent-writes) |
 
 A misspelt key stops every command with one line that names it, so a typo never goes unnoticed:
 
 ```text
-Error: settings.yaml: line 8: unknown key "dialy_usd"
+Error: settings.yaml: line 8: unknown key "dialy_usd": delete it, or fix its spelling
 ```
 
 ## workspace.md and profile.md

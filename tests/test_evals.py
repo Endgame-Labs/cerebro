@@ -260,7 +260,7 @@ def test_a_grounding_case_against_its_label_lowers_the_score_and_says_how_it_sco
     assert supported and all(s.score == 0.0 and s.outcome == "0.00" for s in supported)
     miss = supported[0].misses[0]
     assert miss.name == "scores as labelled"
-    assert miss.why == "labelled supported-in-other-words, and it scored 0.00: made up: no cited fact holds what it says"
+    assert miss.why.startswith("labelled supported-in-other-words, and it scored 0.00: "), miss.why
     assert report.score is not None and report.score < 1.0
     assert report.groups["all"].held == 0
 

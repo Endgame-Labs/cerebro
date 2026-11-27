@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from .agent import Agent, _Strict, load_agents, read_yaml
+from .agent import Agent, _Strict, is_floor, load_agents, read_yaml
 from .apps import App, AppError, apps_in, marked_in
 from .budget import FIRST_RUN_USD, HIGHEST, LOWEST, Caps, read_caps
 from .connector import Ours
@@ -813,7 +813,7 @@ def _check_keys(value: Any, tree: Any, lines: dict[tuple[Any, ...], int], at: tu
             continue  # another store class takes the keys its constructor takes, which store.open_store checks
         path = (*at, key)
         if not (isinstance(key, str) and key in tree) and "*" not in tree:
-            raise WorkspaceError(_at(lines.get(path), f"unknown key {_shown(key)}"))
+            raise WorkspaceError(_at(lines.get(path), f"unknown key {_shown(key)}: delete it, or fix its spelling"))
         _check_keys(below, tree[key] if isinstance(key, str) and key in tree else tree["*"], lines, path)
 
 
@@ -1004,11 +1004,9 @@ def min_grounding(settings: dict[str, Any]) -> float:
     from .ground import FLOOR
 
     value = settings.get("min_grounding")
-    if value is None:
-        return FLOOR
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+    if value is not None and not is_floor(value):
         raise WorkspaceError(f"settings.yaml min_grounding is {value!r}: write a number from 0 to 1, such as 0.6")
-    return float(value)
+    return FLOOR if value is None else float(value)
 
 
 def _serve(settings: dict[str, Any]) -> None:

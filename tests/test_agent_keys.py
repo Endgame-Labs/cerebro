@@ -394,6 +394,7 @@ def test_a_refused_article_whose_list_does_not_read_is_named_as_refused(tmp_path
 
 @pytest.mark.parametrize(("name", "front", "said"), [
     ("things/curator.md", "target: { from: things }\n", "line 2: a curator keeps the articles"),
+    ("things/curator.md", "heartbeat: [daily]\nmin_grounding: 0.7\n", "line 3: a curator decides which articles exist"),
     ("things/curator.md", "heartbeat: [daily]\nsweep: x\n", "line 3: front matter key sweep is not one"),
     ("reports/a.md", "evidence:\n  - query: { from: things }\n    top: 3\n", "line 4: evidence 1, query: top"),
     ("reports/a.md", "evidence:\n  - articles: [notes]\n    keep: x\n", "line 4: evidence 1, articles: keep"),

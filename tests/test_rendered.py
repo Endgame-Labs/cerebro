@@ -573,7 +573,7 @@ def test_settings_give_a_collection_its_line_and_a_compile_renders_it(tmp_path: 
 @pytest.mark.parametrize("settings, says", [
     ({"collections": ["accounts"]}, "settings.yaml collections is not a map"),
     ({"collections": {"accounts": "Who we work with."}}, "collections.accounts takes description alone"),
-    ({"collections": {"accounts": {"description": "x", "title": "y"}}}, 'settings.yaml: unknown key "title"'),
+    ({"collections": {"accounts": {"description": "x", "title": "y"}}}, 'settings.yaml: unknown key "title": delete it, or fix its spelling'),
     ({"collections": {"accounts": {"description": 3}}}, "collections.accounts takes description alone"),
 ])
 def test_a_collections_setting_that_does_not_read_stops_the_workspace_with_one_line(settings: dict, says: str) -> None:

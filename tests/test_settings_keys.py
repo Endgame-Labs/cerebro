@@ -31,19 +31,19 @@ def _refused(tmp_path: Path, text: str) -> str:
 
 
 @pytest.mark.parametrize(("text", "says"), [
-    ("timzone: UTC\n", 'settings.yaml: line 1: unknown key "timzone"'),
-    ("id: w-1\nbudgte:\n  daily_usd: 5\n", 'settings.yaml: line 2: unknown key "budgte"'),
-    (MODELS + "budget:\n  dialy_usd: 5\n", 'settings.yaml: line 6: unknown key "dialy_usd"'),
-    ("budget: {dialy_usd: 5}\n", 'settings.yaml: line 1: unknown key "dialy_usd"'),
-    (MODELS.replace("effort: low", "efort: low"), 'settings.yaml: line 2: unknown key "efort"'),
-    ("serve:\n  host: 127.0.0.1\n  intreval: 60\n", 'settings.yaml: line 3: unknown key "intreval"'),
-    ("collections:\n  things:\n    descripton: x\n", 'settings.yaml: line 3: unknown key "descripton"'),
-    ("store:\n  paht: x.db\n", 'settings.yaml: line 2: unknown key "paht"'),
-    ("store:\n  class: sqlite\n  path: x.db\n  shards: 2\n", 'settings.yaml: line 4: unknown key "shards"'),
-    ("facts: { revisions: 3 }\n", 'settings.yaml: line 1: unknown key "revisions"'),
-    ("compile:\n  concurency: 4\n", 'settings.yaml: line 2: unknown key "concurency"'),
-    ("search:\n  rerank: true\n  rerank_tpo: 5\n", 'settings.yaml: line 3: unknown key "rerank_tpo"'),
-    ("schedule:\n  sources: 15m\n  setle: 1m\n", 'settings.yaml: line 3: unknown key "setle"'),
+    ("timzone: UTC\n", 'settings.yaml: line 1: unknown key "timzone": delete it, or fix its spelling'),
+    ("id: w-1\nbudgte:\n  daily_usd: 5\n", 'settings.yaml: line 2: unknown key "budgte": delete it, or fix its spelling'),
+    (MODELS + "budget:\n  dialy_usd: 5\n", 'settings.yaml: line 6: unknown key "dialy_usd": delete it, or fix its spelling'),
+    ("budget: {dialy_usd: 5}\n", 'settings.yaml: line 1: unknown key "dialy_usd": delete it, or fix its spelling'),
+    (MODELS.replace("effort: low", "efort: low"), 'settings.yaml: line 2: unknown key "efort": delete it, or fix its spelling'),
+    ("serve:\n  host: 127.0.0.1\n  intreval: 60\n", 'settings.yaml: line 3: unknown key "intreval": delete it, or fix its spelling'),
+    ("collections:\n  things:\n    descripton: x\n", 'settings.yaml: line 3: unknown key "descripton": delete it, or fix its spelling'),
+    ("store:\n  paht: x.db\n", 'settings.yaml: line 2: unknown key "paht": delete it, or fix its spelling'),
+    ("store:\n  class: sqlite\n  path: x.db\n  shards: 2\n", 'settings.yaml: line 4: unknown key "shards": delete it, or fix its spelling'),
+    ("facts: { revisions: 3 }\n", 'settings.yaml: line 1: unknown key "revisions": delete it, or fix its spelling'),
+    ("compile:\n  concurency: 4\n", 'settings.yaml: line 2: unknown key "concurency": delete it, or fix its spelling'),
+    ("search:\n  rerank: true\n  rerank_tpo: 5\n", 'settings.yaml: line 3: unknown key "rerank_tpo": delete it, or fix its spelling'),
+    ("schedule:\n  sources: 15m\n  setle: 1m\n", 'settings.yaml: line 3: unknown key "setle": delete it, or fix its spelling'),
 ])
 def test_an_unknown_key_at_any_level_is_refused_with_the_file_its_line_and_the_key(
         tmp_path: Path, text: str, says: str) -> None:
@@ -90,7 +90,7 @@ def test_every_read_command_stops_at_an_unknown_key_with_exit_1(tmp_path: Path) 
     for command in (["status"], ["serve", "--once"], ["review"]):
         result = CliRunner().invoke(main, [*command, "--workspace", str(tmp_path)])
         assert result.exit_code == 1, (command, result.output)
-        assert 'settings.yaml: line 1: unknown key "dialy_usd"' in result.output, (command, result.output)
+        assert 'settings.yaml: line 1: unknown key "dialy_usd": delete it, or fix its spelling' in result.output, (command, result.output)
 
 
 @pytest.mark.parametrize("template", [None, *scaffold.templates()])
@@ -281,11 +281,11 @@ def test_a_number_that_is_not_finite_is_refused(tmp_path: Path, key: str, span: 
 
 
 @pytest.mark.parametrize(("text", "says"), [
-    ("budget: {dialy_usd: 5}\nbogus: 1\n", 'settings.yaml: line 2: unknown key "bogus"'),
+    ("budget: {dialy_usd: 5}\nbogus: 1\n", 'settings.yaml: line 2: unknown key "bogus": delete it, or fix its spelling'),
     ("budget: {daily_usd: 0}\ncompile: {concurency: 2}\n",
      ("settings.yaml: line 1: budget.daily_usd is 0, which would stop every model call: write an amount above zero, "
       "or leave the key out for no cap")),
-    ("budget: {daily_usd: 0}\nschedule: {setle: 1m}\n", 'settings.yaml: line 2: unknown key "setle"'),
+    ("budget: {daily_usd: 0}\nschedule: {setle: 1m}\n", 'settings.yaml: line 2: unknown key "setle": delete it, or fix its spelling'),
     ("models:\n  extraction: { provider: fireworks, model: glm-5p3-flash }\nbudget: {daily_usd: 0}\n",
      ("settings.yaml: line 3: budget.daily_usd is 0, which would stop every model call: write an amount above zero, "
       "or leave the key out for no cap")),
@@ -300,7 +300,7 @@ def test_refusals_come_in_the_order_the_checks_reach_them(tmp_path: Path, text: 
 
 def test_a_hidden_character_in_a_key_is_shown_as_an_escape(tmp_path: Path) -> None:
     said = _refused(tmp_path, "da\u202eily_usd: 5\n")
-    assert said == 'settings.yaml: line 1: unknown key "da\\u202eily_usd"'
+    assert said == 'settings.yaml: line 1: unknown key "da\\u202eily_usd": delete it, or fix its spelling'
 
 
 def _init(root: Path) -> None:
@@ -318,7 +318,7 @@ def test_a_typo_under_store_gets_its_line_on_the_command_line(tmp_path: Path) ->
     for command in (["agents", "list"], ["review", "--json"], ["agents", "new", "things/thing"]):
         result = CliRunner().invoke(main, [*command, "--workspace", str(root)])
         assert result.exit_code == 1, (command, result.output)
-        assert result.output.strip() == f'Error: settings.yaml: line {line}: unknown key "paht"', (command, result.output)
+        assert result.output.strip() == f'Error: settings.yaml: line {line}: unknown key "paht": delete it, or fix its spelling', (command, result.output)
 
 
 @pytest.mark.untrusted
@@ -334,10 +334,10 @@ def test_an_untrusted_workspace_with_a_bad_key_is_told_of_trust_first_and_of_the
     trusted = CliRunner().invoke(main, ["trust", str(root)])
     assert trusted.exit_code == 1, trusted.output
     assert f"trusted   {root}" in trusted.output, trusted.output
-    assert trusted.output.strip().endswith('Error: settings.yaml: line 2: unknown key "dialy_usd"'), trusted.output
+    assert trusted.output.strip().endswith('Error: settings.yaml: line 2: unknown key "dialy_usd": delete it, or fix its spelling'), trusted.output
     assert trust.trusted(root)
     again = CliRunner().invoke(main, ["agents", "list", "--workspace", str(root)])
-    assert again.output.strip() == 'Error: settings.yaml: line 2: unknown key "dialy_usd"', again.output
+    assert again.output.strip() == 'Error: settings.yaml: line 2: unknown key "dialy_usd": delete it, or fix its spelling', again.output
 
 
 @pytest.mark.untrusted
@@ -354,7 +354,7 @@ def test_commands_that_write_refuse_a_workspace_whose_settings_are_refused_and_w
                     ["prompts", "list"], ["forget", "--yes"], ["forget"]):
         result = CliRunner().invoke(main, [*command, "--workspace", str(root)])
         assert result.exit_code == 1, (command, result.output)
-        assert result.output.strip() == f'Error: settings.yaml: line {line}: unknown key "bogus"', (command, result.output)
+        assert result.output.strip() == f'Error: settings.yaml: line {line}: unknown key "bogus": delete it, or fix its spelling', (command, result.output)
     assert sorted(p.relative_to(root) for p in root.rglob("*") if p.is_file()) == before
     assert trust.trusted(root)
 
@@ -371,7 +371,7 @@ def test_trust_on_a_trusted_workspace_names_a_typo_under_store_with_its_line(tmp
     records = trust.records()
     result = CliRunner().invoke(main, ["trust", str(root)])
     assert result.exit_code == 1, result.output
-    assert result.output.strip() == f'Error: settings.yaml: line {line}: unknown key "paht"', result.output
+    assert result.output.strip() == f'Error: settings.yaml: line {line}: unknown key "paht": delete it, or fix its spelling', result.output
     assert trust.records() == records
 
 
@@ -404,7 +404,7 @@ def test_any_other_refused_line_does_not_block_trust_on_a_folder_not_yet_trusted
     result = CliRunner().invoke(main, ["trust", str(root)])
     assert result.exit_code == 1, result.output
     assert f"trusted   {root}" in result.output, result.output
-    assert result.output.strip().endswith('Error: settings.yaml: line 2: unknown key "bogus"'), result.output
+    assert result.output.strip().endswith('Error: settings.yaml: line 2: unknown key "bogus": delete it, or fix its spelling'), result.output
     assert any(entry["path"] == str(root) for entry in trust.records())
 
 
@@ -421,35 +421,35 @@ ID = "id: ws_0123456789abcdef\n"
 # Each file holds two or three faults; the first fault named is the first the checks reach, run on `status`.
 @pytest.mark.parametrize(("text", "line", "says"), [
     (_order(ID + "port: 4747\nMODELS\nbudget:\n  dialy_usd: 5\ncompile: { concurrency: 0 }\nbogus: 1\n"), 10,
-     'unknown key "bogus"'),
-    (_order(ID + "port: 4747\nMODELS\nbudget: { daily_usd: 0 }\nschedule:\n  setle: 2m\n"), 9, 'unknown key "setle"'),
+     'unknown key "bogus": delete it, or fix its spelling'),
+    (_order(ID + "port: 4747\nMODELS\nbudget: { daily_usd: 0 }\nschedule:\n  setle: 2m\n"), 9, 'unknown key "setle": delete it, or fix its spelling'),
     (_order(ID + "port: 4747\nMODELS\ntimezone: Nowhere/Zz\nbudget: { daily_usd: -1 }\ncompile: { concurency: 2 }\n"),
      7, "timezone is"),
     (_order(ID + "port: 4747\nMODELS\nbudget: { daily_usd: 0 }\ncompile: { concurrency: 0 }\n", extraction="5"), 7,
      "budget.daily_usd is 0"),
     (_order(ID + "port: 4747\nMODELS\nbudget: { daily_usd: 0 }\n",
-            extraction="{ provider: fireworks, model: glm-5p3-flash, efort: low }"), 4, 'unknown key "efort"'),
+            extraction="{ provider: fireworks, model: glm-5p3-flash, efort: low }"), 4, 'unknown key "efort": delete it, or fix its spelling'),
     (_order("id: [1, 2]\nMODELS\ntimezone: UTC\ncompile: { concurency: 2 }\nport: abc\n"), 7,
-     'unknown key "concurency"'),
+     'unknown key "concurency": delete it, or fix its spelling'),
     (_order("port: 70000\n" + ID + "MODELS\nbudget: { daily_usd: 0 }\nschedule:\n  settle: soon\n"), 7,
      "budget.daily_usd is 0"),
     (_order(ID + "MODELS\nschedule:\n  sources: abc\nbudget:\n  first_run_usd: abc\n",
             decision="{ provider: nosuch, model: rune }"), 7, "schedule.sources:"),
     (_order(ID + "port: 4747\nMODELS\ncompile: { concurrency: 0 }\nbudget: { bogus: 1 }\n"), 7,
      "compile.concurrency is 0"),
-    (_order(ID + "port: 4747\nMODELS\ntimezone: UTC\nbogus: 1\n", extraction="[a]"), 8, 'unknown key "bogus"'),
+    (_order(ID + "port: 4747\nMODELS\ntimezone: UTC\nbogus: 1\n", extraction="[a]"), 8, 'unknown key "bogus": delete it, or fix its spelling'),
     (_order(ID + "port: 4747\nMODELS\nbudget: { daily_usd: 0 }\nserve: { port: 4748 }\n"), 7,
      "budget.daily_usd is 0"),
     (_order(ID + "port: 4747\nMODELS\nbudget: { daily_usd: 0 }\ntimezone: [UTC]\nschedule:\n  bogus: 1\n"), 10,
-     'unknown key "bogus"'),
+     'unknown key "bogus": delete it, or fix its spelling'),
     (_order(ID + "MODELS\nport: abc\n", extraction="5"), 3, "models.extraction is not a map"),
     (_order("port: abc\nid: [1, 2]\nMODELS\n"), 1, "port is 'abc'"),
     (_order("MODELS\ntimezone: UTC\nid: [1, 2]\n", extraction="[a]"), 2, "models.extraction is not a map"),
     (_order("port: abc\n" + ID + "MODELS\ntimezone: [UTC]\n"), 7, "timezone is"),
     (_order(ID + "MODELS\nport: 99999999999999999999\n", extraction="{ provider: [x], model: glm-5p3-flash }"), 3,
      "models.extraction needs a provider and a model"),
-    (_order(ID + "port: 4747\nMODELS\nbudget:\n  daily_usd: 0\n  bogus: 1\n"), 9, 'unknown key "bogus"'),
-    (_order(ID + "port: 4747\nMODELS\nschedule:\n  settle: soon\n  bogus: 1\nzzz: 1\n"), 9, 'unknown key "bogus"'),
+    (_order(ID + "port: 4747\nMODELS\nbudget:\n  daily_usd: 0\n  bogus: 1\n"), 9, 'unknown key "bogus": delete it, or fix its spelling'),
+    (_order(ID + "port: 4747\nMODELS\nschedule:\n  settle: soon\n  bogus: 1\nzzz: 1\n"), 9, 'unknown key "bogus": delete it, or fix its spelling'),
     (_order("id: true\nport: abc\nMODELS\n"), 2, "port is 'abc'"),
     (_order("port: true\nid: [1]\nMODELS\n"), 1, "port is True"),
     (_order("port: 1.5\nid: [1]\nMODELS\n"), 2, "id is [1]"),
@@ -576,7 +576,7 @@ def test_trust_trusts_a_folder_a_stale_record_names_then_names_the_refused_line(
     result = CliRunner().invoke(main, ["trust", str(root)])
     assert result.exit_code == 1, result.output
     assert f"trusted   {root}" in result.output, result.output
-    assert result.output.strip().endswith(f'Error: settings.yaml: line {line}: unknown key "bogus"'), result.output
+    assert result.output.strip().endswith(f'Error: settings.yaml: line {line}: unknown key "bogus": delete it, or fix its spelling'), result.output
     assert trust.trusted(root)
 
 
@@ -593,7 +593,7 @@ def test_a_store_key_that_is_not_a_word_is_refused_with_its_line_on_trust_and_ev
     text = (root / "settings.yaml").read_text()
     (root / "settings.yaml").write_text(text + f"store: {store.replace('KEY', key)}\n")
     named = "sub" if "sub:" in store else shown
-    said = f'Error: settings.yaml: line {len(text.splitlines()) + 1}: unknown key "{named}"'
+    said = f'Error: settings.yaml: line {len(text.splitlines()) + 1}: unknown key "{named}": delete it, or fix its spelling'
     records = trust.records()
     for command in (["trust", str(root)], ["agents", "list", "--workspace", str(root)],
                     ["secrets", "list", "--workspace", str(root)]):
