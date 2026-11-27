@@ -55,7 +55,7 @@ The examples below show the reply as your agent reads it.
 | `read` | Get an article's full text, or the quote behind a fact | `read { "ids": ["projects/atlas"] }` |
 | `tell` | Tell the wiki a fact, or ask for a change, in plain words | `tell { "text": "The Atlas launch moved to 16 December.", "target": "projects/atlas", "as": "fact" }` |
 | `decide` | Accept or reject what agents propose, in one call that lands whole or not at all. | `decide { "accept": ["p_0a1f"] }` |
-| `retract` | Take back a record or fact by its id, if your agent added it | `retract { "id": "<id>", "reason": "a typo" }` |
+| `retract` | Take back a record or fact by its id | `retract { "id": "<id>", "reason": "a typo" }` |
 
 Apps can add tools of their own. The Notes app adds `note`, as [Notes](apps/notes.md) shows.
 

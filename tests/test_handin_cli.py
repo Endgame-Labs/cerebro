@@ -139,6 +139,12 @@ def test_a_run_by_hand_prints_what_grounding_dropped_and_its_notes_as_a_pass_doe
     assert capsys.readouterr().out.splitlines() == [
         "wrote    things/alpha  articles/things/alpha.md",
         'warning  things/article on things/alpha: Summary: dropped "x": it cites nothing']
+    failed = "it failed after its first hand-in (a model error), so the text it handed in lands"
+    cli._by_hand(None, SimpleNamespace(id="things/article"), "things/alpha", Compiled(  # type: ignore[arg-type]
+        run=done, article=SimpleNamespace(identity=SimpleNamespace(id="things/alpha")),  # type: ignore[arg-type]
+        runs=[done], notes=[failed]), [])  # compile --article
+    assert capsys.readouterr().out.splitlines() == ["wrote    things/alpha  articles/things/alpha.md",
+                                                    f"warning  things/alpha: {failed}"]
 
 
 # -- the first run's merge

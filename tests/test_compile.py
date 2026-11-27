@@ -122,6 +122,27 @@ def test_a_run_whose_budget_ran_out_lands_the_text_it_handed_in_and_runs_again_n
     assert not again.skipped and body(again.article) == "done [^r0]"  # not marked read: it runs again
 
 
+def test_a_compile_says_of_each_run_that_its_first_hand_in_landed_after_it_failed_and_why(tmp_path: Path) -> None:
+    from suites.agent_run import held_then_refused
+
+    from cerebro.fakes import FakeDecider
+
+    _, _, _, common = setup(tmp_path)
+    compiled = compile_article(AGENT, agent_run=held_then_refused("## Summary\n\nOne shipped [^r0]."),
+                               decider=FakeDecider({"s1": 0}), **common)
+    assert compiled.run.status == "done" and body(compiled.article).startswith("## Summary\n\nOne shipped [^r0].")
+    [said] = compiled.notes
+    assert said.startswith("it failed after its first hand-in (the provider refused the call") and "401" in said
+    agents, _, _, common = briefs(tmp_path)
+    run = ByAgent({"briefs/subagents/risks": held_then_refused("Risks one [^r0]."),
+                   "briefs/subagents/people": ScriptedRun(lambda p: "People one [^r0]."),
+                   "briefs/article": held_then_refused("## Verdict\n\nAlder holds [^r0].")})
+    composed = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder",
+                               decider=FakeDecider({"s1": 0}), **common)
+    assert sorted(line.split(": it failed after its first hand-in (")[0] for line in composed.notes) == [
+        "briefs/article", "briefs/subagents/risks"]
+
+
 def test_a_passage_over_what_the_judge_reads_in_one_request_lands_unscored_and_the_run_is_done(tmp_path: Path) -> None:
     from cerebro.models import DEFAULTS, HttpDecider
 
