@@ -735,15 +735,16 @@ def _holder(workspace: Cerebro) -> str:
                 _HOLDERS[root] = ("", None)
         id, held = _HOLDERS[root]
         if held is not None:
-            os.utime(held.fileno())
+            with contextlib.suppress(OSError):  # a file that cannot be touched may be swept once its process ends:
+                os.utime(held.fileno())  # its leases then wait until they lapse
         return id
 
 
 def _gone(workspace: Cerebro, held: dict[str, Any]) -> bool:
     """Whether the process that holds a lease ended without giving it back, as after a second Ctrl-C, a kill or a
     power cut: its holder file is there and its lock is free. A lease of a process that runs, of another machine
-    whose file this one cannot lock, or of no holder, waits until it lapses. The file stays, so each other lease of
-    that process is taken over too."""
+    whose file this one cannot lock, or of no holder, waits until it lapses. Only a sweep removes the file, so every
+    lease of a process that ended is taken over this way."""
     holder = held.get("holder")
     if not isinstance(holder, str) or len(holder) != 32 or not holder.isalnum() or holder == _holder(workspace):
         return False
