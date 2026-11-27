@@ -1623,15 +1623,17 @@ class _Gatherer:
             rows: Rows = select(query)
         except CerebroError as error:
             raise SqlError(f"{self.name}: evidence {n}, sql {name}: {error}") from None
-        from .ground import _bounded  # grounding imports this module, so its helper loads at the call
+        from .ground import bounded  # grounding imports this module, so its helper loads at the call
 
-        key = hashlib.sha256(query.encode()).hexdigest()[:8]  # the query as it ran: another query's rows get other ids
+        # the query's spacing folded outside quotes: spaced apart, it keeps its rows' ids, and another query gets others
+        spaced = re.sub(r"('(?:[^']|'')*'|\"(?:[^\"]|\"\")*\")|\s+", lambda m: m[1] or " ", query).strip()
+        key = hashlib.sha256(spaced.encode()).hexdigest()[:8]
         query = " ".join(query.split())
         entry = Evidence(f"Sql {name}, the rows of {query}", spelled=f"sql {name}: {query}")
         for i, row in enumerate(rows.rows, 1):
             cid, text = f"sql:{name}:{key}:{i}", row_text(rows.columns, row)
             entry.items.append(Item(cid, f"- [^{cid}] {text}",
-                                    [Citation("record", cid, f"sql:{name}", _bounded(text))]))
+                                    [Citation("record", cid, f"sql:{name}", bounded(text))]))
         if rows.more:
             entry.notes.append(f"it gave more than {len(rows.rows)} rows, so the rest were not read: aggregate or "
                                "filter in the query")

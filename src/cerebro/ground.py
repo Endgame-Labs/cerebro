@@ -43,8 +43,8 @@ from .evidence import CITE
 from .facts import Fact
 from .models import Answer, Decider, DecisionError, DecisionTooLarge, Score
 
-__all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "counted", "fields_of",
-           "own_sides", "quote_for", "quote_line", "split_sentences", "tallied", "unmarked"]
+__all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "bounded", "counted",
+           "fields_of", "own_sides", "quote_for", "quote_line", "split_sentences", "tallied", "unmarked"]
 
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
@@ -198,7 +198,8 @@ LEVELS = [said for _, said in SCALE]
 QUOTE_BOUND = 300  # the most of a fact's quotes a citation shows
 
 
-def _bounded(text: str, bound: int = QUOTE_BOUND) -> str:
+def bounded(text: str, bound: int = QUOTE_BOUND) -> str:
+    """`text` cut at a word to at most `bound` characters, an ellipsis after the cut."""
     if len(text) <= bound:
         return text
     cut = text[:bound].rsplit(" ", 1)[0] or text[:bound]
@@ -221,7 +222,7 @@ def _quoted(fact: Fact) -> list[tuple[str, str]]:
         for (_, m), (text, n) in pairwise(quotes):
             words += (" " if m > 0 and n == m + 1 else " … ") + text
         if words and (record == fact.record or len(words.split(" ", 1)[0]) < room):
-            out.append((record, _bounded(words, room)))
+            out.append((record, bounded(words, room)))
             room -= len(out[-1][1])
     return out
 

@@ -110,12 +110,15 @@ def test_an_agent_file_with_a_sql_line_gathers_its_rows_as_cited_data_and_the_fi
     assert wide.lines[0].endswith("0" * 400 + '"}') and len(wide.citations[0].quote) <= 301  # cut as a fact's quote
 
 
-def test_two_sql_lines_on_one_source_each_give_their_rows(root: Path) -> None:
+def test_two_sql_lines_on_one_source_each_give_their_rows_and_one_query_spaced_apart_keeps_its_ids(root: Path) -> None:
     queries = [PIPELINE, "select 'one  two' as name", "select 'one two' as name"]  # the last two alike once spaces fold
     writer = agent(root, "evidence:\n" + "".join(f'  - sql: {{ source: warehouse, query: "{q}" }}\n' for q in queries))
     first, spaced, single = gather(writer, Lookup(), {}, root=root, sources={"warehouse": warehouse(root)})
     assert len(first.lines) == 3 and [spaced.lines, single.lines] == [
         ['- [^sql:warehouse:fd245967:1] {"name": "one  two"}'], ['- [^sql:warehouse:af3b59a1:1] {"name": "one two"}']]
+    (apart,) = gather(pipeline(root, PIPELINE.replace(" ", "\\n  ")), Lookup(), {}, root=root,
+                      sources={"warehouse": warehouse(root)})
+    assert apart.lines == first.lines
 
 
 def test_a_changed_row_moves_the_digest_and_an_unchanged_database_does_not(root: Path) -> None:
