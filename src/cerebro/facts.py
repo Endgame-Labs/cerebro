@@ -663,11 +663,17 @@ def record_name(record: Record) -> str:
     for value in record.keys.get("name", []):
         if str(value).strip():
             return " ".join(str(value).split())
+    return field_name(record) or title(record)
+
+
+def field_name(record: Record) -> str:
+    """The name a field of a record gives it: its `name`, `title` or `subject` field, the first that holds words, or
+    "" when none does."""
     for key in ("name", "title", "subject"):
         value = record.fields.get(key)
         if isinstance(value, str) and value.strip():
             return " ".join(value.split())
-    return title(record)
+    return ""
 
 
 def _as_data(text: str) -> str:

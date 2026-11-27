@@ -107,7 +107,7 @@ from .curate import (
 )
 from .errors import CerebroError
 from .evidence import IN_FIRST_BUILD, RECENT_DAYS
-from .facts import Extracted, ExtractionFailed, Fact, _Hooks, record_name, revision_of, saved_revision
+from .facts import Extracted, ExtractionFailed, Fact, _Hooks, field_name, revision_of, saved_revision
 from .ground import counted
 from .held import (
     OWN_WEIGHED,
@@ -1837,8 +1837,7 @@ def _keep_keys(workspace: Cerebro, name: str, record: Record | str) -> None:
     if (workspace.store.state(f"carried:{name}") or {}).get(record.id) != (carried or None):
         update_state(workspace.store, f"carried:{name}", lambda now: {
             **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: carried} if carried else {})})
-    named = record_name(record)
-    named = "" if named == record_name(replace(record, fields={})) else named  # a name only a field of it gives
+    named = field_name(record)
     if (workspace.store.state(f"name:{name}") or {}).get(record.id) != (named or None):
         update_state(workspace.store, f"name:{name}", lambda now: {
             **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: named} if named else {})})

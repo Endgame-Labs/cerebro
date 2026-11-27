@@ -50,7 +50,7 @@ from collections.abc import Iterable, Mapping
 from .article import Identity, fields
 from .budget import BudgetSpent
 from .connector import Ours, Record
-from .facts import Fact, record_name
+from .facts import Fact, field_name
 from .models import Decider, DecisionError, YesNo
 from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
@@ -304,11 +304,12 @@ def apart_by_name(store: Store, fact: Fact, record: Record | None, articles: Ite
 
 
 def _record_names(record: Record | None) -> list[list[str]]:
-    """A record's own names, as words: its name as `record_name` reads it, and each value of a `name` key it does
-    not only carry."""
+    """A record's own names, as words: each value of a `name` key it does not only carry, and the name a field of it
+    gives, as `field_name` reads it."""
     if record is None:
         return []
-    return [_tokens(name) for name in [record_name(record), *naming_keys(record).get("name", [])] if _tokens(name)]
+    return [_tokens(str(name)) for name in [*naming_keys(record).get("name", []), field_name(record)]
+            if _tokens(str(name))]
 
 
 def tied(store: Store, fact_id: str, articles: list[str]) -> str:
