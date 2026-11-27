@@ -905,7 +905,7 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
     from cerebro.errors import CerebroError
     from cerebro.fakes import FakeExtraction
     from cerebro.lookup import StoreLookup
-    from cerebro.records import retract
+    from cerebro.records import finish_retracts, retract
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     you, store = Caller("you", "person"), MemoryStore()
@@ -934,6 +934,7 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
         retract(store, failing, you, "note_2")
     except CerebroError as error:
         said.append(str(error))
+    said += [f"{k}: {v}" for k, v in finish_retracts(store, failing, "2026-11-20T09:00:00Z")[1].items()]  # it fails
 
     class Racing(FakeExtraction):  # a retract lands as a pass reads the note
         def extract(self, record: Record) -> Any:
@@ -945,7 +946,7 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
     cerebro = kept_notes(tmp_path, Racing())
     cerebro.handle.keep(you, "note", "The gate opens at six.", {"collection": "notes"})
     said += [line for line in cerebro.run_once().notices if "retracted" in line]
-    assert len(said) == 12 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+    assert len(said) == 13 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:

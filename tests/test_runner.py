@@ -936,12 +936,12 @@ def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Pat
     from cerebro.caller import Caller
     from cerebro.errors import CerebroError
 
-    you, app, failed = Caller("you", "person"), Caller("notes", "app"), []
+    you, app, failing = Caller("you", "person"), Caller("notes", "app"), [1, 1]  # the take-back, then the first finish
 
     class Failing(FakeExtraction):
         def retract(self, fact_id: str) -> None:
-            if not failed:
-                failed.append(fact_id)
+            if failing:
+                failing.pop()
                 raise OSError("the disk is full")
             super().retract(fact_id)
 
@@ -959,6 +959,8 @@ def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Pat
                 cerebro.retract(you, kept.id, "wrong")
             else:
                 cerebro.tell(you, "take it back", target=kept.id, as_="proposal", kind="record.retract")
+    tried = cerebro.run_once()
+    assert tried.failed == {f"retract of {kept.id}": "OSError: the disk is full. The next pass tries again."}
     passed = cerebro.run_once()  # the record did not change, and its retract is finished all the same
     said = f"note/{kept.id}: record {kept.id} was retracted, so the facts read from it are withdrawn"
     assert passed.retracted == 1 and said in passed.notices and extraction.facts(record=kept.id) == []

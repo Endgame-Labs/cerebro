@@ -544,19 +544,19 @@ def finish_retracts(store: Store, extraction: Extraction, at: str) -> tuple[dict
     """Finish each accepted retract of a record whose take-back stopped partway, as one whose withdrawal raised or
     whose process ended before it filed what it withdrew: withdraw what still stands of what it took back, and file
     its row as applied, so no retract stays half done. Gives the facts withdrawn, by record id, and a line for each
-    retract that failed again."""
+    record whose retract failed again, which the next pass tries again."""
     withdrawn: dict[str, list[str]] = {}
     failed: dict[str, str] = {}
     for row in proposals(store, ACCEPTED):
         if row.kind != "record.retract" or row.applied:
             continue
-        standing = {f.id for f in extraction.facts(record=row.target, latest=False)}
         try:
+            standing = {f.id for f in extraction.facts(record=row.target, latest=False)}
             withdrew, _ = _take_back(store, extraction, row)
         except NothingStands:
             withdrew = []
-        except Exception as error:  # noqa: BLE001 - one retract's failure is reported, and the rest go on
-            failed[f"retracts/{row.id}"] = f"{type(error).__name__}: {error}"
+        except Exception as error:  # noqa: BLE001 - its row stays unapplied, and the rest go on
+            failed[f"retract of {row.target}"] = f"{type(error).__name__}: {error}. The next pass tries again."
             continue
         propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
         if gone := [id for id in withdrew if id in standing]:
