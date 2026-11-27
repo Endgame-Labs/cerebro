@@ -9,8 +9,9 @@ The file follows the parts of a run:
 - What the model is told. Bundled prompts wrap the agent's own words: `rules`, or `curator` for a curator, then the
   headings its `# Output` names, as guidance, or for a subagent the heading its content goes under. The opening names
   the article a writer writes, by its path. Evidence reaches the model as data, inside one `<evidence>` block whose
-  tags no evidence can spell, so nothing a source or a person wrote reads as an instruction. The model hands in with the loop's own output tools, named for its role, and one
-  more to say there is nothing to write, with why. An agent file's `model:` replaces the settings' model.
+  tags no evidence can spell, so nothing a source or a person wrote reads as an instruction. The model hands in with the
+  loop's own output tools, named for its role, and one more to say there is nothing to write, with why. An agent file's
+  `model:` replaces the settings' model.
 - Which text lands. A candidate is a hand-in, or a reply that holds text under a heading the agent was given: the
   model marks its article by writing those headings, and code only reads the mark. The run lands its latest candidate
   with the mark. A hand-in that cites nothing is held, and the model is told once that grounding would drop it; a
