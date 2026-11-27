@@ -250,7 +250,8 @@ TABLE_SEPARATOR = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
 ORDERED = re.compile(r"^[0-9]{1,3}[.)] ")
 QUOTE_BREAK = re.compile(r"[ \t]*\r?\n[ \t]*(?:>[ \t]*)+")
 SPACES = " \t\r\n"
-CLOSERS = "\"')]”’»"
+CLOSERS = "\"')]”’»」』）"
+WIDE_ENDS = "。！？"  # a sentence end of Chinese or Japanese, which needs no space after it
 ENUMERATOR = re.compile(r"^[0-9]{1,3}$")
 ENUMERATOR_START = re.compile(r"^[0-9]{1,3}[.)]\s")
 INITIALISM = re.compile(r"^([a-z]{1,2}\.)+[a-z]{1,2}$")
@@ -317,7 +318,7 @@ def _abbreviated(text: str) -> bool:
 def split_sentences(body: str, start: int = 0, end: int | None = None) -> list[_Sentence]:
     """The sentences of `body[start:end]`: each ends at a period, an exclamation or a question mark, its closing
     quotes or brackets, and any citations right after it. A period after an abbreviation or an initial, or before a
-    lowercase letter or a digit, ends none, nor does one inside a code span."""
+    lowercase letter or a digit, ends none, nor does one inside a code span. A full-width end needs no space after it."""
     text = body[start:len(body) if end is None else end]
     out: list[_Sentence] = []
     begin = 0
@@ -341,16 +342,16 @@ def split_sentences(body: str, start: int = 0, end: int | None = None) -> list[_
             close = text.find("`" * ticks, i - 1 + ticks)
             i = close + ticks if close != -1 else i - 1 + ticks
             continue
-        if c not in ".!?":
+        if c not in ".!?" + WIDE_ENDS:
             continue
         j = i
         while j < len(text) and text[j] in CLOSERS:
             j += 1
         rest = text[j + _skip_lead(text[j:]):]
-        cited = rest.startswith("[^")
-        if j < len(text) and text[j] not in SPACES and not cited:
+        ends = rest.startswith("[^") or c in WIDE_ENDS  # a citation after it, or a full-width end, ends it
+        if j < len(text) and text[j] not in SPACES and not ends:
             continue
-        if not cited and rest and (rest[0].islower() or (rest[0].isdigit() and not ENUMERATOR_START.match(rest))):
+        if not ends and rest and (rest[0].islower() or (rest[0].isdigit() and not ENUMERATOR_START.match(rest))):
             continue
         if c == "." and (_abbreviated(text[begin:i - 1]) or ENUMERATOR.match(text[begin:i - 1].strip())):
             continue
