@@ -1458,11 +1458,14 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
         # an id --accept or --reject names stands as named: the ids are decided before the curators'
         accept = tuple(dict.fromkeys([*accept, *(id for id in taken["--accept-from"] if id not in reject)]))
         reject = tuple(dict.fromkeys([*reject, *(id for id in taken["--reject-from"] if id not in accept)]))
-        if empty and not (accept or reject):  # nothing at all to decide: refused, exit 1
-            file, later = empty[0]
-            raise CerebroError(f"no admit from {file} is awaiting your review" + (
+        if empty and not (accept or reject):  # nothing at all to decide: refused, exit 1, naming each file
+            files, later = [file for file, _ in empty], [id for _, ids in empty for id in ids]
+            named = f"{', '.join(files[:-1])} or {files[-1]}" if len(files) > 1 else files[0]
+            raise CerebroError(f"no admit from {named} is awaiting your review" + (
                 f" that the first run's list showed, so nothing was decided: {_newer(later)}" if later else
                 ", so nothing was decided: cerebro review lists what is"))
+        skipped = [f"skipped   no admit from {file} is awaiting your review" + (
+            f" that the first run's list showed: {_newer(later)}" if later else "") for file, later in empty]
         if accept or reject:
             from .records import DecideResult
 
@@ -1481,12 +1484,11 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
                 raise SystemExit(1)
             if as_json:
                 _print_json(result)
+                for line in skipped:  # the reply has no key for them, so they go beside it
+                    _echo(line, err=True)
             else:
-                for line in reviewing.result_lines(result, stood):
+                for line in [*reviewing.result_lines(result, stood), *skipped]:
                     _echo(line)
-                for file, later in empty:
-                    _echo(f"skipped   no admit from {file} is awaiting your review" + (
-                        f" that the first run's list showed: {_newer(later)}" if later else ""))
                 newer = list(dict.fromkeys(id for file, flag, until in firsts
                                            for id in _newer_than(workspace, file, flag, until)))
                 if newer:

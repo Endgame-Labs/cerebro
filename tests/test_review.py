@@ -351,12 +351,20 @@ def test_accept_from_decides_each_curator_on_its_own_and_one_alone_with_nothing_
     assert alone.exit_code == 1
     assert alone.output.splitlines()[-1] == ("Error: no admit from agents/projects/curator.md is awaiting your "
                                             "review, so nothing was decided: cerebro review lists what is")
-    east = second_curator(workspace, "East")
+    assert second_curator(workspace) == []  # a second curator with nothing waiting either
+    both = workspace.run("review", "--accept-from", "agents/projects/curator.md,agents/places/curator.md")
+    assert both.exit_code == 1 and both.output.splitlines()[-1] == (
+        "Error: no admit from agents/projects/curator.md or agents/places/curator.md is awaiting your review, so "
+        "nothing was decided: cerebro review lists what is")
+    skipped = "skipped   no admit from agents/projects/curator.md is awaiting your review"
+    east = second_curator(workspace, "East", "West")
+    as_json = workspace.run("review", "--accept-from", "agents/projects/curator.md", "--accept", east[1], "--json")
+    assert as_json.exit_code == 0 and json.loads(as_json.stdout)["answers"] == {east[1]: "decided"}
+    assert as_json.stderr.splitlines() == [skipped]  # the reply has no key for it, so it is said beside the reply
     mixed = workspace.run("review", "--accept-from", "agents/projects/curator.md", "--accept-from",
-                      "agents/places/curator.md")
+                          "agents/places/curator.md")
     assert mixed.exit_code == 0, mixed.output
-    assert mixed.output.splitlines() == [f"Accepted {east[0]}: its curator carries it out on its next run.",
-                                         "skipped   no admit from agents/projects/curator.md is awaiting your review"]
+    assert mixed.output.splitlines() == [f"Accepted {east[0]}: its curator carries it out on its next run.", skipped]
     assert workspace.waiting() == []
 
 
