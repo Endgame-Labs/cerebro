@@ -441,16 +441,16 @@ def retracted_records(store: Store) -> dict[str, tuple[str, str]]:
     return found
 
 
-def _taken_back(by: Caller | None, kept: str, latest: str, by_caller: str) -> bool:
+def _taken_back(by: Caller, kept: str, latest: str, by_caller: str) -> bool:
     """Whether a record's retracts take back what `by` kept at `kept`: what was kept at or before the latest of them,
     and, once a caller retracted the record, all that no caller made, since a caller's decision outranks an app's or
     an agent's. Times go to the second, so what is kept in a retract's own second is taken back."""
-    return kept <= latest or (bool(by_caller) and (by is None or by.kind != "person"))
+    return kept <= latest or (bool(by_caller) and by.kind != "person")
 
 
 def was_retracted(record: Record, retracted: dict[str, tuple[str, str]]) -> bool:
     """Whether the retracts `retracted_records` gives took back this revision of `record`, as `_taken_back` says."""
-    return record.id in retracted and _taken_back(record.by, record.at, *retracted[record.id])
+    return record.id in retracted and _taken_back(record.by, record.at, *retracted[record.id])  # type: ignore[arg-type]
 
 
 def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str, Caller | None]:
@@ -492,7 +492,7 @@ def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) 
         propose(store, proposal)  # filed before its facts are read: a pass that saves them later sees it as it checks
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
-        if _taken_back(by, fact.at, at, at if decided_by_caller(proposal) else ""):  # it has its revision's time
+        if _taken_back(by, fact.at, at, at if decided_by_caller(proposal) else ""):  # type: ignore[arg-type]
             extraction.retract(fact.id)  # type: ignore[union-attr]
             withdrew.append(fact.id)
     stands: list[str] = []

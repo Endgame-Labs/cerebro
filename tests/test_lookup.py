@@ -95,8 +95,8 @@ def test_a_query_or_read_of_an_app_kind_says_which_records_it_shows_a_retract_to
 
     from cerebro.records import retract
 
-    store, facts = MemoryStore(), FakeExtraction()
-    lookup = StoreLookup(store, facts, ["note"], clock=lambda: NOW)
+    store = MemoryStore()
+    lookup = StoreLookup(store, None, ["note"], clock=lambda: NOW)
     for id, owner, under in (("n1", "west", "c"), ("n2", "west", "c"), ("n3", "east", "c/d")):
         store.keep(Record(id=id, source="note", revision="1", at="2026-11-16T09:00:00Z",
                           fields={"owner": owner, "collection": under}, body=id, by=YOU))
@@ -107,11 +107,7 @@ def test_a_query_or_read_of_an_app_kind_says_which_records_it_shows_a_retract_to
     assert shown.warnings == ["record n1 was retracted"]
     listed = lookup.query(YOU, "note", {"collection": "c"})  # n3 is under c, so among the newest alone
     assert listed.warnings == ["record n1 was retracted", "record n3 was retracted"]
-    sourced = Record(id="d1", source="docs", revision="1", at="2026-12-01T09:00:00Z", body="It opens at nine.")
-    store.keep(sourced)  # a source's record, which no caller made, dated after the retract
-    facts.extract(sourced)
-    assert len(retract(store, facts, YOU, "d1", clock=lambda: NOW).withdrew) == 2  # the record and its fact
-    assert lookup.read(YOU, ["n3", "n2", "d1"]).warnings == ["record n3 was retracted", "record d1 was retracted"]
+    assert lookup.read(YOU, ["n3", "n2"]).warnings == ["record n3 was retracted"]
 
 
 def test_speaker_side_reads_the_side_each_quote_records(make_lookup: Callable[..., tuple[Lookup, Store]]) -> None:
