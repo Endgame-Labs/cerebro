@@ -195,19 +195,24 @@ def test_a_reply_in_text_and_a_broken_hand_in_are_each_asked_again_before_and_af
     assert early.status == "done" and early.result is not None and early.result.text == "Cited [^f_1]."
 
 
-def test_a_held_hand_in_that_lands_after_the_run_failed_says_in_plain_words_that_the_run_failed() -> None:
-    from suites.agent_run import citing_nothing
+def test_a_held_hand_in_that_lands_after_the_run_failed_says_in_plain_words_that_it_failed_and_why() -> None:
+    from suites.agent_run import citing_nothing, held_then_refused
 
     from cerebro.run import REVIEW
 
     uncited, broken = [("write_article", {"text": "Uncited."})], [("write_article", {"words": "Cited [^f_1]."})]
     reviewing = REVIEW.set(citing_nothing)
     try:
-        run = PydanticRun(_talker([uncited, broken, broken], [])).run(AGENT, EVIDENCE, [], Budget())
+        malformed = PydanticRun(_talker([uncited, broken, broken], [])).run(AGENT, EVIDENCE, [], Budget())
+        refused = held_then_refused("Uncited.").run(AGENT, EVIDENCE, [], Budget())
     finally:
         REVIEW.reset(reviewing)
-    assert run.status == "done" and run.result is not None and run.result.text == "Uncited."
-    assert run.note == "it failed after its first hand-in, so the text it handed in lands"  # not the library's words
+    for run in (malformed, refused):
+        assert run.status == "done" and run.result is not None and run.result.text == "Uncited."
+    assert malformed.note == ("it failed after its first hand-in (its hand-in was malformed, also after the turn that "
+                              "asked for it again), so the text it handed in lands")  # not the library's words
+    assert refused.note.startswith("it failed after its first hand-in (the provider refused the call, for its key or "
+                                   "for payment due: ") and "status_code: 401" in refused.note
 
 
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_fails() -> None:

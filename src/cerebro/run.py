@@ -423,6 +423,10 @@ STANDS = "it added nothing, so its subagents' content stands"
 DECIDED_SPENT = "its room or tool calls were spent, so the run ended with what it had decided by then"
 DECIDED_CUT = "its reply reached its output limit and was cut, so the run ended with what it had decided by then"
 DECIDED_EMPTY = "it ended with an empty reply"  # a curator's, which hands in nothing: what it decided has landed
+FAILED_AFTER = "it failed after its first hand-in"  # then why, in brackets, and what of it lands
+OUTPUT_RETRIES = "Exceeded maximum output retries"  # the library's words, and the gate's, for hand-ins asked for again
+MALFORMED = "its hand-in was malformed, also after the turn that asked for it again"  # those words, plain
+REFUSED_CALL = "the provider refused the call, for its key or for payment due"
 
 
 def _marked(agent: Agent, text: str, last: bool = False) -> str:
@@ -1255,7 +1259,7 @@ def _guarded(room: _Room, takes: _Candidates, asked: _Asked, masks: Masks | None
         again = max(called.count(set()), sum(bool(names) and names <= own for names in called))
         if takes.writes and takes.held is None and again > 1:  # the editor's retry is its own, taken when it spoke
             ctx.messages.pop()  # never sent: the run ends on the reply before it, as at the loop's own limit
-            raise UnexpectedModelBehavior("Exceeded maximum output retries (1)")
+            raise UnexpectedModelBehavior(f"{OUTPUT_RETRIES} (1)")
         if metered is not None:
             metered.before()  # past the cap the round set: the run stops here, and keeps what its turns spent
         if any(isinstance(m, ModelResponse) for m in request.messages) and room.spent():
@@ -1479,9 +1483,9 @@ class PydanticRun(AgentRun):
             result.usage.requests += asked.asking
             result.usage.input_tokens += room.held
         if result.status not in ("done", WROTE_NOTHING, "budget spent") and takes.held is not None:
-            if result.status in ("failed", "refused"):  # the library's words go to the debug log, never the note
-                logging.getLogger(__name__).debug("%s failed after its first hand-in: %s", agent.id, result.note)
-                result.note = "it failed after its first hand-in"
+            if result.status in ("failed", "refused"):  # why it failed stays, in plain words for retries spent
+                why = MALFORMED if OUTPUT_RETRIES in result.note else result.note
+                result.note = f"{FAILED_AFTER} ({f'{REFUSED_CALL}: ' if result.status == 'refused' else ''}{why})"
             result.note += takes.kept(result)  # a hand-in is never lost, however the run ends after it
             result.status = "done"
         result.transcript = _entries(kept)
