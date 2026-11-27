@@ -831,8 +831,8 @@ class ModelUnreachable(CerebroError, RuntimeError):
 class _Bounded(httpx.BaseTransport):
     """Factoid's HTTP transport, held to `tries` tries in a row, its extraction model's retries and one: past them, it
     raises an error Factoid does not try again, so a pass always ends. Counted per thread. Once a host of `gateway`
-    refused a call in a way no try mends, no call is sent, as Factoid would try another call of the record. An error's
-    body is masked whole by `mask` before Factoid cuts it into its error, which no mask could then find."""
+    refused a call for its key or for payment due, no call is sent, as Factoid would try another call of the record.
+    An error's body is masked whole by `mask` before Factoid cuts it into its error, which no mask could then find."""
 
     def __init__(self, inner: httpx.BaseTransport, tries: int, gateway: Gateway | None = None,
                  mask: Callable[[str], str] | None = None):

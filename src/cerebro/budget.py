@@ -109,7 +109,7 @@ class BudgetSpent(CerebroError):
 
 
 class CallRefused(BudgetSpent):
-    """A host model calls go through refused one in a way no try again mends: the pass starts no more of them."""
+    """A host model calls go through refused one for its key or for payment due: the pass starts no more of them."""
 
 
 class RoundCut(BudgetSpent):
