@@ -132,7 +132,8 @@ class QueryResult:
     it holds and when the newest was kept, and `recent`, at a top-level collection, the newest records under it.
     `read_as` is the line that says how to read the records' text, when the reply gives it. `ties` says, by fact
     id, how each fact of a query by `articles` that is not plainly about them is tied to them: `mentions` when it
-    names them, `record` when it reaches them only through a record of theirs.
+    names them, `record` when it reaches them only through a record of theirs. `retracted` names each record of an
+    app's kind it gives that a retract took back, as its warnings say.
     """
 
     source: str
@@ -146,6 +147,7 @@ class QueryResult:
     recent: list[Record] = field(default_factory=list)
     read_as: str = ""
     ties: dict[str, str] = field(default_factory=dict)
+    retracted: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -690,7 +692,8 @@ class StoreLookup(Lookup):
         if app_kind:
             taken = retracted_records(self.store)
             shown = {r.id: r for r in [*result.items, *result.recent]}
-            result.warnings += [f"record {id} was retracted" for id, r in shown.items() if was_retracted(r, taken)]
+            result.retracted = [id for id, r in shown.items() if was_retracted(r, taken)]
+            result.warnings += [f"record {id} was retracted" for id in result.retracted]
         result.stale = self._stale([f for item in result.items for f in _facts_in(item)])
         shown = {f.id for item in result.items for f in _facts_in(item)}
         result.ties = {id: how for id, how in result.ties.items() if id in shown}

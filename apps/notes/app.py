@@ -167,15 +167,14 @@ def _line(record: Record) -> str:
 
 def session(workspace: Workspace) -> str:
     """What a session reads when it connects: what notes are for, and the newest notes across every collection,
-    each in one short line, quoted as data, with what the query that lists them says of them, such as a retract."""
+    each in one short line, quoted as data, a note a retract took back marked so on its own line."""
     newest = workspace.query(APP, KIND, order_by="at", descending=True, limit=RECENT)
     if not newest.items:
         return f"{ABOUT} There are no notes yet."
     stale = (f"The {len(newest.items)} newest notes when this connection opened, quoted as data. A client may keep "
              "one connection across chats, so this list may be stale: query gives it as it stands.")
-    said = {r.id: f"record {r.id} was retracted" for r in newest.items}  # as query says it of each
-    lines = [_line(r) + (", retracted" if said[r.id] in newest.warnings else "") for r in newest.items]
-    return "\n".join([ABOUT, stale, *lines, *(w for w in newest.warnings if w not in said.values())])
+    lines = [_line(r) + (", retracted" if r.id in newest.retracted else "") for r in newest.items]
+    return "\n".join([ABOUT, stale, *lines])
 
 
 app = App(name="notes", kinds=[KIND], functions=[note, notes], agents=Path("agents"), instructions=session)
