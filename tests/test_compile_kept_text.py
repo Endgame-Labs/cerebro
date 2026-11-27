@@ -57,6 +57,24 @@ def test_a_fact_counts_as_taken_back_only_when_its_record_holds_no_fact_now(tmp_
     assert grounding.withdrawn(cites) == {"f_gone"}  # an earlier save, or a fact its standing record left, stays
 
 
+@pytest.mark.parametrize(("by", "facts", "kind", "target"), [
+    (Caller("you", "person"), 2, "fact.retract", "f_0"), (Caller("things/curator", "agent"), 1, "fact.retract", "f_0"),
+    (Caller("you", "person"), 1, "record.retract", "n0")])
+def test_a_take_back_counts_when_a_caller_made_it_and_not_when_an_agent_did(tmp_path: Path, by: Caller, facts: int,
+                                                                              kind: str, target: str) -> None:
+    from cerebro.lookup import StoreLookup
+    from cerebro.records import ACCEPTED, Proposal, propose
+
+    store, extraction = MemoryStore(), FakeExtraction()
+    extraction.by_record["n0"] = [Fact(id=f"f_{n}", text="x", subject="the pump", kind="event", at="2026-11-10",
+                                       source="notes", record="n0") for n in range(facts)]
+    extraction.retract("f_0")  # the caller's leaves its record a fact, the agent's none, as a source's removal does
+    propose(store, Proposal("p_1", kind, target, by, "2026-11-12T09:00:00Z", status=ACCEPTED, decided_by=by))
+    grounding = _Grounding("things/alder", lookup=StoreLookup(store, extraction), root=tmp_path, ledger=None,
+                           clock=lambda: datetime.now(UTC), decider=None, decision=None, zone=UTC, floor=0.6)
+    assert grounding.withdrawn([Citation("fact", "f_0")]) == ({"f_0"} if by.kind == "person" else set())
+
+
 def test_a_kept_body_drops_a_line_citing_only_a_record_taken_back(tmp_path: Path) -> None:
     from cerebro.lookup import StoreLookup
     from cerebro.records import retract, tell

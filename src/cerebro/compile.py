@@ -83,7 +83,7 @@ from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_f
 from .identity import in_working_set
 from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
-from .records import proposals
+from .records import RETRACTS, proposals
 from .reply import outside
 from .run import REVIEW, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
 from .secrets import MARK
@@ -615,20 +615,22 @@ class _Grounding:
         return self.lookup.read(Caller("compile", "agent"), [self.article]).facts
 
     def withdrawn(self, citations: list[Citation]) -> set[str]:
-        """Of what `citations` name, what was taken back since: a record a person retracted, and each retracted fact
-        whose record holds no fact now, as a person retracted the record or its source removed it. A fact of an
-        earlier save, and one taken back while its record still stands, are neither."""
+        """Of what `citations` name, what was taken back since: a fact or a record a caller retracted, and each
+        retracted fact of a record its source removed, which leaves the record no fact and no retract row. A fact of
+        an earlier save, and one a curator, an agent or an app took back, are neither."""
         store = getattr(self.lookup, "store", None)
-        taken = {p.target for p in proposals(store, "accepted") if p.kind == "record.retract"} if store else set()
-        gone = {c.id for c in citations if c.id in taken}
+        rows = [p for p in proposals(store, "accepted") if p.kind in RETRACTS] if store else []
+        by_caller = {p.target for p in rows if (p.decided_by or p.by).kind == "person"}
+        named = {p.target for p in rows}
+        gone = {c.id for c in citations if c.id in by_caller}
         ids = list(dict.fromkeys(c.id for c in citations if c.kind == "fact"))
         extraction = self.lookup.extraction
         if not ids or extraction is None:
             return gone
         out = [f for f in extraction.facts(ids=ids) if f.status == "retracted"]
-        empty = {(f.source, f.record) for f in out
-                 if not extraction.facts(source=f.source, record=f.record, latest=False)}
-        return gone | {f.id for f in out if (f.source, f.record) in empty}
+        removed = {(f.source, f.record) for f in out if not {f.id, f.record} & named
+                   and not extraction.facts(source=f.source, record=f.record, latest=False)}
+        return gone | {f.id for f in out if f.record in by_caller or (f.source, f.record) in removed}
 
     def stale(self, facts: Mapping[str, Fact]) -> dict[str, str]:
         """The line a read shows under each of `facts` whose document a person marked out of date, or flagged, by id,
