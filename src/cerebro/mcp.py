@@ -89,11 +89,10 @@ from .apps import AppError, bind
 from .article import PENDING, Article, compiled_at, fields, pending
 from .budget import Stopped
 from .caller import LOCAL, Caller
-from .clean import inert
 from .connector import Record, one_line
 from .errors import CerebroError
 from .facts import Fact, superseded
-from .ground import citation_of
+from .ground import citation_of, quote_named
 from .held import FIRST_RUN_KEY, stand_ins
 from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult
 from .records import Decision
@@ -555,9 +554,9 @@ def _article_line(article: Article) -> str:
 
 
 def _fact_line(fact: Fact) -> str:
-    cited = citation_of(fact)
-    named = "" if cited.source == fact.record else f" {inert(cited.source)}"  # another record's words alone
-    quote = f'{named} "{cited.quote}"' if cited.quote and cited.quote != fact.text else ""
+    said = quote_named(fact)
+    named = citation_of(fact).source != fact.record  # another record's words alone: named, even as the fact's text
+    quote = f" {said}" if named else f' "{said}"' if said and said != fact.text else ""
     return f"- {fact.id} [{fact.at}, {fact.record}] {fact.text}{quote}" + (
         "" if fact.status == "current" else f" [{superseded(fact)}]" if fact.status == "superseded"
         else f" [{fact.status}]")

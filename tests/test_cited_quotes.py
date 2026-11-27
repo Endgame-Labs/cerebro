@@ -71,6 +71,8 @@ def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_recor
         f"[^{told.id}]: local/b.md {again}"]
     assert _item(alone).text == f"- [^{told.id}] {told.text} (quote: local/b.md {again})"
     assert _fact_line(alone).endswith(f"] {told.text} local/b.md {again}")
+    alike = replace(alone, text=again[1:-1])  # its words are its text, and still another record's
+    assert _fact_line(alike).endswith(f"] {alike.text} local/b.md {again}")
     assert outside(ReadResult([], facts=[alone]))["facts"][0]["quote"] == f"local/b.md {again}"
 
 
