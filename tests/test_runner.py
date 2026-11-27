@@ -931,8 +931,9 @@ def test_a_pass_withdraws_what_an_earlier_pass_saved_of_a_retracted_record_and_s
     assert cerebro.run_once().retracted == 1 and extraction.facts(record=kept.id) == []
 
 
-@pytest.mark.parametrize("path", ["retract", "tell", "decide"])
-def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Path, path: str) -> None:
+@pytest.mark.parametrize("path, kind", [("retract", "record"), ("tell", "record"), ("decide", "record"),
+                                        ("tell", "fact"), ("decide", "fact")])
+def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Path, path: str, kind: str) -> None:
     from cerebro.caller import Caller
     from cerebro.errors import CerebroError
 
@@ -950,21 +951,23 @@ def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Pat
     kept = cerebro.handle.keep(app if path == "decide" else you, "note", "The east gate opens at six.",
                                {"collection": "notes"})
     cerebro.run_once()
+    target = kept.id if kind == "record" else extraction.facts(record=kept.id)[0].id
     if path == "decide":
-        asked = cerebro.tell(app, "take it back", target=kept.id, as_="proposal", kind="record.retract").proposals
+        asked = cerebro.tell(app, "take it back", target=target, as_="proposal", kind=f"{kind}.retract").proposals
         cerebro.decide(you, accept=asked)  # the store keeps it, and the facts layer then keeps the fact
     else:
         with pytest.raises(CerebroError, match="stopped partway"):
             if path == "retract":
-                cerebro.retract(you, kept.id, "wrong")
+                cerebro.retract(you, target, "wrong")
             else:
-                cerebro.tell(you, "take it back", target=kept.id, as_="proposal", kind="record.retract")
+                cerebro.tell(you, "take it back", target=target, as_="proposal", kind=f"{kind}.retract")
     tried = cerebro.run_once()
-    assert tried.failed == {f"retract of {kept.id}": "OSError: the disk is full. The next pass tries again."}
+    assert tried.failed == {f"retract of {target}": "OSError: the disk is full. The next pass tries again."}
     passed = cerebro.run_once()  # the record did not change, and its retract is finished all the same
-    said = f"note/{kept.id}: record {kept.id} was retracted, so the facts read from it are withdrawn"
-    assert passed.retracted == 1 and said in passed.notices and extraction.facts(record=kept.id) == []
-    assert said not in cerebro.run_once().notices  # a finished retract is finished once
+    notice = f"note/{kept.id}: record {kept.id} was retracted, so the facts read from it are withdrawn"
+    said = [notice] if kind == "record" else []  # a fact's retract names no record
+    assert passed.retracted == 1 and [n for n in passed.notices if "retract" in n] == said
+    assert extraction.facts(record=kept.id) == [] and not [n for n in cerebro.run_once().notices if "retract" in n]
 
 
 def test_a_facts_layer_error_withdrawing_a_retracted_records_facts_fails_that_record_alone(tmp_path: Path) -> None:

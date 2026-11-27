@@ -1781,13 +1781,14 @@ def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) 
 
 
 def _leave_no_retract_half_done(workspace: Cerebro, result: PassResult) -> None:
-    """Finish each retract of a record whose take-back stopped partway, and say what it withdrew."""
+    """Finish each retract whose take-back stopped partway, and say what a record's withdrew."""
     withdrawn, failed = finish_retracts(workspace.store, workspace.extraction,  # type: ignore[arg-type]
                                         stamp(workspace.clock()))
     result.failed.update(failed)
     for id, facts in withdrawn.items():
         result.retracted += len(facts)
-        result.notices.append(_retracted_notice(workspace.store.record(id)))  # type: ignore[arg-type]
+        if (record := workspace.store.record(id)) is not None:  # a fact's retract names no record
+            result.notices.append(_retracted_notice(record))
 
 
 def _retracted_notice(record: Record) -> str:

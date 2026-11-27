@@ -541,17 +541,17 @@ def retract(store: Store, extraction: Extraction | None, caller: Caller, id: str
 
 
 def finish_retracts(store: Store, extraction: Extraction, at: str) -> tuple[dict[str, list[str]], dict[str, str]]:
-    """Finish each accepted retract of a record whose take-back stopped partway, as one whose withdrawal raised or
-    whose process ended before it filed what it withdrew: withdraw what still stands of what it took back, and file
-    its row as applied, so no retract stays half done. Gives the facts withdrawn, by record id, and a line for each
-    record whose retract failed again, which the next pass tries again."""
+    """Finish each accepted retract of a record or a fact whose take-back stopped partway, as one whose withdrawal
+    raised or whose process ended before it filed what it withdrew: withdraw what still stands of what it took back,
+    and file its row as applied, so no retract stays half done. Gives the facts withdrawn, by the id each retract
+    names, and a line for each whose retract failed again, which the next pass tries again."""
     withdrawn: dict[str, list[str]] = {}
     failed: dict[str, str] = {}
     for row in proposals(store, ACCEPTED):
-        if row.kind != "record.retract" or row.applied:
+        if row.kind not in RETRACTS or row.applied:
             continue
         try:
-            standing = {f.id for f in extraction.facts(record=row.target, latest=False)}
+            standing = {f.id for f in extraction.facts(record=row.target, latest=False)} | {row.target}
             withdrew, _ = _take_back(store, extraction, row)
         except NothingStands:
             withdrew = []
@@ -1409,8 +1409,8 @@ class _Refused(CerebroError):
 class _HeldFacts:
     """The facts layer as a decide or a tell sees it while its write lands: reads go to `inner`, and a fact it
     withdraws reads as withdrawn and is held in `withdrawn`, to be withdrawn once the store has kept the whole write,
-    since the store's undo does not reach the facts layer. `rows` holds each record retract the write filed, as it is
-    filed once its facts are withdrawn."""
+    since the store's undo does not reach the facts layer. `rows` holds each retract the write filed, as it is filed
+    once its facts are withdrawn."""
 
     def __init__(self, inner: Any):
         self.inner = inner
@@ -1431,17 +1431,17 @@ class _HeldFacts:
 
 
 def _landing(extraction: Any, row: Proposal) -> Proposal:
-    """`row` as a write files it: a record retract whose facts are held goes in without `applied`, which `_release`
-    files once they are withdrawn, so a pass finishes one that stops between the two."""
-    if isinstance(extraction, _HeldFacts) and row.kind == "record.retract":
+    """`row` as a write files it: a retract whose facts are held goes in without `applied`, which `_release` files
+    once they are withdrawn, so a pass finishes one that stops between the two."""
+    if isinstance(extraction, _HeldFacts) and row.kind in RETRACTS:
         extraction.rows.append(row)
         return replace(row, applied={})
     return row
 
 
 def _release(store: Store, held: _HeldFacts) -> dict[str, Exception]:
-    """Withdraw the facts `held` holds, now the store has kept the write, and file as applied each record retract whose
-    facts all went. Gives each fact the facts layer kept, with its error: its retract waits for a pass to finish."""
+    """Withdraw the facts `held` holds, now the store has kept the write, and file as applied each retract whose facts
+    all went. Gives each fact the facts layer kept, with its error: its retract waits for a pass to finish."""
     kept: dict[str, Exception] = {}
     for fact in held.withdrawn:
         try:
