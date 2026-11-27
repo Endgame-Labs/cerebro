@@ -965,6 +965,31 @@ def test_a_pass_finishes_a_retract_whose_take_back_stopped_partway(tmp_path: Pat
     assert said not in cerebro.run_once().notices  # a finished retract is finished once
 
 
+def test_a_facts_layer_error_withdrawing_a_retracted_records_facts_fails_that_record_alone(tmp_path: Path) -> None:
+    from cerebro.caller import Caller
+
+    you, app, busy = Caller("you", "person"), Caller("notes", "app"), []
+
+    class Busy(FakeExtraction):
+        def facts(self, **filters: Any) -> list[Any]:
+            if filters.get("record") in busy:
+                busy.remove(filters["record"])
+                raise OSError("database is locked")
+            return super().facts(**filters)
+
+    extraction = Busy()
+    cerebro = kept_notes(tmp_path, extraction)
+    held = cerebro.handle.keep(app, "note", "The west gate opens at nine.", {"collection": "notes"})
+    cerebro.run_once()
+    cerebro.retract(you, held.id, "wrong")
+    cerebro.handle.keep(app, "note", "The west gate opens at ten.", {"collection": "notes"}, id=held.id)
+    other = cerebro.handle.keep(app, "note", "The east gate opens at eight.", {"collection": "notes"})
+    busy.append(held.id)
+    passed = cerebro.run_once()
+    assert passed.failed == {f"note/{held.id}": "OSError: database is locked"} and extraction.facts(record=other.id)
+    assert cerebro.run_once().tried["cerebro:failed:kept"] == [held.id]
+
+
 def test_a_retract_is_filed_before_its_take_back_reads_the_records_facts(tmp_path: Path) -> None:
     from cerebro.caller import Caller
     from cerebro.records import retracted_records, was_retracted

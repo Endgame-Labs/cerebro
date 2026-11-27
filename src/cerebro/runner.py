@@ -1733,7 +1733,8 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
         if record is None or record.source not in kinds:
             continue
         if was_retracted(record, taken):
-            _withdraw_retracted(workspace, record, result)
+            if not _withdraw_retracted(workspace, record, result):
+                waiting.append(id)
             continue
         if record.extract not in ("records", "none") and "extraction" in result.stopped:  # it checks the ledger
             _waits(result, KEPT_FAILED, id)
@@ -1751,7 +1752,8 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
         late = retracted_records(workspace.store) if landed else {}
         overtaken = {r.id: r for _, r in landed if was_retracted(r, late)}  # a retract landed while it was read
         for record in overtaken.values():
-            _withdraw_retracted(workspace, record, result)
+            if not _withdraw_retracted(workspace, record, result):
+                waiting.append(record.id)
         # only what this pass handled leaves the lists, and the cursor only moves on
         update_state(workspace.store, KEPT_CURSOR, lambda now: max(now or 0, later))
         update_state(workspace.store, KEPT_FAILED, lambda now: list(dict.fromkeys(
@@ -1761,15 +1763,21 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
     return [(f, r) for f, r in landed if r.id not in overtaken]
 
 
-def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) -> None:
+def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) -> bool:
     """Withdraw every fact a record a retract took back still has standing, as the retract's own sweep does, and say
-    so: those a pass read as the retract landed, and those a pass that stopped before it checked left behind."""
-    standing = workspace.extraction.facts(record=record.id, latest=False)  # type: ignore[union-attr]
-    for fact in standing:
-        workspace.extraction.retract(fact.id)  # type: ignore[union-attr]
+    so: those a pass read as the retract landed, and those a pass that stopped before it checked left behind. A
+    failure is reported and gives False, so the record waits for the next pass, and the pass goes on."""
+    try:
+        standing = workspace.extraction.facts(record=record.id, latest=False)  # type: ignore[union-attr]
+        for fact in standing:
+            workspace.extraction.retract(fact.id)  # type: ignore[union-attr]
+    except Exception as error:  # noqa: BLE001 - one record's failure is reported, and the rest go on
+        result.failed[f"{record.source}/{record.id}"] = f"{type(error).__name__}: {error}"
+        return False
     if standing:
         result.retracted += len(standing)
         result.notices.append(_retracted_notice(record))
+    return True
 
 
 def _finish_retracts(workspace: Cerebro, result: PassResult) -> None:
