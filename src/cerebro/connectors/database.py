@@ -68,6 +68,7 @@ _POSTGRES_WORD = re.compile(r"[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_$\u0080-\U001
 # A Postgres dollar quote's opening: `$$`, or a tag between two, such as `$body$`.
 _DOLLAR = re.compile(r"\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$")
 _CLOSE = {"'": "'", '"': '"', "`": "`", "[": "]"}
+_SPACING = re.compile(r"[ \t\n\v\f\r]+")  # spacing as SQL reads it: a space past ASCII is part of a name
 EXAMPLE = 'write - sql: { source: warehouse, query: "select kind, count(*) from things group by kind" }'
 
 
@@ -109,8 +110,9 @@ def row_text(columns: list[str], row: list[Any]) -> str:
 # -- the query --------------------------------------------------------------------------------------------------
 
 
-def _scan(query: str, dialect: str = "sqlite") -> tuple[list[str], int | None]:
-    """The words of a query outside quotes, in lower case, and where a semicolon outside quotes falls, if one does.
+def _scan(query: str, dialect: str = "sqlite") -> tuple[list[str], int | None, list[tuple[int, int]]]:
+    """The words of a query outside quotes, in lower case, where a semicolon outside quotes falls, if one does, and
+    where each quote starts and ends, its marks and all.
     Refuses a comment, an unclosed quote and a NUL. The `postgres` dialect reads quotes as Postgres does, where it
     differs from SQLite: `[` and a backquote quote nothing; `$$` or `$tag$` opens a quote its twin closes; a backslash
     inside a quote is refused, since an `E''` string reads it as an escape, as a server with standard_conforming_strings
@@ -118,7 +120,7 @@ def _scan(query: str, dialect: str = "sqlite") -> tuple[list[str], int | None]:
     its escapes can spell what a check cannot read; a name may hold `$` and any character past ASCII; and parentheses
     must balance, since the engine wraps the query in its own."""
     postgres = dialect == "postgres"
-    words, i, n, depth = [], 0, len(query), 0
+    words, i, n, depth, quoted = [], 0, len(query), 0, []
     while i < n:
         c = query[i]
         if c == "\0":
@@ -133,7 +135,8 @@ def _scan(query: str, dialect: str = "sqlite") -> tuple[list[str], int | None]:
                 raise QueryRefused(f"the query opens a quote with {dollar.group()} and never closes it: close it")
             if "\0" in query[i:j]:
                 raise QueryRefused("the query holds a NUL character: write it as plain text")
-            i = j + len(dollar.group())
+            quoted.append((i, j + len(dollar.group())))
+            i = quoted[-1][1]
             continue
         if c in _CLOSE:
             close = _CLOSE[c]
@@ -151,6 +154,7 @@ def _scan(query: str, dialect: str = "sqlite") -> tuple[list[str], int | None]:
             if postgres and c == "'" and "\\" in query[i:j]:
                 raise QueryRefused("the query holds a backslash inside a quote, which Postgres may read as an escape, "
                                    "as in an E'' string: write the text without one, as chr(10) for a line break")
+            quoted.append((i, j + 1))
             i = j + 1
             continue
         if query.startswith(("--", "/*"), i):
@@ -172,7 +176,7 @@ def _scan(query: str, dialect: str = "sqlite") -> tuple[list[str], int | None]:
         i += 1
     if depth:
         raise QueryRefused("the query opens a parenthesis it never closes: balance its parentheses")
-    return words, (i if i < n else None)
+    return words, (i if i < n else None), quoted
 
 
 def check_query(query: Any, dialect: str = "sqlite", also: tuple[str, ...] = ()) -> str:
@@ -185,7 +189,7 @@ def check_query(query: Any, dialect: str = "sqlite", also: tuple[str, ...] = ())
     if len(query) > QUERY_CHARS:
         raise QueryRefused(f"the query is {len(query)} characters, past the {QUERY_CHARS} a sql line holds: write a "
                            "shorter one, or a view in the database")
-    words, semicolon = _scan(query, dialect)
+    words, semicolon, _ = _scan(query, dialect)
     if semicolon is not None:
         if query[semicolon + 1:].strip():
             raise QueryRefused("the query holds a second statement after a semicolon: write one select")
@@ -209,6 +213,8 @@ def check_query(query: Any, dialect: str = "sqlite", also: tuple[str, ...] = ())
 class Engine:
     """One kind of database: it runs one checked query read only, within its limits, and gives its rows unmasked.
     SQLite's is here, and Postgres's is in `postgres.py`."""
+
+    dialect = "sqlite"  # how `_scan` reads its quotes
 
     def run(self, query: str, limits: Limits) -> Rows:
         raise NotImplementedError
@@ -443,6 +449,16 @@ class DatabaseConnector(Connector):
             raise
         return Rows(_unique([str(self._masked(c, mask)) for c in rows.columns]),
                     [[self._masked(v, mask) for v in row] for row in rows.rows], rows.more, rows.cut)
+
+    def folded(self, query: str) -> str:
+        """The query as its rows' ids read it: as `check_query` gives it, each run of spacing outside its quotes, as
+        this source's engine reads them, one space. Spaced apart, a query keeps its ids, and no other gets them."""
+        query = check_query(query, self.engine.dialect)
+        out, at = [], 0
+        for start, end in [*_scan(query, self.engine.dialect)[2], (len(query), len(query))]:
+            out += [_SPACING.sub(" ", query[at:start]), query[start:end]]
+            at = end
+        return "".join(out)
 
     def list(self, since: str | None = None) -> Listing:
         if since not in (None, CURSOR):

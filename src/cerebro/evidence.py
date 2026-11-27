@@ -1624,9 +1624,7 @@ class _Gatherer:
             raise SqlError(f"{self.name}: evidence {n}, sql {name}: {error}") from None
         from .ground import bounded  # grounding imports this module, so its helper loads at the call
 
-        # the query's spacing folded outside quotes: spaced apart, it keeps its rows' ids, and another query gets others
-        spaced = re.sub(r"('(?:[^']|'')*'|\"(?:[^\"]|\"\")*\")|\s+", lambda m: m[1] or " ", query).strip()
-        key = hashlib.sha256(spaced.encode()).hexdigest()[:8]
+        key = hashlib.sha256(source.folded(query).encode()).hexdigest()[:8]
         query = " ".join(query.split())
         entry = Evidence(f"Sql {name}, the rows of {query}", spelled=f"sql {name}: {query}")
         for i, row in enumerate(rows.rows, 1):
