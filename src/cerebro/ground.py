@@ -10,16 +10,18 @@ and the writer as not found.
 
 Every sentence a reader sees is scored: a table's row and a block of code each as one, and an HTML comment as prose,
 since it lands shown as written. A heading, and a line that only labels what follows, such as `Risks:`, are context:
-the judge reads the heading with its passage, and neither is scored or marked. Code is what CommonMark reads as code: a fence, in a list
-item too, an indented block and a code span. A mark never goes inside it: a block's goes on a line of its own after
-it, at its indent, and a fence left open, which holds the rest of the text, gets none.
+the judge reads the heading with its passage, and neither is scored or marked. Code is what CommonMark reads as
+code: a fence, in a list item or a quote too, an indented block and a code span. A mark never goes inside it: a
+block's goes on a line of its own after it, where what holds the block holds text, and a fence left open, which holds
+the rest of the text, gets none.
 
 `review` gives the writer each sentence under its floor, `min_grounding`, with its score and reason, while it can
 still revise. `marked` gives the text as it lands: `[^unsupported]` after each sentence under the floor, which the
 article defines once, as `UNSUPPORTED` reads. A passage scored once keeps its scores, by its heading and its text, as
 does one `seed` hands back with the scores it was given, so neither is asked about again; each reader marks them by
-its own floor. One with a sentence unscored, or an id not found, is asked about again. With no decision model, past
-the cap, or once a call fails, a sentence is unscored, and `scores` says why.
+its own floor. One with a sentence unscored, or an id not found, is asked about once a run, and again in a later run
+or once the run finds more of its ids. With no decision model, past the cap, or once a call fails, a sentence is
+unscored, and `scores` says why.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ __all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge
            "own_sides", "quote_for", "split_sentences", "tallied", "unmarked"]
 
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
-MARK_LINE = re.compile(rf"[ \t]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a fence's mark, or a copy of its definition
+MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
 SPAN_OR_MARK = re.compile(r"(`+).*?(?<!`)\1(?!`)|" + re.escape(MARK))
 # The judge's levels, lowest first, each with its value and what it means.
 SCALE = ((0.0, "made up: no cited fact holds what it says"),
@@ -65,24 +67,30 @@ class _Code:
     mark: str
 
 
-def _code(text: str) -> list[_Code]:
-    """Each block of code in `text`, as CommonMark reads it: a fence, in a list item too, or an indented block. A
-    fence left open holds whatever follows it, so no mark can go after it."""
-    lines = text.split("\n")
+def _starts(text: str) -> list[int]:
+    """Where each line of `text` starts, as CommonMark counts its lines, and where the text ends."""
     starts = [0]
-    for line in lines:
+    for line in text.split("\n"):
         starts.append(starts[-1] + len(line) + 1)
-    out = []
+    return starts
+
+
+def _code(text: str) -> list[_Code]:
+    """Each block of code in `text`, as CommonMark reads it: a fence, in a list item or a quote too, or an indented
+    block. A fence left open holds whatever follows it, so no mark can go after it."""
+    lines, starts, out = text.split("\n"), _starts(text), []
     for tok in PARSER.parse(text):
         if tok.type not in ("fence", "code_block") or tok.map is None:
             continue
         first, last = tok.map[0], min(tok.map[1], len(lines)) - 1
-        close, lead = lines[last].strip().lstrip("> "), lines[first][:len(lines[first]) - len(lines[first].lstrip(" "))]
+        close, opened = lines[last].strip().lstrip("> "), lines[first].rstrip("\r")
         shut = tok.type == "code_block" or last > first and close.startswith(tok.markup) and not close.strip(
             tok.markup[0])
+        # the mark goes where what holds the block holds text: past its quote marks, at its list item's indent
+        edge = opened.index(tok.markup) if tok.type == "fence" else len(opened) - len(tok.content.split("\n")[0]) - 4
+        lead = "".join(c if c == ">" else " " for c in opened[:max(edge, 0)])
         eol = "\r\n" if lines[last].endswith("\r") else "\n"
-        mark = eol + (lead[:-4] if tok.type == "code_block" else lead) + MARK if shut else ""
-        out.append(_Code(starts[first], starts[last] + len(lines[last].rstrip("\r")), mark))
+        out.append(_Code(starts[first], starts[last] + len(lines[last].rstrip("\r")), eol + lead + MARK if shut else ""))
     return out
 
 
@@ -505,7 +513,7 @@ def _passages(text: str, first: str = "") -> list[_Passage]:
     unit with no word left out. Text before the first heading is a passage under `first`, as a part is under the
     heading the article shows above it."""
     out: list[_Passage] = []
-    code, at, heading, begin = _code(text), 0, first, 0
+    heading, begin, starts = first, 0, _starts(text)
 
     def close(end: int) -> None:
         body, own = text[begin:end], _code(text[begin:end])
@@ -517,11 +525,11 @@ def _passages(text: str, first: str = "") -> list[_Passage]:
         if body.strip():
             out.append(_Passage(heading, body, units))
 
-    for line in text.splitlines(keepends=True):
-        if not _in_code(code, at) and (found := atx(line)) is not None:
-            close(at)
-            heading, begin = found[1], at + len(line)
-        at += len(line)
+    tokens = PARSER.parse(text)
+    for n, tok in enumerate(tokens):
+        if tok.type == "heading_open" and tok.map is not None:  # ATX or setext, never one in code
+            close(starts[tok.map[0]])
+            heading, begin = tokens[n + 1].content.strip(), min(starts[tok.map[1]], len(text))
     close(len(text))
     return out
 
@@ -611,25 +619,29 @@ class Editor:
     """Scores what one run hands in against what it read, as `found` gives the judge each cited id it found, and
     marks each sentence under `floor`. `known` holds each passage scored, by its heading and its text, shared by every
     editor of one compile, so a passage another run handed in already is not scored again, and each editor marks it
-    by its own floor. A passage with a sentence left unscored, or an id not found, is not held there. Text before any heading is read under `heading`, as a part is under the heading the article
-    shows above it. `scores` keeps a line for each sentence of the text it marked, with its score and why, for the
+    by its own floor. A passage with a sentence left unscored, or an id not found, is not held there, and `asked`
+    holds it for this run alone, by what it found of its ids. Text before any heading is read under `heading`, as a
+    part is under the heading the article shows above it. `scores` keeps a line for each sentence of the text it marked, with its score and why, for the
     run's log, and `tally` how many it marked and how many it left unscored."""
 
     def __init__(self, judge: Judge, found: Found, floor: float = FLOOR,
                  known: dict[tuple[str, str], list[Verdict]] | None = None, heading: str = ""):
         self.judge, self.found, self.floor, self.heading = judge, found, floor, heading
         self.known = {} if known is None else known
+        self.asked: dict[tuple[str, str, tuple[str, ...]], list[Verdict]] = {}
         self.scores: list[str] = []
         self.tally: Counter[str] = Counter()
 
     def kept(self, text: str) -> list[list[Any]]:
-        """The score and why of each sentence of `text` as it was scored, in order, for `seed` to take in later."""
-        return [[v.score, v.reason] for v in self.judged(text)]
+        """The score and why of each sentence of `text` as it was scored, in order, for `seed` to take in later: no
+        score for one of a passage `known` does not hold, so a later run asks about it again."""
+        return [[v.score if (p.heading, p.body.strip()) in self.known else None, v.reason]
+                for p in _passages(unmarked(text), self.heading) for v in self.verdicts(p)]
 
     def seed(self, text: str, scores: list[list[Any]], heading: str) -> None:
         """Take in each passage of `text`, read under `heading` as its own editor read it, with the scores `kept` gave
         of it, so a passage handed in again unchanged keeps them and is not scored again. A passage with a sentence
-        left unscored is scored again."""
+        left unscored, or an id not found, is scored again."""
         given = iter(scores)
         for passage in _passages(unmarked(text), heading):
             got = [next(given, None) for _ in passage.units]
@@ -643,12 +655,14 @@ class Editor:
         if (kept := self.known.get(key)) is None or len(kept) != len(passage.units):
             ids = list(dict.fromkeys(id for u in passage.units for id in u.cited))
             found = self.found(ids) if ids else {}
-            kept = []
-            for unit, (score, reason) in zip(passage.units, self.judge.score(passage.heading, passage.units, found)):
-                if reason and (missing := [id for id in unit.cited if id not in found]):
-                    reason += f"; it cites {', '.join(f'[^{id}]' for id in missing)}, not found in what was read"
-                kept.append(Verdict(unit.shown, score, reason))
-            if set(ids) <= set(found) and all(v.score is not None for v in kept):  # else it is asked about again
+            if (kept := self.asked.get(asked := (*key, tuple(sorted(found))))) is None:
+                kept = []
+                for unit, (score, reason) in zip(passage.units, self.judge.score(passage.heading, passage.units, found)):
+                    if reason and (missing := [id for id in unit.cited if id not in found]):
+                        reason += f"; it cites {', '.join(f'[^{id}]' for id in missing)}, not found in what was read"
+                    kept.append(Verdict(unit.shown, score, reason))
+                self.asked[asked] = kept
+            if set(ids) <= set(found) and all(v.score is not None for v in kept):  # else a later run asks again
                 self.known[key] = kept
         return [Verdict(u.shown, v.score, v.reason, v.score is not None and v.score < self.floor and u.end is not None)
                 for u, v in zip(passage.units, kept)]

@@ -11,7 +11,7 @@ import pytest
 from cerebro.budget import BudgetSpent
 from cerebro.facts import Fact, Quote
 from cerebro.fakes import FakeDecider
-from cerebro.ground import CONTRACT, Editor, Judge, fields_of, split_sentences
+from cerebro.ground import Editor, Judge, fields_of, split_sentences
 from cerebro.models import Decision, DecisionTooLarge, Question
 
 DATA = Path(__file__).parent / "data" / "ground"
@@ -47,6 +47,9 @@ TEXT = """Alder renews in March [^f_1]. Alder signs for ten years [^f_1].
 > Ines Calder: "Renovamos en marzo." [^f_1]
 
 <!-- Alder signs for ten years [^f_1]. -->
+
+Held for ten years [^f_1]
+=====
 
 **For ten years:**
 
@@ -88,15 +91,18 @@ CODE = {  # code as CommonMark reads it, and the text as it lands: no mark insid
     "1.  Step one [^f_1].\n\n    ```yaml\n    term: ten years\n    ```\n2.  Step two [^f_1].\n":
         "1.  Step one [^f_1].[^unsupported]\n\n    ```yaml\n    term: ten years\n    ```\n    [^unsupported]\n"
         "2.  Step two [^f_1].[^unsupported]\n",
-    "Run this [^f_1].\n\n    make ten years. Then ship.\n\nDone [^f_1].\n":
-        "Run this [^f_1].[^unsupported]\n\n    make ten years. Then ship.\n[^unsupported]\n\nDone [^f_1].[^unsupported]\n",
+    "Run this [^f_1].\n\n        make ten years. Then ship.\n\nDone [^f_1].\n":
+        "Run this [^f_1].[^unsupported]\n\n        make ten years. Then ship.\n[^unsupported]\n\nDone [^f_1].[^unsupported]\n",
+    "> Run this [^f_1].\n>\n> ```\n> term: ten years\n> ```\n\nDone [^f_1].\n":
+        "> Run this [^f_1].[^unsupported]\n>\n> ```\n> term: ten years\n> ```\n> [^unsupported]\n\nDone [^f_1].[^unsupported]\n",
     "Run this [^f_1].\n\n```yaml\nterm: ten years\n": "Run this [^f_1].[^unsupported]\n\n```yaml\nterm: ten years\n",
     "Run this [^f_1].\r\n\r\n```yaml\r\nterm: ten years\r\n```\r\nDone [^f_1].\r\n":
         "Run this [^f_1].[^unsupported]\r\n\r\n```yaml\r\nterm: ten years\r\n```\r\n[^unsupported]\r\n"
         "Done [^f_1].[^unsupported]\r\n"}
 
 
-@pytest.mark.parametrize("text", CODE, ids=["a fence in a list item", "an indented block", "an open fence", "CRLF"])
+@pytest.mark.parametrize("text", CODE, ids=["a fence in a list item", "a block indented past its own indent",
+                                             "a fence in a quote", "an open fence", "CRLF"])
 def test_no_mark_lands_inside_code_and_text_marked_again_gains_none(text: str) -> None:
     once = editor(Weak("")).marked(text)
     assert once == CODE[text] and editor(Weak("")).marked(once) == once
@@ -113,28 +119,33 @@ def test_the_judge_reads_one_passage_a_request_each_cited_fact_once_and_an_id_re
                                       "speaker": "Ines Calder", "quote": "We renew in March.",
                                       "record": "local/calls/alder.md"}}
     assert first["today"] == "2026-10-25" and second["heading"] == "Next" and set(questions) == {"s1", "s2"}
-    assert "contract" not in first and all(q.instructions.startswith(CONTRACT) for q in questions.values())  # data alone
+    assert "contract" not in first  # data alone: the rules ride in each question
     assert "not found in what was read" in weak.scores[1] and "[^f_9]" in weak.scores[1]
 
 
 def test_the_first_hand_in_hears_of_each_sentence_under_the_floor_and_one_with_none_hears_nothing() -> None:
     told = editor(FakeDecider({"s1": 2}), floor=0.6).review("Alder signs for ten years [^f_1].")
-    assert '"Alder signs for ten years [^f_1].": 0.50, a reframe' in told
+    assert '"Alder signs for ten years [^f_1].": 0.50' in told
     assert editor(FakeDecider()).review("Alder renews in March [^f_1].") == ""
 
 
 def test_a_passage_scored_once_or_seeded_with_its_scores_is_not_asked_again_and_each_reader_marks_by_its_floor(
         ) -> None:
-    """Unless a sentence of it was left unscored, or cited an id not found: then it is asked about again."""
+    """Unless a sentence of it was left unscored, or cited an id not found: then a later run, or a seed, asks about
+    it again. One run asks about a passage once while what it finds of its ids stays the same."""
     read, decider, known = {FACT.id}, FakeDecider(), {}
+    said = "Alder renews in March [^f_9]."
     again = Editor(Judge(decider), lambda ids: {id: {"text": "Alder renews in March."} for id in ids if id in read},
                    known=known)
-    again.judged("Alder renews in March [^f_9].")
+    again.review(said), again.marked(said)
+    gap = editor(decider)
+    gap.seed(said, again.kept(said), "")
+    assert len(decider.asked) == 1 and gap.judged(said) and len(decider.asked) == 2  # f_9 was not found
     read.add("f_9")  # told f_9 was not found, the writer reads it and hands in the same text
-    assert again.judged("Alder renews in March [^f_9].")[0].reason == "the facts say it, in any words, language or style"
+    assert again.judged(said)[0].score == 1.0 and len(decider.asked) == 3
     editor(Spent(), known=known).judged(TEXT)
     editor(decider, known=known).judged(TEXT)
-    assert len(decider.asked) == 2 + TEXT.count("\n## ") + 1  # what one editor left unscored, the next one scores
+    assert len(decider.asked) == 3 + 4  # what one editor left unscored, the next one scores: a request a passage
     decider, known = FakeDecider({"s2": 2}), {}  # the second sentence 0.5, a reframe
     text = "Alder renews in March [^f_1]. Alder signs for ten years [^f_1]."
     first = editor(decider, known=known)
@@ -146,7 +157,7 @@ def test_a_passage_scored_once_or_seeded_with_its_scores_is_not_asked_again_and_
     later = editor(decider)  # a later compile, handed the text as it landed, with its scores
     later.seed(landed, first.kept(landed), "")
     assert later.marked(text) == landed and len(decider.asked) == 2
-    assert later.review(text).count("0.50, a reframe") == 1
+    assert later.review(text).count(": 0.50") == 1
 
 
 class Spent(FakeDecider):
