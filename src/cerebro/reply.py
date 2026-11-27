@@ -6,9 +6,10 @@ since `count: 0` or `withdrawn: false` says something. An article is its id, its
 written, its status when it is not active, its properties, and its whole text as one markdown string, citation markers
 in place, so a caller reads a fact by the id the text names. A read adds the facts Cerebro learned since the article was
 last written, and never the rest of its facts. A fact is its id, its text, its date, its record and the words of the
-source that hold it, after the name of another record when they are its words. A fact read by the articles it is linked
-to and not about them says so: `relation: mentions` when it names them, and `via: record` when it reaches them only
-through a record of theirs. A search hit on an article is its id and the passage that matched.
+source that hold it: when another record holds some, each record's words in their own quotation marks, another's after
+its name. A fact read by the articles it is linked to and not about them says so: `relation: mentions` when it names
+them, and `via: record` when it reaches them only through a record of theirs. A search hit on an article is its id and
+the passage that matched.
 """
 
 from __future__ import annotations

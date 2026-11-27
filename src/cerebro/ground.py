@@ -241,10 +241,13 @@ def citation_of(fact: Fact) -> Citation:
 
 
 def quote_named(fact: Fact) -> str:
-    """`quote_for` as it stands beside the fact's record: as it is, or when none of its words are the fact's own, after
-    the name of the record they start in, as the footnote has it: `b.md "…"`."""
+    """`quote_for` as it stands beside the fact's record: as it is when all its words are the fact's own, else each
+    record's words in their own quotation marks, another's after its name, as the footnote has it: `"…" · b.md "…"`,
+    or `b.md "…"` when none are the fact's own."""
     cited = citation_of(fact)
-    return cited.quote if cited.source == fact.record else f'{inert(cited.source)} "{cited.quote}"'
+    if all(record == fact.record for record, _ in _quoted(fact)):
+        return cited.quote
+    return f'"{cited.quote}"' if cited.source == fact.record else f'{inert(cited.source)} "{cited.quote}"'
 
 
 def quote_line(fact: Fact) -> str:

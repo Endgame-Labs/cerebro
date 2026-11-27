@@ -75,7 +75,9 @@ def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_recor
     assert _fact_line(alone).endswith(f"] {told.text} local/b.md {again}")
     alike = replace(alone, text=again[1:-1])  # its words are its text, and still another record's
     assert _fact_line(alike).endswith(f"] {alike.text} local/b.md {again}")
-    assert outside(ReadResult([], facts=[alone]))["facts"][0]["quote"] == f"local/b.md {again}"
+    for each, quote in ((told, f"{own} · local/b.md {again}"), (alone, f"local/b.md {again}")):  # each in its pair
+        assert outside(ReadResult([], facts=[each]))["facts"][0]["quote"] == quote
+        assert _fact_line(each).endswith(f"] {each.text} {quote}")
 
 
 def test_a_fact_that_kept_a_whole_passage_shows_it_and_never_a_sentence_guessed_from_shared_words() -> None:

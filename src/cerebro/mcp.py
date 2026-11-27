@@ -555,8 +555,8 @@ def _article_line(article: Article) -> str:
 
 def _fact_line(fact: Fact) -> str:
     said = quote_named(fact)
-    named = citation_of(fact).source != fact.record  # another record's words alone: named, even as the fact's text
-    quote = f" {said}" if named else f' "{said}"' if said and said != fact.text else ""
+    own = said == citation_of(fact).quote  # the fact's own words alone: else each record's quoted, another's named
+    quote = (f' "{said}"' if said and said != fact.text else "") if own else f" {said}"
     return f"- {fact.id} [{fact.at}, {fact.record}] {fact.text}{quote}" + (
         "" if fact.status == "current" else f" [{superseded(fact)}]" if fact.status == "superseded"
         else f" [{fact.status}]")
