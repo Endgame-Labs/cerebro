@@ -205,7 +205,8 @@ def test_the_curator_agents_new_writes_reads_the_records_held_for_its_collection
     hold(store, Record(id="T1", source="crm", revision="1", keys={"name": ["Thing one"]}, into="things"))
     entry = gather(load_agent(tmp_path / made.path, tmp_path / "agents"), StoreLookup(store, FakeExtraction()), {},
                    sources={"crm": FakeConnector("crm", [])}, now=NOW)
-    assert [item.left for e in entry for item in e.items] == ["crm:T1"]
+    shown = [json.loads(item.text.removeprefix("- ")) for e in entry for item in e.items]  # each line as it reads
+    assert [(line["source"], line["id"], line["name"]) for line in shown] == [("crm", "T1", "Thing one")]
 
 
 def test_a_held_line_gathers_for_a_curator_alone_and_through_a_lookup_with_a_store(tmp_path: Path) -> None:

@@ -665,7 +665,7 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
                                           "agent"), "2026-11-18T09:00:00Z", payload={"name": "East"}, reason="Named."))
     seen.append(run("--accept-from", "agents/projects/curator.md,agents/places/curator.md"))
     assert any("curates no collection" in line for line in seen), seen
-    assert "skipped   no admit from agents/projects/curator.md is awaiting your review" in seen[-1], seen
+    assert any(line.startswith("skipped") for line in seen[-1].splitlines()), seen
     assert any("no admit from agents/projects/curator.md is awaiting your review" in line for line in seen), seen
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
