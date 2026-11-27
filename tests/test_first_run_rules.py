@@ -342,8 +342,8 @@ def test_a_held_record_sharing_a_header_value_with_a_proposed_one_is_still_on_a_
         assert "Alder call two" in [row.name for row in things.left()]  # on a list, not hidden by the shared parent
 
 
-# -- a held record no row speaks for is listed under the reason an earlier run gave it, else `not weighed`; one person's
-#    records, one name and one address, as one row; each reason under a heading of its own,
+# -- a held record no row speaks for is listed under the reason an earlier run gave it, else `not weighed`; records no
+#    admit takes are a row each, whatever name and address they share; each reason under a heading of its own,
 #    `Left out: <reason> (n)`; and named by its record, never by its file path
 
 
@@ -372,7 +372,7 @@ def test_every_held_record_is_a_row_of_its_own_whatever_name_and_address_it_shar
     with open_it(lay_out_workspace(tmp_path), script, records) as workspace:
         run(workspace, choose=None, say=lambda line: None)
         parts = next(listed for listed in LocalApproval(workspace).pile().lists if listed.collection == "parts")
-        kims = [row for row in parts.left() if row.name == "Kim Vale"]  # the engine folds none into one (rule 1)
+        kims = [row for row in parts.left() if row.name == "Kim Vale"]  # no admit takes them, so each is a row
         assert sorted(row.record["id"] for row in kims) == ["P7", "P8", "P9"]
 
 
