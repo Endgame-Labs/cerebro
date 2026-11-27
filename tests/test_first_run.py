@@ -235,12 +235,15 @@ def test_the_plain_list_shows_each_article_with_its_reason_and_the_left_out_last
                      "[ ] Left out (1)",
                      "    [ ] Initech  things", "          vendor",
                      "", "0 of 3 selected"]
+
+
+def test_the_plain_list_shows_two_things_that_share_a_name_and_differ_by_a_key_on_two_lines(tmp_path: Path) -> None:
     class Coded(FakeConnector):
         IDENTITY_KEYS: ClassVar[dict[str, int]] = {"code": 100}  # a key only this workspace's own source declares
 
     script = Script({"things/curator": [("admit", {"name": "Unit 7", "keys": {"code": [id]}, "reason": f"Coded {id}."})
                                         for id in ("A1", "A2")]})
-    with Cerebro(lay_out_workspace(tmp_path / "own"), agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
+    with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
                  connectors=[Coded("src", [replace(r, source="src") for r in RECORDS])]) as workspace:
         script.store = workspace.store
         run(workspace, choose=None)
