@@ -14,7 +14,7 @@ from test_cli import EachHeading, run, stand_ins  # noqa: F401 - the fixture is 
 
 from cerebro import Cerebro
 from cerebro.fakes import FakeDecider, FakeExtraction
-from cerebro.models import TokenCount, cost
+from cerebro.models import TokenCount
 from cerebro.runner import run_forever
 
 
@@ -68,17 +68,34 @@ class _PaidJudge(FakeDecider):
         return replace(super().decide(state, questions), usage=TokenCount(input_tokens=10_000))
 
 
+COMPOSER = ("---\nmodel: { provider: fireworks, model: kimi-k3 }\nsubagents: [risks]\n---\n\n"
+            "A brief on the Otter launch.\n\n# Composing\n\nJoin the parts as they stand.\n")
+RISKS = ("---\nevidence:\n  - facts: { window: last_90_days }\nheartbeat: [change]\n---\n\n"
+         "Name the risks to the Otter launch.\n\n# Output\n\n## Risks\n")
+
+
 def test_a_runs_line_splits_its_cost_into_writing_and_checks_and_its_row_keeps_its_tokens(
         tmp_path: Path, stand_ins: None) -> None:  # noqa: F811
+    """A composer on a model of its own, over a subagent that names none: the checks are what the judge spent."""
+    root = _workspace(tmp_path)
+    (root / "agents" / "reports" / "subagents").mkdir(parents=True)
+    (root / "agents" / "reports" / "weekly.md").write_text(COMPOSER)
+    (root / "agents" / "reports" / "subagents" / "risks.md").write_text(RISKS)
     said: list[str] = []
-    with Cerebro(_workspace(tmp_path), agent_run=_Spending(), extraction=FakeExtraction(), decider=_PaidJudge(),
+    with Cerebro(root, agent_run=_Spending(), extraction=FakeExtraction(), decider=_PaidJudge(),
                  clock=lambda: datetime(2026, 11, 18, 9, tzinfo=UTC)) as workspace:
         workspace.run_once(say=said.append)
-        row = workspace.store.rows("agent-runs", {"agent": "projects/otter"})[-1].data
+        rows = {row.data["agent"]: row.data for row in workspace.store.rows("agent-runs")}  # each agent's latest
+        ids = {rows[agent]["run"] for agent in ("reports/weekly", "reports/subagents/risks")}
         judged = workspace.models["decision"].model
-        checks = sum(r.data["usd"] for r in workspace.store.rows("spend", {"run": row["run"]}) if r.data["model"] == judged)
-        spec = workspace.models["compilation"]
-    writing = cost(spec.provider, spec.model, TokenCount(100_000, 1_000))
-    assert checks > 0 and (row["input_tokens"], row["output_tokens"]) == (100_000, 1_000)
-    assert (f"ran       projects/otter: wrote articles/projects/otter.md, ${writing + checks:.4f} "
-            f"(writing ${writing:.4f}, checks ${checks:.4f})") in said, said
+        checks = sum(row.data["usd"] for row in workspace.store.rows("spend")
+                     if row.data["run"] in ids and row.data["model"] == judged)
+    line = next(line for line in said if line.startswith("ran       reports/weekly: "))
+    found = re.fullmatch(r"ran       reports/weekly: wrote articles/reports/weekly\.md, "
+                         r"\$([\d.]+) \(writing \$([\d.]+), checks \$([\d.]+)\)", line)
+    assert found and checks > 0, line
+    total, writing, checked = (float(n) for n in found.groups())
+    digits = len(found.group(3).partition(".")[2])
+    assert checked == round(checks, digits) and round(writing + checked, digits) == total, line
+    assert (rows["reports/subagents/risks"]["input_tokens"], rows["reports/subagents/risks"]["output_tokens"]) == (
+        100_000, 1_000)

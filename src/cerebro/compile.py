@@ -129,6 +129,7 @@ class Compiled:
     rendered: list[str] = field(default_factory=list)  # the headings code wrote from `rendered:` on a skip
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
+    checks: float = 0.0  # what grounding's judge spent on its runs, in dollars
     cleaned: list[str] = field(default_factory=list)  # a line for each change landing made to the text, counted
 
 
@@ -608,6 +609,7 @@ class _Grounding:
         self.article, self.lookup, self.root, self.ledger = article, lookup, root, ledger
         self.clock, self.decider, self.decision, self.zone, self.floor = clock, decider, decision, zone, floor
         self.known: dict[tuple[str, str], list[Verdict]] = {}
+        self.judges: list[Held] = []  # each editor's judge held to the cap, which kept what it spent
 
     def linked(self) -> list[Fact]:
         """The current facts linked to the article, as `read` gives them."""
@@ -647,6 +649,7 @@ class _Grounding:
         decider, run = self.decider, new_run_id()
         if decider is not None and self.ledger is not None and self.decision is not None:
             decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, run)
+            self.judges.append(decider)
         judge = Judge(decider, self.article, _workspace(self.root), f"{self.clock().astimezone(self.zone):%Y-%m-%d}")
 
         def found(ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -752,8 +755,11 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
                  scheduled=scheduled, hold=hold, by_hand=by_hand, starter=starter, zone=zone, sources=sources,
                  judge=keep_judge(decider, store, clock, ledger, decision, root))
     if agent.role == "composer":
-        return _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
-    return _single(c, agent, article, descriptions, subagents)
+        compiled = _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
+    else:
+        compiled = _single(c, agent, article, descriptions, subagents)
+    compiled.checks = sum(judge.usd for judge in grounding.judges)
+    return compiled
 
 
 def keep_judge(decider: Decider | None, store: Store, clock: Clock, ledger: Ledger | None, decision: ModelSpec | None,
