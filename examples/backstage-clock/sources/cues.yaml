@@ -1,0 +1,14 @@
+kind: files
+select:
+  - glob: "register/*.csv"
+    rows: csv
+    id: "{row.revision_id}"
+    at: "{row.date}"
+    into: cues
+    identity: { cue_id: "{row.cue_id}" }
+    extract: records
+    fields:
+      display_number: "{row.display_number}"
+      scene: "{row.scene}"
+      call: "{row.call}"
+      readiness: "{row.readiness}"
