@@ -1270,12 +1270,11 @@ class _Curation:
         moved, weights = redirects(self.store), weights_of(self.store)
         held = [(key, id) for key, values in keys.items() for value in values
                 if (id := holder(self.store, self.collection, key, value))]
-        strong = {id for key, id in held if weights.get(key, 0) > 0}
-        by_key = list(dict.fromkeys(id for _, id in held if id in strong
-                                    or same_thing(keys, self.find(id).keys, weights) is not False))
+        by_key = list(dict.fromkeys(id for _, id in held))
         if len(by_key) > 1:
             raise CurateError(f"the keys of {name} bind {', '.join(by_key)}: admit one article, or merge them first")
-        if by_key:
+        strong = {id for key, id in held if weights.get(key, 0) > 0}
+        if by_key and (by_key[0] in strong or same_thing(keys, self.find(by_key[0]).keys, weights) is not False):
             return self.find(by_key[0])
         if at_path is not None:
             return at_path
