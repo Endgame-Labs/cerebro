@@ -82,12 +82,12 @@ evidence:
   - held: {}
 ```
 
-An `articles` line takes three options, each on a line under it:
+An `articles` line can take these options, each on a line under it:
 
 | Option | What it does |
 |---|---|
 | `text_only: true` | Loads each article's front matter and text, without its facts |
-| `keep: "..."` | Loads only the passages of each article that hold what you ask for, as the decision model judges them. It needs `text_only: true`. |
+| `keep: "..."` | Loads only the passages of each article that hold what you ask for, as the decision model judges them. It reads text, so put `text_only: true` beside it. |
 | `top: 80` | Loads at most this many of the passages `keep` chose. It needs `keep`. |
 
 ```yaml
