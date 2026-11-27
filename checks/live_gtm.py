@@ -50,7 +50,7 @@ from cerebro.article import cut, passages
 from cerebro.budget import LOG
 from cerebro.evidence import CITE
 from cerebro.first_run import run as first_run
-from cerebro.ground import split_sentences
+from cerebro.ground import split_sentences, unmarked
 from cerebro.models import HttpDecider, ModelSpec
 from cerebro.records import proposals
 from cerebro.runner import PassResult
@@ -220,7 +220,7 @@ def read_articles(workspace: Cerebro, reasons: list[str]) -> dict[str, list[str]
                         reasons.append(f"{full.identity.id}: {part.heading}: links {path}, which from its folder opens "
                                        "no article that has been written and no record")
                 for sentence in sentences(part.text):
-                    cited = CITE.findall(sentence) + [link.removeprefix("../").removesuffix(".md") for link in
+                    cited = CITE.findall(unmarked(sentence)) + [link.removeprefix("../").removesuffix(".md") for link in
                                                       re.findall(r"\]\((\.\./[^)\s]+\.md)\)", sentence)]
                     if not cited and not ABSENCE.search(sentence):  # a line saying the evidence holds none stands
                         reasons.append(f"{full.identity.id}: {part.heading}: cites nothing: {sentence[:120]!r}")

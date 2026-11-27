@@ -37,7 +37,7 @@ from cerebro.app import Cerebro
 from cerebro.article import Identity, passages
 from cerebro.clock import stamp
 from cerebro.evidence import CITE
-from cerebro.ground import split_sentences
+from cerebro.ground import split_sentences, unmarked
 from cerebro.runner import PassResult
 
 # words that tell a value as what was
@@ -198,7 +198,7 @@ def main() -> int:
                                "beside the new one")
             for line in history:
                 print(f"history: {line}")
-            for id in CITE.findall("\n".join(parts.values())):
+            for id in CITE.findall(unmarked("\n".join(parts.values()))):  # a mark is grounding's, and cites nothing
                 if id not in held:
                     reasons.append(f"[^{id}] is no fact the wiki holds")
             kept = workspace.store.superseded(record=DOC)
