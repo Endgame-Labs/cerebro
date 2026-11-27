@@ -1,0 +1,7 @@
+plate_id,run_date,protocol,protocol_version,reagent_lot,strain,operator,outcome,notes
+PLT-2026-1012-A,2026-10-12,CRISPR-Cas12a Lateral Flow Assay,v2.1,Buffer X — Lot 3A,none,Devon Morales,passed,Baseline 37 C 30 min run with remaining Lot 3A gave 3 of 3 strong test lines and clean NTC.
+PLT-2026-1020-A,2026-10-20,CRISPR-Cas12a Lateral Flow Assay,v2.2,Buffer X — Lot 4B,none,Devon Morales,failed,No test line across 3 replicates at 42 C with Lot 4B and LbCas12a Enzyme Stock — Lot E20.
+PLT-2026-1023-A,2026-10-23,CRISPR-Cas12a Lateral Flow Assay,v2.2,Buffer X — Lot 4B,none,Soren Lindqvist,failed,Fresh LbCas12a Lot E20 aliquot still failed with Buffer X — Lot 4B; white precipitate observed at bottom of bottle.
+PLT-2026-1028-B,2026-10-28,Delta-Lon Transformation and Expression,v1.3,Kanamycin 50 mg/mL Stock — Lot K09,E. coli K-12 Delta-Lon,Marco Bellini,failed,Only 12 colonies after 90 s heat shock at 42 C and plating on 50 ug/mL kanamycin.
+PLT-2026-1103-B,2026-11-03,Delta-Lon Transformation and Expression,v1.4,Kanamycin 50 mg/mL Stock — Lot K09,E. coli K-12 Delta-Lon,Marco Bellini,passed,620 colonies and high elution yield after 45 s heat shock 30 C SOC recovery and 30 ug/mL kanamycin.
+PLT-2026-1104-A,2026-11-04,CRISPR-Cas12a Lateral Flow Assay,v2.3,Buffer X — Lot 5C,none,Devon Morales,passed,Full recovery of signal at 37 C 30 min using room-temperature Buffer X — Lot 5C and LbCas12a Lot E20.
