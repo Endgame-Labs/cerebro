@@ -113,6 +113,7 @@ __all__ = [
     "run",
     "served",
     "shown_at",
+    "stamp_shown",
     "waiting_line",
 ]
 
@@ -862,7 +863,7 @@ def _stop_line(collections: list[str]) -> str:
             "settings.yaml, or narrow what your source files under sources/ read, and run again.")
 
 
-def _shown(workspace: Cerebro) -> None:
+def stamp_shown(workspace: Cerebro) -> None:
     """Keep when the list was last given out, for `review --accept-from`."""
     session = _state(workspace)
     if session is not None:
@@ -1262,7 +1263,7 @@ def _run(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | None, sa
     out = Outcome(pile)
     rest: list[str] = []
     if pile.waiting() or pile.stopped:
-        _shown(workspace)
+        stamp_shown(workspace)
         if choose is None:  # off a terminal: nothing is decided, and a stop at the cap is said first
             said = [pile.stopped] if pile.stopped else []
             return replace(out, waits=True, lines=[*said, *held_lines(workspace), waiting_line(pile)]
@@ -1501,7 +1502,7 @@ def _decide_late(workspace: Cerebro, out: Outcome, late: Pile, result: PassResul
                  choose: Callable[[Pile], Choices | None] | None, say: Callable[[str], None] | None) -> None:
     """Show the late list that opened after the build to `choose`, apply what it gives, and build what it admitted
     in one more pass, joined to `result`; off a terminal, say that it waits."""
-    _shown(workspace)
+    stamp_shown(workspace)
     if choose is None:
         out.lines += [first_list_line(listed.agent, len(listed.proposed())) for listed in late.lists]
         return
@@ -1538,7 +1539,7 @@ def _late_waits(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | N
     pile = LocalApproval(workspace, agents=agents, late=True).pile()
     if not pile.waiting():
         return None
-    _shown(workspace)
+    stamp_shown(workspace)
     out = Outcome(pile)
     choices = choose(arranged(workspace, pile))
     if choices is None:

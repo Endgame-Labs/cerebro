@@ -1198,9 +1198,9 @@ def _curate(workspace: Cerebro, result: PassResult) -> None:
         _curate_due(workspace, due, result)
     warned = [first_list_line(agent.id, len(ids)) for agent, _ in due if (ids := first_list(workspace, agent.id))]
     if warned:  # the line names review --accept-from, which takes what was shown by now
-        from .first_run import _shown  # imported here: the first run builds on this module
+        from .first_run import stamp_shown  # imported here: the first run builds on this module
 
-        _shown(workspace)
+        stamp_shown(workspace)
     result.warnings += warned
 
 
