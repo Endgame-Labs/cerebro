@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import json
 import socket
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
 import pytest
@@ -70,6 +73,41 @@ def test_a_model_error_ends_the_run_as_failed_with_its_note() -> None:
 
     run = PydanticRun(FunctionModel(refuse)).run(AGENT, EVIDENCE, [], Budget())
     assert run.status == "failed" and "Invalid image" in run.note
+
+
+@pytest.mark.parametrize("call", ["an agent run", "a one-request call"])
+def test_a_model_call_ends_with_its_event_loop_closed_and_no_async_generator_left_open_in_it(
+        monkeypatch: pytest.MonkeyPatch, call: str) -> None:
+    import httpx
+    import pydantic_ai.providers
+    from openai import AsyncOpenAI
+
+    from cerebro.run import WRITE, PydanticRewriter, model_name
+
+    hand_in = {"index": 0, "id": "c1", "type": "function", "function": {"name": WRITE, "arguments": '{"text": "x"}'}}
+    chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m", "choices": [
+        {"index": 0, "delta": {"role": "assistant", "tool_calls": [hand_in]}, "finish_reason": "tool_calls"}]}
+    left = []
+
+    async def pieces() -> AsyncIterator[bytes]:  # a stand-in for a provider stream's generator, left part read
+        yield f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode()
+        yield b"unread"
+
+    async def answer(request: httpx.Request) -> httpx.Response:
+        left.append((asyncio.get_running_loop(), stream := pieces()))
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=await anext(stream))
+
+    made = pydantic_ai.providers.infer_provider_class
+    monkeypatch.setattr(pydantic_ai.providers, "infer_provider_class", lambda name: lambda **kw: made(name)(
+        openai_client=AsyncOpenAI(api_key="k", http_client=httpx.AsyncClient(transport=httpx.MockTransport(answer)))))
+    monkeypatch.setattr("pydantic_ai.models.ALLOW_MODEL_REQUESTS", True)
+    block, key = {"provider": "fireworks", "model": "glm-5p3"}, lambda provider: "k-test"
+    if call == "an agent run":
+        assert PydanticRun(model_name(block), key=key).run(AGENT, EVIDENCE, [], Budget()).status == "done"
+    else:
+        PydanticRewriter(block, what="ask", key=key).rewrite("the prompt", "the claim")
+    [(loop, stream)] = left
+    assert loop.is_closed() and inspect.getasyncgenstate(stream) == inspect.AGEN_CLOSED
 
 
 def test_a_run_that_runs_out_of_budget_still_counts_what_it_spent() -> None:
