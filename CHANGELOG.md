@@ -39,6 +39,7 @@ What changed in each release, newest first.
 - `sql` row ids changed in 0.1.3. After an upgrade, every agent with a `sql` line runs once more, on the first pass its cooldown allows. Nothing is doubled or lost.
 - A subagent with no `model:` of its own is now charged at the model it runs on, the compilation model in `settings.yaml`, not at its composer's. If its composer names a cheaper model, a pass counts more toward your cap than before, and `cerebro status` and the `agent-runs` log name the model it ran on.
 - `repair` goes from `compile:` in `settings.yaml`, and from the gateway's `{call}` values, since grounding rewrites nothing. If your `settings.yaml` sets `compile: { repair: ... }`, delete it, or every command stops on it.
+- A prompt you copied into `prompts/` with `cerebro prompts eject` keeps the words it had, so a copy of `rules` or `unwritten` still tells writers a sentence is cut. Delete the copy, run `cerebro prompts eject rules` or `cerebro prompts eject unwritten` for the new words, then make your edits again.
 
 ## 0.1.2
 
