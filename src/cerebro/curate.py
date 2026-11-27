@@ -1325,7 +1325,7 @@ class _Curation:
             lead = next((q for q in own if q.target == path), own[0])  # a first-run group's lead row
             called = str(lead.payload.get("name") or lead.payload.get("title") or "")
             for q in own:
-                if asked != follow(q.target, moved) or not named_alike(name, called):
+                if asked != follow(q.target, moved) or at_path is None and not named_alike(name, called):
                     there = follow(q.target, moved)
                     said = called if there == path else str(q.payload.get("name") or q.payload.get("title") or "")
                     raise CurateError(f"{q.id} was approved as {said} at {there}: admit it there")

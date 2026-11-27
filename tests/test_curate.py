@@ -854,6 +854,12 @@ def test_an_approved_proposal_the_curator_filed_is_made_at_its_path_and_name(tmp
                   tmp_path)  # one act never carries out an approved admit of another path
     assert said(done)[0] == refusal(f"{bob.id} was approved as Bob at things/bob: admit it there")
     assert row(store, bob.id).applied == {} and store.article("things/ann") is None
+    store.create(Identity("things/elm", "things", "Elm", {}, "archived"))
+    curate(store, agent, [("admit", {"name": "Elm", "reason": "back again"})], tmp_path)
+    [back] = proposals(store, "waiting")
+    decide(store, YOU, accept=[back.id], clock=lambda: NOW)
+    curate(store, agent, [("admit", {"name": "things/elm", "reason": "asked", "proposals": [back.id]})], tmp_path)
+    assert store.article("things/elm").identity.status == "active"  # by its path, an archived one comes back
 
 
 def test_an_accepted_proposal_whose_target_is_gone_or_done_closes_with_no_model(tmp_path: Path) -> None:
