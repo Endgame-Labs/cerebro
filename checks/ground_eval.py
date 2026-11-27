@@ -9,9 +9,9 @@ Each case is one draft sentence, or a few, with the facts they cite, from `tests
 supported or unsupported before anything ran against it. A case scores as its weakest sentence. It prints what
 `evals.lines` prints: the share of supported cases at or above the floor, `ground.FLOOR`, and of unsupported ones under
 it, overall and per group, each case that came out against its label with its score and why, and what the calls
-spent, kept in a ledger of its own with no cap. It fails, and exits 1, when fewer supported cases hold than
-`--min-held`, 75% by default, or fewer unsupported ones fall under the floor than `--min-marked`, 85%. It prints no
-key. With no key set it says so and stops.
+spent, kept in a ledger of its own with no cap. It fails, and exits 1, when any case is unscored, when fewer
+supported cases hold than `--min-held`, 75% by default, or when fewer unsupported ones fall under the floor than
+`--min-marked`, 85%. It prints no key. With no key set it says so and stops.
 
 The run ends with one block: the two shares over all cases and over the held back cases (split `held_out`, and one
 in ten of the rest by a hash of the id), the cost, and each miss.
@@ -64,7 +64,9 @@ def main() -> int:
     every = report.groups["all"]
     held = every.held / every.supported if every.supported else 0.0
     marked = every.marked / every.unsupported if every.unsupported else 0.0
-    low = [f"held {held:.0%} of supported cases, under the floor of {args.min_held:.0%}"] if held < args.min_held else []
+    low = [f"{len(report.unscored)} cases unscored, first {report.unscored[0].id}: {report.unscored[0].checks[0].why}"] \
+        if report.unscored else []  # the shares count scored cases alone
+    low += [f"held {held:.0%} of supported cases, under the floor of {args.min_held:.0%}"] if held < args.min_held else []
     low += [f"marked {marked:.0%} of unsupported cases, under the floor of {args.min_marked:.0%}"] \
         if marked < args.min_marked else []
     for line in low:
