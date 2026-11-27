@@ -231,3 +231,31 @@ def test_an_extraction_books_each_priced_model_on_its_own_row_and_an_unpriced_on
     Ledger(store, Caps()).record_extracted(at, FLASH, Extracted([], 1_000_000, models={
         "openai/text-embedding-3-small": (1_000_000, 0)}))
     assert [(r.data["model"], r.data["usd"]) for r in store.rows(LOG)] == [("glm-5p3-flash", pytest.approx(0.15))]
+
+
+def test_a_subagent_that_names_no_model_counts_toward_the_cap_at_the_settings_model_it_runs_on(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from cerebro import Cerebro
+    from cerebro.fakes import ScriptedRun
+    from cerebro.run import Run
+
+    class Reads(ScriptedRun):  # each run reads a million input tokens
+        def run(self, *args: object) -> Run:
+            done = super().run(*args)
+            done.usage = replace(done.usage, input_tokens=1_000_000)
+            return done
+
+    agents = tmp_path / "agents" / "reports"
+    (agents / "subagents").mkdir(parents=True)
+    (tmp_path / "settings.yaml").write_text("budget: { compilation_daily_usd: 5 }\n")  # it compiles on glm-5p3
+    (agents / "weekly.md").write_text("---\nmodel: { provider: fireworks, model: glm-5p3-flash }\nsubagents: [risks]\n"
+                                      "---\n\nA weekly brief.\n\n# Composing\n\nJoin the parts.\n")
+    (agents / "subagents" / "risks.md").write_text("---\nheartbeat: [change]\n---\n\nName the risks.\n\n# Output\n\n## Risks\n")
+    with Cerebro(tmp_path, store=MemoryStore(), agent_run=Reads(lambda p: "A risk."), trusted=True,
+                 clock=lambda: NOON) as workspace:
+        workspace.compile(workspace.agent("reports/weekly"))
+        agent = {row.data["run"]: row.data["agent"] for row in workspace.store.rows("agent-runs")}
+        booked = {agent[row.data["run"]]: (row.data["model"], row.data["usd"]) for row in workspace.store.rows(LOG)}
+    # a million input tokens: $0.15 on glm-5p3-flash, $1.40 on glm-5p3
+    assert booked == {"reports/weekly": ("glm-5p3-flash", 0.15), "reports/subagents/risks": ("glm-5p3", 1.4)}
