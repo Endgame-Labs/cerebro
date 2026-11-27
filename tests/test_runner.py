@@ -1031,25 +1031,36 @@ def test_a_revision_a_caller_keeps_while_a_retract_takes_back_the_last_one_keeps
     assert [f.text for f in extraction.facts(record=kept.id)] == ["The north gate opens at ten."]
 
 
+@pytest.mark.parametrize("taker", ["person", "app"])
 def test_a_retract_takes_back_what_an_apps_later_save_gave_though_a_pass_read_it_before_the_retract_landed(
-        tmp_path: Path) -> None:
+        tmp_path: Path, taker: str) -> None:
     from cerebro.caller import Caller
 
-    you, app, extraction = Caller("you", "person"), Caller("notes", "app"), FakeExtraction()
-    hands = Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
+    you, app, held = Caller("you", "person"), Caller("notes", "app"), {}
+
+    class Sweeping(FakeExtraction):
+        def facts(self, **filters: Any) -> list[Any]:
+            if filters.get("record") == held.get("id") and held.pop("sweeping", False):
+                saved_again()  # the app's own retract is dated as it sweeps
+            return super().facts(**filters)
+
+    def saved_again() -> None:  # the app saves again, and a pass reads it, before the retract lands
+        hands.move(seconds=2)
+        cerebro.handle.keep(app, "note", "The south gate opens at ten.", {"collection": "notes"}, id=kept.id)
+        cerebro.run_once()
+
+    extraction, hands = Sweeping(), Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
     cerebro = kept_notes(tmp_path, extraction, hands)
     kept = cerebro.handle.keep(app, "note", "The south gate opens at nine.", {"collection": "notes"})
     asked = cerebro.tell(app, "take it back", target=kept.id, as_="proposal", kind="record.retract").proposals
     cerebro.run_once()
-
-    def landing(write: Any) -> None:  # the decide is dated: the app saves again, and a pass reads it, before it lands
-        hands.move(seconds=2)
-        cerebro.handle.keep(app, "note", "The south gate opens at ten.", {"collection": "notes"}, id=kept.id)
-        cerebro.run_once()
-        write()
-
-    cerebro.lookup.decide(you, accept=asked, measure=landing)
-    assert extraction.facts(record=kept.id) == []
+    if taker == "person":
+        cerebro.lookup.decide(you, accept=asked, measure=lambda write: (saved_again(), write()))
+    else:  # an app's own retract takes back only what was kept up to it
+        held.update(id=kept.id, sweeping=True)
+        cerebro.retract(app, kept.id, "its own")
+    later = [] if taker == "person" else ["The south gate opens at ten."]
+    assert [f.text for f in extraction.facts(record=kept.id)] == later
 
 
 def test_status_gives_todays_spend_alone_and_counts_what_waits(tmp_path: Path) -> None:
