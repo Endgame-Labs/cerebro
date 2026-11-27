@@ -48,7 +48,7 @@ from urllib.parse import quote
 
 import httpx
 
-from .clock import seconds, stamp, system_clock
+from .clock import stamp, system_clock
 from .connector import Record
 from .errors import CerebroError
 from .models import DEFAULTS, PROVIDERS, ModelSpec
@@ -824,19 +824,15 @@ def _keyed() -> Any:
 
 # -- each model call: its tries, its time and what it spends --------------------------------------------------------
 
-MODEL_SECONDS = 120.0  # seconds one model call of Factoid's may take in all, its tries included
-
-
 class ModelUnreachable(CerebroError, RuntimeError):
-    """A model call of the facts layer failed every try it is given, or ran past its time."""
+    """A model call of the facts layer failed every try it is given."""
 
 
 class _Bounded(httpx.BaseTransport):
-    """Factoid's HTTP transport, held to `tries` tries in a row, its extraction model's retries and one, and
-    `MODEL_SECONDS` in all for one call: past either, it raises an error Factoid does not try again, so a pass always
-    ends. Counted per thread. Once a host of `gateway` refused a call in a way no try mends, no call is sent, as Factoid
-    would try another call of the record. An error's body is masked whole by `mask` before Factoid cuts it into its
-    error, which no mask could then find."""
+    """Factoid's HTTP transport, held to `tries` tries in a row, its extraction model's retries and one: past them, it
+    raises an error Factoid does not try again, so a pass always ends. Counted per thread. Once a host of `gateway`
+    refused a call in a way no try mends, no call is sent, as Factoid would try another call of the record. An error's
+    body is masked whole by `mask` before Factoid cuts it into its error, which no mask could then find."""
 
     def __init__(self, inner: httpx.BaseTransport, tries: int, gateway: Gateway | None = None,
                  mask: Callable[[str], str] | None = None):
@@ -844,11 +840,9 @@ class _Bounded(httpx.BaseTransport):
         self._local = threading.local()
 
     def _failed(self, why: str) -> None:
-        tries = getattr(self._local, "tries", 0) + 1
-        began = getattr(self._local, "began", None) or seconds()
-        self._local.tries, self._local.began = tries, began
-        if tries >= self.tries or seconds() - began > MODEL_SECONDS:
-            self._local.tries, self._local.began = 0, None
+        self._local.tries = tries = getattr(self._local, "tries", 0) + 1
+        if tries >= self.tries:
+            self._local.tries = 0
             raise ModelUnreachable(f"the facts layer's model did not answer after {tries} tries ({why}): check the "
                                    "network and the provider's status, then the next pass tries again")
 
@@ -869,7 +863,7 @@ class _Bounded(httpx.BaseTransport):
         if response.status_code in (429, 500, 502, 503, 504, 529):  # what Factoid tries again
             self._failed(f"HTTP {response.status_code}")
             return response
-        self._local.tries, self._local.began = 0, None
+        self._local.tries = 0
         return response
 
     def close(self) -> None:

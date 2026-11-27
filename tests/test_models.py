@@ -251,12 +251,15 @@ def test_the_stand_in_decider_answers_what_it_is_told_and_keeps_what_it_was_aske
     assert fake.asked[0][0] == {"note": "x"}
 
 
-def test_a_dropped_connection_is_tried_again_and_then_named() -> None:
-    net, drops = Network(), [ConnectionResetError(), ConnectionResetError()]
+def test_a_dropped_connection_or_a_timeout_is_tried_again_and_then_named() -> None:
+    net, drops = Network(), [ConnectionResetError(), 408]
 
     def flaky(url: str, headers: dict[str, str], data: bytes) -> tuple[int, dict[str, str], bytes]:
-        if drops:
-            raise drops.pop()
+        drop = drops.pop() if drops else None
+        if isinstance(drop, int):
+            return drop, {}, b""
+        if drop is not None:
+            raise drop
         return net.send(url, headers, data)
 
     slept: list[float] = []
@@ -273,7 +276,7 @@ def test_odd_replies_neither_crash_the_client_nor_leak_the_reply_or_the_key() ->
     from cerebro.models import DecisionError, _retry_after
 
     assert _retry_after({"Retry-After": "nan"}) is None and _retry_after({"Retry-After": "1e400"}) is None
-    assert _retry_after({"Retry-After": "-5"}) == 0.0 and _retry_after({"Retry-After": "9999"}) == 120.0
+    assert _retry_after({"Retry-After": "-5"}) == 0.0 and _retry_after({"Retry-After": "9999"}) == 60.0
     for usage in ("lots", {"input_tokens": 1e400}, {"input_tokens": "12"}):
         net = Network(change=lambda reply, usage=usage: reply | {"usage": usage})
         with pytest.raises(DecisionError, match="usage"):

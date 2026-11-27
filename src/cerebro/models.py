@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DECISION_MAX_BYTES", "DEFAULTS", "EFFORTS", "ENTRY_KEYS", "JOBS", "PRICES", "PROVIDERS", "RETRIES",
-    "RUNE_MAX_QUESTIONS", "SETTINGS_KEYS", "Answer", "Choice", "Decider", "Decision", "DecisionError",
+    "RUNE_MAX_QUESTIONS", "SETTINGS_KEYS", "WAIT_MOST", "Answer", "Choice", "Decider", "Decision", "DecisionError",
     "DecisionTooLarge", "HttpDecider", "ModelSettingsError", "ModelSpec", "Price", "Provider", "Question", "Score",
     "TokenCount", "Tokens", "YesNo", "cost", "price_of", "read_model", "read_models", "wire_id",
 ]
@@ -44,6 +44,7 @@ JOBS = ("extraction", "decision", "compilation")
 EFFORTS = ("none", "low", "medium", "high", "xhigh", "max")
 ENTRY_KEYS = ("provider", "model", "effort", "retries")
 RETRIES = 3  # times a model call is tried again after a timeout, a rate limit or a server error, unless its entry says
+WAIT_MOST = 60.0  # seconds a model call waits at most before it is tried again, whatever the provider asks
 SETTINGS_KEYS = {"models": {job: dict.fromkeys(ENTRY_KEYS) for job in JOBS}}
 
 
@@ -125,7 +126,8 @@ class ModelSpec:
         return PROVIDERS[self.provider].variable
 
     def block(self) -> dict[str, Any]:
-        """The entry as `settings.yaml` writes it, the shape `run.model_name` and `run.model_settings` take."""
+        """The entry in the shape `settings.yaml` writes, which `run.model_name` and `run.model_settings` take, its
+        `retries` always given."""
         out: dict[str, Any] = {"provider": self.provider, "model": self.model}
         if self.effort:
             out["effort"] = self.effort
@@ -475,7 +477,7 @@ class HttpDecider(Decider):
     provider names. `send` makes the HTTP request, so a test can stand in for the network. `route` sends it to the
     host settings name for the provider, with their headers, `call` naming the kind of call.
     A timeout, a rate limit or a server error is tried again up to the spec's `retries` times, waiting as
-    `Retry-After` asks or 1, 2, 4 seconds; a refused key is not.
+    `Retry-After` asks or 1, 2, 4 seconds and on, a minute at most; a refused key is not.
     """
 
     def __init__(self, spec: ModelSpec, *, key: Callable[[], str] | None = None, send: Send | None = None,
@@ -544,11 +546,11 @@ class HttpDecider(Decider):
                 if last:
                     raise DecisionError(f"{self.spec.model} at {self.url} did not answer ({type(error).__name__}): "
                                         "check the network, then try again") from None
-                self._sleep(2.0 ** attempt)
+                self._sleep(min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1
                 continue
             if (status in (408, 429) or status >= 500) and not last:
-                self._sleep(_retry_after(reply_headers) or 2.0 ** attempt)
+                self._sleep(_retry_after(reply_headers) or min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1
                 continue
             if 300 <= status < 400:
@@ -580,10 +582,11 @@ def _tokens(model: str, usage: Mapping[str, Any], key: str) -> int:
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
-    """The wait `Retry-After` asks for, from 0 to 120 seconds, or None for one that is missing or no number."""
+    """The wait `Retry-After` asks for, from 0 to `WAIT_MOST` seconds, or None for one that is missing or no
+    number."""
     value = next((v for k, v in headers.items() if k.lower() == "retry-after"), None)
     try:
         wait = float(value) if value is not None else math.nan
     except ValueError:
         return None
-    return min(max(wait, 0.0), 120.0) if math.isfinite(wait) else None
+    return min(max(wait, 0.0), WAIT_MOST) if math.isfinite(wait) else None

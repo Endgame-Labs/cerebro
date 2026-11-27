@@ -54,7 +54,7 @@ Each model has one job:
 
 Extraction and compilation can also run on OpenAI or Anthropic. Change that job's `provider` and `model`, then keep the key with `cerebro secrets set openai` or `cerebro secrets set anthropic`. The decision job runs on Typesafe or Fireworks.
 
-A model call that times out, hits a rate limit or meets a server error is tried again, 3 times by default. An agent's reply counts as timed out only when nothing new arrives for a minute, so a long reply that keeps coming finishes. A refused key is never tried again. To change how many times a job's calls are tried again, add `retries` to its model in `settings.yaml`:
+A model call that times out, hits a rate limit or meets a server error is tried again, 3 times by default. A refused key is never tried again. Extraction also does not try again a call the provider answers with HTTP 408. To change how many times a job's calls are tried again, add `retries` to its model in `settings.yaml`:
 
 ```yaml
 models:
@@ -62,6 +62,8 @@ models:
   decision: { provider: typesafe, model: jev-1.13.0, retries: 1 }
   compilation: { provider: fireworks, model: glm-5p3, effort: high, retries: 5 }
 ```
+
+An agent's reply may take 10 minutes to start, as a model that thinks first can be silent. Once it starts, it counts as timed out only when nothing new arrives for a minute, so a long reply that keeps coming finishes.
 
 ### Model calls through a gateway
 
