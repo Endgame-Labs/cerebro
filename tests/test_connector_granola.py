@@ -35,7 +35,6 @@ from cerebro.connectors.granola import (
     WriteRefused,
 )
 from cerebro.connectors.granola_parse import ReplyError, parse_meetings, parse_people, parse_time, parse_transcript
-from cerebro.curate import in_scope
 from cerebro.fakes import MemoryStore
 from cerebro.fetch import fetch_tool
 from cerebro.identity import bound_to, reached
@@ -460,11 +459,10 @@ def asking(server: StandIn, source: SourceFile | None = None) -> GranolaConnecto
     return GranolaConnector(source or granola_source(), server, now=lambda: NOW, ours=Ours(domains=("quillmoor.example",)))
 
 
-def test_a_curator_asks_for_meetings_admits_a_domain_and_that_domains_notes_and_transcript_come_into_scope(
+def test_a_curator_asks_for_meetings_admits_a_domain_and_that_domains_notes_and_transcript_reach_it(
         server: StandIn, tmp_path: Path) -> None:
     connector, store = asking(server), MemoryStore()
     notes, transcript = connector.get(f"notes:{ACME_RENEWAL}"), connector.get(f"transcript:{ACME_RENEWAL}")
-    assert bound_to(store, notes) == [] and not in_scope(store, notes, curated={"calls"})
     server.calls.clear()
     asked: list[dict[str, Any]] = []
 
@@ -482,12 +480,10 @@ def test_a_curator_asks_for_meetings_admits_a_domain_and_that_domains_notes_and_
          "fields": {"records": 1, "noun": "meetings", "took_part": 1, "how": ["attended"], "first": "2026-11-12",
                     "last": "2026-11-12"}}]
     assert done.admitted == ["accounts/acme"]
-    # the domain of its parties puts the meeting in scope with the account, and binds it to nothing
+    # the domain of its parties reaches the account, and binds the meeting to nothing
     assert reached(store, notes) == reached(store, transcript) == ["accounts/acme"]
     assert bound_to(store, notes) == bound_to(store, transcript) == []
-    assert in_scope(store, notes, curated={"calls"}) and in_scope(store, transcript, curated={"calls"})
-    globex = connector.get(f"notes:{GLOBEX_REVIEW}")
-    assert reached(store, globex) == [] and not in_scope(store, globex, curated={"calls"})
+    assert reached(store, connector.get(f"notes:{GLOBEX_REVIEW}")) == []
     assert [tool for tool, _ in server.calls[:1]] == ["list_meetings"]  # the question itself read no note
 
 

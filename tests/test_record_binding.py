@@ -16,14 +16,13 @@ from pathlib import Path
 from typing import Any
 
 from cerebro.agent import load_agent
-from cerebro.app import Cerebro
 from cerebro.article import Identity
 from cerebro.connector import Record, event_key
 from cerebro.connectors.files import FilesConnector
 from cerebro.curate import in_scope, run_curator
 from cerebro.facts import Fact
 from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore, ScriptedRun
-from cerebro.held import held_for, waits_for_own
+from cerebro.held import held_for
 from cerebro.identity import bound_to, link, reached
 from cerebro.lookup import StoreLookup
 from cerebro.source import Select, SourceFile
@@ -74,8 +73,7 @@ def test_a_record_is_held_for_its_own_collection_while_another_collections_artic
     _hold(store, "src", record)
     store.create(Identity("things/alder", "things", "Alder", {"domain": ["alder.example"]}, "active"))
     assert bound_to(store, record) == [] and reached(store, record) == ["things/alder"]
-    assert in_scope(store, record, curated=["parts", "things"])  # read: its facts reach its parent
-    assert waits_for_own(store, record, ["parts"])
+    assert not in_scope(store, record, curated=["parts", "things"])  # unread until its own curator admits it
     assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["4"]
     fact = Fact("f4", "Ann said the order ships Friday.", "Ann", "fact", "", "src", record.id)
     assert link(store, fact, record) == ["things/alder"]  # by the key it carries: evidence by link
@@ -111,24 +109,6 @@ def test_a_files_entry_identity_still_names_its_records(tmp_path: Path) -> None:
     entry = Select(glob="notes/*.md", into="parts", identity={"file": "{path}"})
     record = FilesConnector(SourceFile(name="notes", kind="files", select=[entry]), root).list(None).records[0]
     assert record.keys["file"] == ["notes/a.md"] and "file" not in record.carried and "parent" in record.carried
-
-
-def test_a_record_read_in_scope_stays_held_for_its_own_curator_and_is_read_once(tmp_path: Path) -> None:
-    root = tmp_path / "w"
-    (root / "sources").mkdir(parents=True)
-    (root / "settings.yaml").write_text("timezone: UTC\n")
-    (root / "sources" / "notes.yaml").write_text(
-        'kind: files\nselect:\n  - glob: "notes/**/*.md"\n    extract: facts\n    into: parts\n')
-    (root / "agents" / "parts").mkdir(parents=True)
-    (root / "agents" / "parts" / "curator.md").write_text(CURATOR)
-    (root / "notes").mkdir()
-    (root / "notes" / "a.md").write_text("With: Ann <ann@alder.example>\nDate: 2026-11-02\n\nAnn said it shipped.\n")
-    with Cerebro(root, extraction=FakeExtraction()) as workspace:
-        workspace.store.create(Identity("things/alder", "things", "Alder", {"domain": ["alder.example"]}, "active"))
-        assert workspace.run_once(agents=False).read == 1
-        assert [(r["id"], r.get("read")) for r in workspace.store.state("held:notes")] == [("notes/a.md", True)]
-        assert workspace.run_once(agents=False).read == 0  # read once: it waits for its own article alone
-        assert [r["id"] for r in workspace.store.state("held:notes")] == ["notes/a.md"]
 
 
 def test_an_event_id_is_one_key_however_a_source_writes_it_and_one_with_no_date_takes_the_records_day() -> None:

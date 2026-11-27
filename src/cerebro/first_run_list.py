@@ -138,9 +138,8 @@ def checklist(pile: Pile, reject: Callable[[int], None] | None = None) -> tuple[
         return out
 
     def toggled(changed: list[int], on: bool, checked: list[bool]) -> list[bool]:
-        for i in changed:  # what sits under a group lands only with it, however deep
-            for j in above(i) if on else [j for j in range(len(checked)) if i in above(j)]:
-                checked[j] = on
+        if not on:  # unticking a row unticks what sits under it, however deep
+            checked = [c and not any(i in above(j) for i in changed) for j, c in enumerate(checked)]
         return checked
 
     agents = [f"agents/{_one(listed.agent, NAME_CAP)}.md" for listed in pile.lists if listed.rows]

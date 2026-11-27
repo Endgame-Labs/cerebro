@@ -21,7 +21,6 @@ from cerebro.connectors.calendar import CalendarConnector, CalendarError, Cursor
 from cerebro.connectors.calendar_ical import Span, read_feed
 from cerebro.connectors.calendar_rrule import RuleError, parse_rule
 from cerebro.connectors.questions import machine_address
-from cerebro.curate import in_scope
 from cerebro.fakes import MemoryStore
 from cerebro.fetch import fetch_tool
 from cerebro.identity import bound_to, reached
@@ -473,11 +472,11 @@ INVITES = (
 )
 
 
-def test_a_curator_asks_for_meetings_admits_a_domain_and_the_meetings_of_that_domain_come_into_scope(
+def test_a_curator_asks_for_meetings_admits_a_domain_and_the_meetings_of_that_domain_reach_it(
         events: dict[str, str], tmp_path: Path) -> None:
     connector, store = make(Feed(*events.values())), MemoryStore()
     qbr, offsite = connector.get("acme-qbr@fixture.example"), connector.get("acme-offsite@fixture.example")
-    assert reached(store, qbr) == [] and not in_scope(store, qbr, curated={"meetings"})
+    assert reached(store, qbr) == []
     asked: list[dict] = []
 
     def script(tools: dict[str, Callable[..., object]]) -> None:
@@ -493,12 +492,10 @@ def test_a_curator_asks_for_meetings_admits_a_domain_and_the_meetings_of_that_do
          "into": "", "fields": {"records": 2, "noun": "meetings", "took_part": 0, "first": "2026-11-10",
                                 "last": "2026-11-17"}}]
     assert done.admitted == ["accounts/acme"]
-    # its people's domain puts a meeting in scope with the account, and binds it to nothing: it only carries it
+    # its people's domain reaches the account, and binds the meeting to nothing: it only carries it
     assert reached(store, qbr) == reached(store, offsite) == ["accounts/acme"]
     assert bound_to(store, qbr) == bound_to(store, offsite) == []
-    assert in_scope(store, qbr, curated={"meetings"}) and in_scope(store, offsite, curated={"meetings"})
-    sync = connector.get("northwind-sync@fixture.example#20261117T140000Z")
-    assert reached(store, sync) == [] and not in_scope(store, sync, curated={"meetings"})
+    assert reached(store, connector.get("northwind-sync@fixture.example#20261117T140000Z")) == []
 
 
 def test_a_row_tells_how_you_took_part_whether_invites_went_both_ways_and_whether_a_machine_sent_them() -> None:

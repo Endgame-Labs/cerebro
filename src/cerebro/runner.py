@@ -107,7 +107,7 @@ from .errors import CerebroError
 from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
 from .ground import LINES as GROUND_LINES
 from .ground import TALLY, counted
-from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
+from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, weighed
 from .identity import (
     DecisionJudge,
     Judged,
@@ -1351,8 +1351,8 @@ def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None)
     if ahead.discovering and record.id in ahead.first:  # held for the first run's discovery: it waits for the decision
         return Decision(HOLD, FIRST_HOLD)
     if not in_scope(workspace.store, record, curated=ahead.curated):
-        return Decision(HOLD, "it binds only articles out of the working set" if reached(workspace.store, record) else
-                        f"no article binds it, so it waits for the curator of {record.into}")
+        return Decision(HOLD, f"no article binds it, so it waits for the curator of {record.into}"
+                        if record.into in ahead.curated else "it binds only articles out of the working set")
     if record.extract in ("records", "none"):
         return Decision(NOTHING, f"its source extracts it into {record.extract}")
     return Decision(TAKE)
@@ -1489,12 +1489,7 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
     held = {row["id"]: record_from(row) for row in was_held if row["id"] not in ahead.gone and row["id"] not in fresh}
     handled = {*tried, *ahead.gone, *fresh, *(row["id"] for row in was_held)}
     ahead = replace(ahead, first=first)
-    taken = {row["id"] for row in was_held if row.get("read") and row["id"] in held}
-    for id in list(taken):  # read before, unchanged: it stays held only while it waits for its own article
-        if not waits_for_own(workspace.store, held[id], ahead.curated):
-            held.pop(id)
-            taken.discard(id)
-    going = [*(record for record in held.values() if record.id not in taken), *listed.records]
+    going = [*held.values(), *listed.records]
     early = _Early(workspace, connector)  # what is asked ahead is let go however the turns end
     try:
         for done, record in enumerate(going, 1):
@@ -1506,9 +1501,6 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
                 held[record.id] = replace(record, body=None)
                 continue
             held.pop(record.id, None)
-            if waits_for_own(workspace.store, record, ahead.curated):  # read, and held for its own collection's curator
-                held[record.id] = replace(record, body=None)
-                taken.add(record.id)
             _keep_keys(workspace, name, record)
             if decision.act == NOTHING:  # its text is read for nothing: its fields, as listed, still go
                 if not _extract_fields(workspace, name, record, result, landed):
@@ -1519,8 +1511,7 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
                 waiting.append(record.id)
     finally:
         early.close()
-    rows = {id: asdict(record) | {"listed_at": first.get(record.id, now)} | ({"read": True} if record.id in taken else {})
-            for id, record in held.items()}
+    rows = {id: asdict(record) | {"listed_at": first.get(record.id, now)} for id, record in held.items()}
     _keep_extracted(workspace, listed, handled, waiting, rows, result)
     result.step("distill", "end", name, mark="warning" if waiting else "done",
                 text=f"{_n(result.read - read, 'record')} • {_n(result.extracted - facts, 'fact')}",
@@ -1614,10 +1605,9 @@ def _extract_whole(workspace: Cerebro, record: Record, result: PassResult, lande
 
 def _extract_fields(workspace: Cerebro, name: str, record: Record, result: PassResult,
                     landed: list[tuple[Fact, Record]]) -> bool:
-    """Hand the fields a source gives a record in scope to the facts layer, one fact a field, held to the extraction
-    cap and its cost kept, and add their facts to `landed`. A value that is another record's key, such as a part's
-    parent id, is given as the one other article of the working set it binds, by its title and its path, so its fact
-    names it in words a reader knows. A record that gives no name of its own is named as the one article it binds.
+    """Hand the fields a source gives a record in scope to the facts layer, one fact a field, each value as the
+    source gave it, held to the extraction cap and its cost kept, and add their facts to `landed`. A record that gives
+    no name of its own is named as the one article of its own it binds.
     A failure is reported and gives False, so the record waits for the next pass, and the pass goes on."""
     if workspace.extraction is None:
         return True
@@ -1628,10 +1618,10 @@ def _extract_fields(workspace: Cerebro, name: str, record: Record, result: PassR
             result.failed[f"sources/{name}/{record.id}#fields"] = f"{type(error).__name__}: {error}"
             return False
         return True
-    worded = replace(record, fields={k: _worded(workspace, record, v) for k, v in record.fields.items()})
+    worded = record
     own = own_articles(workspace.store, record)
     if not _gives_a_name(record) and len(own) == 1 and (article := workspace.store.article(own[0])) and article.identity.title:
-        worded.keys = {**record.keys, "name": [article.identity.title]}  # named as its one article is, never by its id
+        worded = replace(record, keys={**record.keys, "name": [article.identity.title]})  # never named by its id
     model, extracted = workspace.models["extraction"], Extracted([])
     try:
         workspace.ledger.check("extraction", workspace.clock(), model)
@@ -1654,34 +1644,6 @@ def _gives_a_name(record: Record) -> bool:
     """Whether a record gives a name of its own: a `name` key, or a `name`, `title` or `subject` field."""
     return any(str(v).strip() for v in record.keys.get("name", [])) or any(
         isinstance(record.fields.get(k), str) and record.fields[k].strip() for k in ("name", "title", "subject"))
-
-
-def _worded(workspace: Cerebro, record: Record, value: Any) -> Any:
-    """A field's value with each item that binds another article of the working set given as that article, as
-    `_worded_one` gives one: a list item by item, and an entry that holds an `email` by that address."""
-    if isinstance(value, list):
-        return [_worded(workspace, record, item) for item in value]
-    if isinstance(value, dict) and isinstance(value.get("email"), str):
-        named = _worded_one(workspace, record, value["email"])
-        return named if named != value["email"] else value
-    return _worded_one(workspace, record, value)
-
-
-def _worded_one(workspace: Cerebro, record: Record, value: Any) -> Any:
-    """A field's value, or the one other article of the working set it binds under one of the record's keys or an
-    `email`, such as a part's parent id or an owner's address: its title, with its path in brackets, so a reader
-    knows it by name and a writer can set a field that links to it."""
-    if not isinstance(value, str) or not value or value == record.id:
-        return value
-    own = set(own_articles(workspace.store, record))
-    found = {follow(id, redirects(workspace.store)) for key in {*record.keys, "email"}
-             for id in workspace.store.bound(key, value)}
-    found = {id for id in found if id not in own and working(workspace.store, id)}
-    if len(found) != 1:
-        return value
-    id = found.pop()
-    article = workspace.store.article(id)
-    return f"{article.identity.title} ({id})" if article is not None and article.identity.title else id
 
 
 KEPT_CURSOR, KEPT_FAILED = own_key("cursor", "kept"), own_key("failed", "kept")  # how far into the store's changes kept records were read

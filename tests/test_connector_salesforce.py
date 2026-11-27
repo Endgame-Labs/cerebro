@@ -26,7 +26,6 @@ from cerebro.connectors.salesforce import (
     Refused,
     RequestLimit,
     SalesforceConnector,
-    _months_back,
     id18,
     record_text,
     website_domain,
@@ -262,11 +261,16 @@ def salesforce_source(**settings: Any) -> SourceFile:
     return SourceFile(name="crm", kind="salesforce", window=Window(behind=behind), settings={"org": "work", **settings})
 
 
-def make(org: FakeOrg, source: SourceFile | None = None, accounts: list[str] | None = None,
+def landed() -> list[str]:
+    """The ids of the records that land on an article of their own, each handed in as an admitted article's key."""
+    return [r.id for r in expected() if r.into]
+
+
+def make(org: FakeOrg, source: SourceFile | None = None, admitted: list[str] | None = None,
          clock: list[datetime] | None = None, **options: Any) -> SalesforceConnector:
     clock = clock or [NOW]
     return SalesforceConnector(source or salesforce_source(), http=httpx.Client(transport=httpx.MockTransport(org)),
-                               login=lambda: (TOKEN, INSTANCE), accounts=lambda: accounts or [ACME, INITECH],
+                               login=lambda: (TOKEN, INSTANCE), admitted=lambda: admitted or landed(),
                                now=lambda: clock[0], **options)
 
 
@@ -355,9 +359,12 @@ def test_a_landed_record_changes_revision_when_what_it_lands_changes(org: FakeOr
     assert connector.get(ACME).revision != before
 
 
-def test_only_the_accounts_handed_in_are_read_and_none_without_them(org: FakeOrg) -> None:
-    listing = every_page(make(org, accounts=[INITECH]))
-    assert {r.id for r in listing.records} == {INITECH, "005000000000002AAA", sf_id("003", 2), sf_id("006", 4)}
+def test_an_id_handed_in_is_read_by_itself_with_what_is_logged_on_it_and_nothing_else(org: FakeOrg) -> None:
+    quote = org.add("Task", {"Subject": "Quote sent", "WhatId": sf_id("006", 1), "ActivityDate": "2026-10-10"})
+    deal = {r.id: r for r in every_page(make(org, admitted=[sf_id("006", 1)])).records}
+    assert set(deal) == {sf_id("006", 1), quote} and deal[quote].keys == {"salesforce_id": [sf_id("006", 1)]}
+    alone = {r.id for r in every_page(make(org, admitted=[ACME])).records}  # none of its contacts, deals or owner
+    assert alone == {ACME, sf_id("00T", 1), sf_id("00U", 1), sf_id("02s", 1)}
     nothing = SalesforceConnector(salesforce_source(), http=httpx.Client(transport=httpx.MockTransport(org)),
                                   login=lambda: (TOKEN, INSTANCE), now=lambda: NOW)
     assert nothing.list().records == []
@@ -367,7 +374,7 @@ def test_a_listing_reads_the_window_and_then_only_what_the_org_stamped_since(org
     clock = [NOW]
     connector = make(org, clock=clock)
     first = every_page(connector)
-    assert any("FROM Task WHERE AccountId IN" in q and "ActivityDate >= 2026-07-13" in q for q in org.queries)
+    assert any("FROM Task WHERE (AccountId IN" in q and "ActivityDate >= 2026-07-13" in q for q in org.queries)
     assert sf_id("00T", 2) not in {r.id for r in first.records}  # 200 days old
     org.queries.clear()
     clock[0] = NOW + timedelta(days=1)
@@ -384,24 +391,6 @@ def test_the_window_bounds_the_first_read_and_all_asks_for_no_date(org: FakeOrg,
     assert (sf_id("00T", 2) in ids) is listed
     if listed:
         assert not any("ActivityDate >=" in q for q in org.queries)
-
-
-def test_an_account_handed_in_later_is_read_over_its_whole_window(org: FakeOrg) -> None:
-    accounts = [ACME]
-    connector = SalesforceConnector(salesforce_source(), http=httpx.Client(transport=httpx.MockTransport(org)),
-                                    login=lambda: (TOKEN, INSTANCE), accounts=lambda: accounts, now=lambda: NOW)
-    cursor = every_page(connector).cursor
-    accounts.append(INITECH)
-    later = {r.id for r in every_page(connector, cursor).records}
-    assert later == {INITECH, "005000000000002AAA", sf_id("003", 2), sf_id("006", 4)}
-
-
-def test_a_task_names_a_contact_whatever_its_last_activity(org: FakeOrg) -> None:
-    quiet = org.add("Contact", {"Name": "Road Runner", "Email": "rr@acme.example", "AccountId": ACME,
-                                "LastActivityDate": "2025-01-01"})
-    org.add("Task", {"Subject": "Beep", "AccountId": ACME, "WhoId": quiet, "ActivityDate": "2026-10-10"})
-    ids = [r.id for r in every_page(make(org)).records]
-    assert quiet in ids and ids.index(quiet) < ids.index(sf_id("006", 1))
 
 
 def test_a_listing_follows_every_page_the_org_hands_back(org: FakeOrg) -> None:
@@ -467,7 +456,7 @@ def test_the_request_limit_stops_the_pass_and_asks_nothing_until_the_pause_passe
 
 def test_a_refused_login_says_to_log_in_again(org: FakeOrg) -> None:
     connector = SalesforceConnector(salesforce_source(), http=httpx.Client(transport=httpx.MockTransport(org)),
-                                    login=lambda: ("expired", INSTANCE), accounts=lambda: [ACME])
+                                    login=lambda: ("expired", INSTANCE), admitted=lambda: [ACME])
     with pytest.raises(NotLoggedIn, match=r"salesforce source crm: not logged in: the org refused the login for the "
                                           r"org work \(status 401 INVALID_SESSION_ID: Session expired\): run sf org "
                                           r"login web --alias work, then try again"):
@@ -586,33 +575,28 @@ def _seen(cursor: str) -> dict[str, list[str]]:
     return json.loads(zlib.decompress(base64.urlsafe_b64decode(cursor.removeprefix("sf1."))))["seen"]
 
 
-def test_records_land_in_order_colleagues_accounts_contacts_then_deals_tasks_events_and_emails(org: FakeOrg) -> None:
+def test_records_land_in_order_users_accounts_contacts_deals_then_tasks_events_and_emails(org: FakeOrg) -> None:
     assert [r.id for r in every_page(make(org)).records] == [r.id for r in expected()]
 
 
-def test_a_contact_quiet_for_longer_than_the_window_is_not_listed(org: FakeOrg) -> None:
-    quiet = org.add("Contact", {"Name": "Road Runner", "AccountId": ACME, "LastActivityDate": "2026-03-25"})
-    assert quiet not in {r.id for r in every_page(make(org)).records}
-
-
-def test_a_pass_reads_a_known_account_by_what_changed_and_a_new_one_whole(org: FakeOrg) -> None:
-    accounts = [ACME]
+def test_a_pass_reads_what_is_logged_on_a_known_id_by_what_changed_and_on_a_new_one_whole(org: FakeOrg) -> None:
+    admitted = [ACME]
     connector = SalesforceConnector(salesforce_source(), http=httpx.Client(transport=httpx.MockTransport(org)),
-                                    login=lambda: (TOKEN, INSTANCE), accounts=lambda: accounts, now=lambda: NOW)
+                                    login=lambda: (TOKEN, INSTANCE), admitted=lambda: admitted, now=lambda: NOW)
     cursor = every_page(connector).cursor
-    accounts.append(INITECH)
+    quote = org.add("Task", {"Subject": "Quote sent", "WhatId": sf_id("006", 1), "ActivityDate": "2026-10-01"})
+    org.find(quote)["SystemModstamp"] = "2026-10-01T12:00:00.000+0000"  # before the last pass
+    admitted.append(sf_id("006", 1))
     org.set(sf_id("00T", 1), Description="Moved to Friday.")
-    quiet = org.add("Contact", {"Name": "Road Runner", "AccountId": INITECH, "LastActivityDate": "2025-01-01"})
-    org.add("Task", {"Subject": "Beep", "AccountId": INITECH, "WhoId": quiet, "ActivityDate": "2026-10-10"})
     later = [r.id for r in every_page(connector, cursor).records]
-    assert sf_id("00T", 1) in later and quiet in later and sf_id("003", 2) in later
+    assert sf_id("00T", 1) in later and quote in later and sf_id("006", 1) in later
     assert sf_id("00U", 1) not in later  # known, and unchanged
 
 
 def test_the_cursor_forgets_a_record_once_its_stamp_is_past_the_lookback(org: FakeOrg) -> None:
     connector = make(org, page_size=4)
     seen = _seen(every_page(connector).cursor)
-    assert set(seen) == {"005000000000002AAA", ACME, INITECH, sf_id("003", 1), sf_id("003", 2)}
+    assert set(seen) == set(landed())
     assert all(stamp == "" for _, stamp in seen.values())
     org.set(sf_id("00T", 1), Description="Moved to Friday.")
     seen = _seen(every_page(connector, connector.list().cursor).cursor)
@@ -639,11 +623,7 @@ def test_a_task_with_no_date_is_dated_when_it_was_made_and_an_event_with_no_star
 def test_a_record_dated_before_the_window_but_made_or_changed_inside_it_is_listed(org: FakeOrg) -> None:
     task = org.add("Task", {"Subject": "Logged late", "AccountId": ACME, "ActivityDate": "2026-03-25"})
     event = org.add("Event", {"Subject": "Logged late", "AccountId": ACME, "ActivityDate": "2026-03-25"})
-    closed = org.add("Opportunity", {"Name": "Lost", "AccountId": ACME, "IsClosed": True, "CloseDate": "2024-01-31",
-                                     "LastModifiedDate": "2026-10-10T12:00:00.000+0000"})
-    ids = {r.id for r in every_page(make(org, source=salesforce_source(opportunities={"closed_since": "3m"})))
-           .records}
-    assert {task, event, closed} <= ids and sf_id("006", 3) not in ids  # closed in June, quiet since
+    assert {task, event} <= {r.id for r in every_page(make(org)).records}
 
 
 def test_a_task_logged_from_an_email_reads_as_what_its_sender_newly_wrote(org: FakeOrg) -> None:
@@ -742,33 +722,7 @@ def test_a_deleted_deal_is_reported_removed(org: FakeOrg) -> None:
     assert every_page(connector, cursor).removed == [EXPANSION]
 
 
-def test_a_closed_deal_inside_closed_since_lands_and_is_not_extracted(org: FakeOrg) -> None:
-    old = org.add("Opportunity", {"Name": "Acme Corp 2023", "AccountId": ACME, "IsClosed": True, "IsWon": False,
-                                  "CloseDate": "2023-12-31", "LastModifiedDate": "2024-01-02T12:00:00.000+0000"})
-    org.find(old)["SystemModstamp"] = "2024-01-02T12:00:00.000+0000"
-    listed = {r.id: r for r in every_page(make(org)).records}
-    pilot = listed[PILOT]
-    assert pilot.extract == "records" and pilot.fields["is_won"] is True and pilot.fields["stage"] == "Closed Won"
-    assert listed[RENEWAL].extract == "facts" and old not in listed
-    assert any("CloseDate >= 2024-10-11" in q for q in org.queries)
-    org.queries.clear()
-    every = {r.id: r for r in every_page(make(org, source=salesforce_source(opportunities={"closed_since": "all"})))
-             .records}
-    assert every[old].extract == "records"  # every closed deal lands, and one quiet since the window is not read
-    assert not any("FROM Opportunity WHERE" in q and "CloseDate >=" in q for q in org.queries)
-
-
-@pytest.mark.parametrize(("day", "months", "want"), [
-    (date(2026, 10, 11), 24, date(2024, 10, 11)), (date(2026, 3, 31), 1, date(2026, 2, 28)),
-    (date(2028, 2, 29), 24, date(2026, 2, 28)), (date(2026, 1, 15), 1, date(2025, 12, 15)),
-    (date(2026, 12, 31), 12, date(2025, 12, 31))])
-def test_closed_since_counts_whole_months_back_to_the_shorter_months_end(day: date, months: int, want: date) -> None:
-    assert _months_back(day, months) == want
-
-
 @pytest.mark.parametrize(("settings", "message"), [
-    ({"closed_since": "2w"}, "opportunities.closed_since '2w' does not read"),
-    ({"closed_since": "101y"}, "up to 100y"),
     ({"default_currency": "usd"}, "opportunities.default_currency 'usd' is not a currency code"),
     ({"stages": ["Open"]}, "opportunities.stages is not a key it reads"),
 ])
@@ -777,18 +731,13 @@ def test_an_opportunities_setting_that_does_not_read_is_refused_with_one_line(or
     with pytest.raises(SourceError, match=re.escape(message)):
         make(org, source=salesforce_source(opportunities=settings))
     with pytest.raises(SourceError, match="opportunities: write a mapping"):
-        make(org, source=salesforce_source(opportunities="24m"))
-
-
-def test_closed_since_in_years_reaches_back_that_many_years(org: FakeOrg) -> None:
-    every_page(make(org, source=salesforce_source(opportunities={"closed_since": "3y"})))
-    assert any("CloseDate >= 2023-10-11" in q for q in org.queries)
+        make(org, source=salesforce_source(opportunities="USD"))
 
 
 def test_an_org_with_one_currency_is_asked_again_without_it_and_says_so_once(org: FakeOrg) -> None:
     org.refuse = lambda soql: ((400, "INVALID_FIELD", "No such column 'CurrencyIsoCode' on entity 'Opportunity'.")
                                if "CurrencyIsoCode" in soql else None)
-    connector = make(org, source=salesforce_source(opportunities={"default_currency": "EUR", "closed_since": "24m"}))
+    connector = make(org, source=salesforce_source(opportunities={"default_currency": "EUR"}))
     listed = every_page(connector)
     assert {r.fields["currency"] for r in listed.records if r.into == "opportunities"} == {"EUR"}
     assert [n for n in connector.notices if "one currency" in n] == [(
@@ -966,7 +915,7 @@ def _deal_workspace(root: Path, org: FakeOrg, clock: list[datetime]) -> Any:
     store.create(Identity("accounts/acme-corp", "accounts", "Acme Corp", {"salesforce_id": [ACME]}))
     admitted: list[Any] = []
     crm = make(org, clock=clock)
-    crm.accounts = lambda: [v for v in admitted[0].admitted("salesforce_id") if v.startswith("001")]
+    crm.admitted = lambda: admitted[0].admitted("salesforce_id")
     workspace = Cerebro(root, store=store, extraction=FakeExtraction(), connectors=[crm], agent_run=_Admits(),
                   clock=lambda: clock[0])
     admitted.append(workspace)
@@ -1018,6 +967,7 @@ def test_a_deal_deleted_at_the_source_archives_its_article_unless_a_persons_word
     clock = [NOW]
     workspace = _deal_workspace(tmp_path, org, clock)
     workspace.run_once()
+    workspace.run_once()  # reads the deals the first pass admitted
     tell(workspace.store, None, Caller("you", "person"), "Lead with the signed order form.",
          "opportunities/acme-corp-renewal", as_="proposal")  # a person's instruction is their word on it
     clock[0] = org.clock = NOW + timedelta(hours=1)
@@ -1067,12 +1017,6 @@ def test_the_days_of_a_deal_question_run_from_one_to_a_year(org: FakeOrg, days: 
     assert any(f"CloseDate <= {(NOW.date() + timedelta(days=days)).isoformat()}" in q for q in org.queries)
 
 
-@pytest.mark.parametrize(("since", "want"), [("1m", "2026-09-11"), ("1200m", "1926-10-11"), ("100y", "1926-10-11")])
-def test_closed_since_reads_from_one_month_to_a_hundred_years(org: FakeOrg, since: str, want: str) -> None:
-    every_page(make(org, source=salesforce_source(opportunities={"closed_since": since})))
-    assert any(f"CloseDate >= {want}" in q for q in org.queries)
-
-
 def test_a_refusal_that_names_the_currency_field_for_another_reason_is_raised(org: FakeOrg) -> None:
     org.refuse = lambda soql: ((400, "MALFORMED_QUERY", "unexpected token near CurrencyIsoCode")
                                if "FROM Opportunity" in soql else None)
@@ -1106,11 +1050,11 @@ def test_the_salesforce_file_the_docs_give_loads() -> None:
 
 @pytest.mark.parametrize(("old", "new", "line"), [
     ("    fields: { owner: OwnerId", "    feilds: { owner: OwnerId",
-     ("line 13: objects.Account.feilds is not a key a source of kind salesforce reads: delete it, or fix its "
+     ("line 12: objects.Account.feilds is not a key a source of kind salesforce reads: delete it, or fix its "
       "spelling (into, identity, fields)")),
     ("    fields: { account: AccountId", "    feilds: { account: AccountId",
-     "line 17: objects.Contact.feilds is not a key a source of kind salesforce reads"),
-    ("  closed_since: 24m", "  closed_snice: 24m", "line 8: opportunities.closed_snice is not a key"),
+     "line 16: objects.Contact.feilds is not a key a source of kind salesforce reads"),
+    ("  default_currency: USD", "  default_curency: USD", "line 7: opportunities.default_curency is not a key"),
 ])
 def test_a_misspelt_key_under_objects_or_opportunities_is_refused_at_load(old: str, new: str,
                                                                                    line: str) -> None:
@@ -1130,7 +1074,7 @@ def test_an_orgs_refusal_is_masked_before_it_is_cut_to_one_line_while_the_mask_i
         refusal = [{"errorCode": "MALFORMED_QUERY", "message": text}]
         org = httpx.Client(transport=httpx.MockTransport(lambda request, r=refusal: httpx.Response(400, json=r)))
         source = SalesforceConnector(SourceFile(name="desk", kind="salesforce", settings={"org": "work"}), http=org,
-                                     login=lambda: ("made-up-session", "https://org.example"), accounts=list,
+                                     login=lambda: ("made-up-session", "https://org.example"), admitted=list,
                                      now=lambda: datetime(2026, 11, 17, 9, tzinfo=UTC))
         with pytest.raises(Refused) as said:
             source._get(_Session("https://org.example", "made-up-session", "62.0", ""), "/services/data")
@@ -1147,7 +1091,7 @@ def test_an_orgs_refusal_and_a_next_page_it_cannot_follow_are_cut_on_bytes() -> 
     def source(answer: Any) -> SalesforceConnector:
         org = httpx.Client(transport=httpx.MockTransport(lambda request: answer))
         return SalesforceConnector(SourceFile(name="desk", kind="salesforce", settings={"org": "work"}), http=org,
-                                   login=lambda: ("made-up-session", "https://org.example"), accounts=list,
+                                   login=lambda: ("made-up-session", "https://org.example"), admitted=list,
                                    now=lambda: datetime(2026, 11, 17, 9, tzinfo=UTC))
 
     session = _Session("https://org.example", "made-up-session", "62.0", "")

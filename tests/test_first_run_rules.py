@@ -97,7 +97,7 @@ def test_a_list_declined_whole_builds_nothing_and_the_next_run_asks_the_curators
         script.calls["things/curator"] = [by_record("T2")]
         again = run(workspace, choose=Choices.starter, say=lambda line: None)
         assert again is not None and script.ran.count("things/curator") > asked  # its curators are asked again
-        assert [row.name for row in again.pile.rows()] == ["Birch Hall"]
+        assert [row.name for row in again.pile.rows() if not row.left_out] == ["Birch Hall"]
         assert not in_first_run(workspace)
 
 

@@ -91,7 +91,7 @@ Before the curators start, the run asks what you want to see first. Answer in yo
 
 Each line is one article. What an article links to sits under it, by collection. Proposals of the same thing under two names are one line. One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
 
-Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. Tick one under "Left out" to admit what a curator left out.
+Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. A line you tick again on its own lands on its own, even when what it sits under stays unticked. Tick one under "Left out" to admit what a curator left out.
 
 Change what is ticked, then approve, or quit to keep nothing. What you leave unticked waits for you. `--yes` takes what the tree ticks, and the run ends by saying what waits:
 

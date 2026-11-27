@@ -1,23 +1,23 @@
 """Salesforce as a source, read only: SOQL queries over one org's REST API, and nothing else.
 
-A `kind: salesforce` source reads the accounts it is handed, by their ids, whole on every listing, and what hangs
-off them over the source file's window, 90 days when it says none: their contacts by last activity, their
-opportunities open, changed, or closed inside `opportunities.closed_since`, their tasks, events and emails. An account read for the first time is read over the
-whole window, and from then on by `SystemModstamp` since the last pass, less a half hour of lookback for a clock
-that runs ahead of the org's. The colleagues who own those accounts are read too, and so is a contact a listed task
-or event names, when it belongs to one of the accounts.
+A `kind: salesforce` source reads the records whose ids it is handed, each by its own id, whatever collection holds
+it: an account, a contact, a user or an opportunity, whole on every listing. It reads what is logged on each over the
+source file's window, 90 days when it says none: the tasks and events by their account, whom they name or what they
+are about, and the emails related to it. What is logged on an id read for the first time is read over the whole
+window, and from then on by `SystemModstamp` since the last pass, less a half hour of lookback for a clock that runs
+ahead of the org's. No record is read because another one is handed in.
 
 Accounts, contacts and users land by the mapping under `objects:` in the source file, the default one when it names
 none: their keys are the mapping's identity fields, and their fields its properties, with a reference to a user
 read as `me` for the login itself, else the user's email. An opportunity is a deal, and lands in the opportunities
 collection on an article of its own, bound by its id alone: its fields are the deal's properties, a date as
 YYYY-MM-DD, an amount and a probability as numbers, whether it is closed and won as booleans, its owner as an
-account's is, and its account by the account's id. Its account is no key, so a deal is held until its own article is
-admitted, and its fields never land on the account's article. Its facts reach its account through its links, which
+account's is, and its account by the account's id. Its account is no key, so its fields never land on the account's
+article. Its facts reach its account through its links, which
 name its id. Its owner is a field of the deal, never a link: a fact of the deal is not about its owner. Opportunities, tasks, events and emails are read for
 extraction: their body is their text as header lines and then their long text, an email's reduced to what its
-sender newly wrote, as `gmail_text.reduce` says. A deal
-read only for being closed inside `closed_since` lands and is not extracted. A task is a logged activity and its
+sender newly wrote, as `gmail_text.reduce` says. A closed deal not changed inside the window lands and is not
+extracted. A task is a logged activity and its
 text opens `Logged activity: <subject>`. One logged from an email has its description reduced to what its sender
 newly wrote.
 
@@ -102,14 +102,15 @@ REFUSED_KEYS = {"into": "a salesforce source lands each object where objects: sa
 _CURSOR = "sf1."
 DEALS = "opportunities"  # the collection a deal lands in
 CURRENCY = "CurrencyIsoCode"  # an org with one currency has no such field, and names that currency nowhere
-DEAL_SETTINGS = ("closed_since", "default_currency")
-CLOSED_SINCE, MAX_MONTHS = 24, 1200
+DEAL_SETTINGS = ("default_currency",)
 _GONE = "gone"
 
 ACCOUNT, CONTACT, USER = "Account", "Contact", "User"
 OPPORTUNITY, TASK, EVENT, EMAIL = "Opportunity", "Task", "Event", "EmailMessage"
 ROLE = "OpportunityContactRole"
 MAPPED = (ACCOUNT, CONTACT, USER)
+OWN_ID = (USER, ACCOUNT, CONTACT, OPPORTUNITY)  # the objects whose records a key of their own id binds, in landing order
+LOGGED = ("AccountId", "WhoId", "WhatId")  # what a task or an event is logged on
 PREFIXES = {"001": ACCOUNT, "003": CONTACT, "005": USER, "006": OPPORTUNITY, "00T": TASK, "00U": EVENT,
             "02s": EMAIL}
 
@@ -168,9 +169,9 @@ DISTILL = {
                   "IsClosed", "IsWon", "CreatedDate", "LastModifiedDate", "SystemModstamp", "AccountId",
                   "Account.Name", "OwnerId", "Owner.Name", "Owner.Email"),
     TASK: ("Id", "Subject", "Status", "ActivityDate", "Description", "TaskSubtype", "CreatedDate", "SystemModstamp",
-           "AccountId", "Account.Name", "WhoId", "Who.Name", "OwnerId", "Owner.Name"),
+           "AccountId", "Account.Name", "WhoId", "Who.Name", "WhatId", "OwnerId", "Owner.Name"),
     EVENT: ("Id", "Subject", "StartDateTime", "EndDateTime", "Location", "Description", "ActivityDate", "CreatedDate",
-            "SystemModstamp", "AccountId", "Account.Name", "WhoId", "Who.Name", "OwnerId", "Owner.Name"),
+            "SystemModstamp", "AccountId", "Account.Name", "WhoId", "Who.Name", "WhatId", "OwnerId", "Owner.Name"),
     EMAIL: ("Id", "Subject", "FromName", "FromAddress", "ToAddress", "CcAddress", "MessageDate", "TextBody",
             "RelatedToId", "SystemModstamp"),
 }
@@ -569,14 +570,6 @@ def _date(text: str) -> str | None:
         return when.date().isoformat() if when else (text or None)
 
 
-def _months_back(day: date, months: int) -> date:
-    """The day `months` before `day`, on the same day of the month, or the month's last day when it is shorter."""
-    total = day.year * 12 + day.month - 1 - months
-    first = date(total // 12, total % 12 + 1, 1)
-    last = (first.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-    return first.replace(day=min(day.day, last.day))
-
-
 def _stamp(when: datetime) -> str:
     return when.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -611,7 +604,7 @@ def _after(entry: list[str], floor: datetime) -> bool:
 
 
 def _since(state: _State) -> str | None:
-    """From when a pass asks the org for what changed under accounts read before, or None to read them whole: for
+    """From when a pass asks the org for what was logged on ids read before, or None to read it whole: for
     a listing set for changes, the latest stamp the org gave less `OVERLAP`; for one in full, None; for one set by
     neither, the last pass's start less `LOOKBACK`."""
     if state.ask == "full":
@@ -622,7 +615,7 @@ def _since(state: _State) -> str | None:
 
 
 def _deleted_since(state: _State) -> str | None:
-    """From when a pass asks the org which records of accounts read before were deleted, or None to ask nothing:
+    """From when a pass asks the org which records of ids read before were deleted, or None to ask nothing:
     the latest stamp the org gave less `OVERLAP` for a listing the runner set, or the last pass's start less
     `LOOKBACK` for one set by neither."""
     if state.ask:
@@ -787,29 +780,22 @@ def _mapping(source: SourceFile) -> dict[str, _ObjectMap]:
     return found
 
 
-def _deal_settings(source: SourceFile) -> tuple[int | None, str]:
-    """The months `opportunities.closed_since` reaches back, None for all, and the currency of a deal whose record
-    names none."""
+def _deal_settings(source: SourceFile) -> str:
+    """The currency of a deal whose record names none."""
     label = f"sources/{source.name}.yaml opportunities"
     raw = source.settings.get("opportunities")
     raw = {} if raw is None else raw
     if not isinstance(raw, dict):
-        raise SourceError(f"{label}: write a mapping, as opportunities: {{ closed_since: 24m }}")
+        raise SourceError(f"{label}: write a mapping, as opportunities: {{ default_currency: USD }}")
     for key in raw:
         if key not in DEAL_SETTINGS:
             raise SourceError(f"{label}.{key} is not a key it reads: delete it, or fix its spelling "
-                              f"(closed_since, default_currency)")
-    since = str(raw.get("closed_since") or f"{CLOSED_SINCE}m").strip().lower()
-    found = re.fullmatch(r"([1-9][0-9]{0,4})(m|y)", since)
-    months = (int(found.group(1)) * (12 if found.group(2) == "y" else 1)) if found else 0
-    if since != "all" and not 1 <= months <= MAX_MONTHS:
-        raise SourceError(f"{label}.closed_since {one_line(since, 40)!r} does not read: write whole months or years, "
-                          f"such as 6m or 3y, up to 100y, or all")
+                              f"(default_currency)")
     currency = str(raw.get("default_currency") or "USD").strip()
     if not re.fullmatch(r"[A-Z]{3}", currency):
         raise SourceError(f"{label}.default_currency {one_line(currency, 40)!r} is not a currency code: write three "
                           f"capital letters, such as USD")
-    return (None if since == "all" else months), currency
+    return currency
 
 
 # -- the cursor
@@ -817,7 +803,7 @@ def _deal_settings(source: SourceFile) -> tuple[int | None, str]:
 @dataclass
 class _State:
     """What a cursor carries. `mark` is when the last finished pass began, None before the first; `began` when the
-    pass in progress began; `read` the accounts a finished pass read in full; `seen` each record given since the
+    pass in progress began; `read` the ids a finished pass read in full; `seen` each record given since the
     lookback before `mark`, as a short hash of its revision and its stamp, or `gone`, and "" for a stamp when the
     record is listed whole every pass. `stamp` is the latest `SystemModstamp` the org gave, read from its replies
     and never from a clock, and `ask` how the runner set the next listing, `changes` or `full`, as `cursor_for` sets
@@ -853,7 +839,7 @@ def _short(revision: str) -> str:
 
 class SalesforceConnector(Connector):
     """A `kind: salesforce` source. `http` is the client every request goes through, and `login` gives the current
-    access token and instance URL. `accounts` gives the ids of the accounts to read, and none are read without it.
+    access token and instance URL. `admitted` gives the ids to read, and none are read without it.
     `now` is the clock the window and the request limit's pause are read by, and `ours` says who is on our side.
     `IDENTITY_KEYS` declares the key it issues and how strong that key is as an identity, which a merge weighs."""
 
@@ -939,14 +925,13 @@ class SalesforceConnector(Connector):
 
     @classmethod
     def build(cls, source: SourceFile, root: Path, app: Any) -> SalesforceConnector:
-        """The accounts it reads are the `salesforce_id`s of the working set that name an Account, whose ids begin 001."""
+        """The ids it reads are the `salesforce_id`s of the working set, in every collection."""
         org = str(source.settings.get("org") or "")
         return cls(source, http=app.http, login=lambda: sf_login(app.sf_run or run_sf, org, app.mask.add, source.name),
-                   accounts=lambda: [v for v in app.admitted("salesforce_id") if v.startswith("001")],
-                   now=app.clock, ours=app.ours, zone=app.zone)
+                   admitted=lambda: app.admitted("salesforce_id"), now=app.clock, ours=app.ours, zone=app.zone)
 
     def __init__(self, source: SourceFile, *, http: httpx.Client, login: Callable[[], tuple[str, str]],
-                 accounts: Callable[[], Iterable[str]] | None = None, now: Callable[[], datetime] | None = None,
+                 admitted: Callable[[], Iterable[str]] | None = None, now: Callable[[], datetime] | None = None,
                  page_size: int = PAGE_SIZE, ours: Ours = NOBODY, zone: tzinfo = UTC):
         label = f"sources/{source.name}.yaml"
         if source.kind != "salesforce":
@@ -956,14 +941,14 @@ class SalesforceConnector(Connector):
         self.org = str(source.settings.get("org") or "")
         self.http = http
         self.login = login
-        self.accounts = accounts or (list)
+        self.admitted = admitted or (list)
         self.ours = ours  # your addresses and your company's domains, which an email's keys never hold
         self.now = now or system_clock
         self.zone = zone  # the workspace's zone, in which a question's days are counted
         self.page_size = max(1, page_size)
         self.notices: list[str] = []
         self.objects = _mapping(source)
-        self.closed_months, self.currency = _deal_settings(source)
+        self.currency = _deal_settings(source)
         self.behind = source.behind()
         self.no_email = False
         self.one_currency = False  # the org refused CurrencyIsoCode once, so it has one currency
@@ -1089,12 +1074,16 @@ class SalesforceConnector(Connector):
             followed.add(following)
             path = following
 
-    def _chunked(self, session: _Session, object: str, key: str, fields: Iterable[str], ids: list[str],
-                 where: str = "", *, deleted: bool = False) -> list[dict[str, Any]]:
+    def _chunked(self, session: _Session, object: str, key: str | tuple[str, ...], fields: Iterable[str],
+                 ids: list[str], where: str = "", *, deleted: bool = False) -> list[dict[str, Any]]:
+        """The rows whose `key`, or any of several, is one of `ids`."""
+        keys = (key,) if isinstance(key, str) else key
+        size = CHUNK // len(keys)  # each id is named under every key
         rows = []
-        for start in range(0, len(ids), CHUNK):
-            part = ", ".join(_soql_string(i) for i in ids[start:start + CHUNK])
-            soql = f"SELECT {', '.join(fields)} FROM {object} WHERE {key} IN ({part})"
+        for start in range(0, len(ids), size):
+            part = ", ".join(_soql_string(i) for i in ids[start:start + size])
+            on = " OR ".join(f"{k} IN ({part})" for k in keys)
+            soql = f"SELECT {', '.join(fields)} FROM {object} WHERE {on if len(keys) == 1 else f'({on})'}"
             rows += self._query(session, soql + (f" AND {where}" if where else "") + " ORDER BY Id", deleted=deleted)
         return rows
 
@@ -1114,12 +1103,6 @@ class SalesforceConnector(Connector):
                 self.one_currency = True
                 self.notices.append(self._say(f"this org has one currency, so every deal's currency is "
                                               f"{self.currency}, as opportunities.default_currency says"))
-
-    def _closed_window(self) -> str:
-        """The condition that keeps a closed deal whose close date is inside `closed_since`, or "" for all."""
-        if self.closed_months is None:
-            return ""
-        return f"CloseDate >= {_months_back(self.now().astimezone(self.zone).date(), self.closed_months).isoformat()}"
 
     # -- rows to records
     def _url(self, session: _Session, object: str, id: str) -> str:
@@ -1188,9 +1171,9 @@ class SalesforceConnector(Connector):
         id = id18(_text(row, "Id"))
         if not id:
             return None
-        refs = [id18(_text(row, path)) for path in ("AccountId", "WhoId", "RelatedToId", "OwnerId")]
+        refs = [id18(_text(row, path)) for path in (*LOGGED, "RelatedToId", "OwnerId")]
         keys: dict[str, list[str]] = {}
-        bound = _unique([id if object == OPPORTUNITY else "", *refs[:3]])
+        bound = _unique([id if object == OPPORTUNITY else "", *refs[:-1]])
         if bound:
             keys["salesforce_id"] = bound
         keys |= address_keys((a for path in ("FromAddress", "ToAddress", "CcAddress")
@@ -1218,7 +1201,7 @@ class SalesforceConnector(Connector):
         fields["close_date"] = _date(_text(row, "CloseDate"))
         changed = _time(_text(row, "LastModifiedDate"))
         if floor is not None and fields["is_closed"] is True and (changed is None or changed < floor):
-            record.extract = "records"  # read for being closed inside closed_since alone
+            record.extract = "records"  # closed, and not changed inside the window
         record.keys, record.fields, record.into = {"salesforce_id": [record.id]}, fields, DEALS
         owner = id18(_text(row, "OwnerId"))  # a pointer on the deal, never what its facts are about
         record.links = [link for link in record.links if link != owner]
@@ -1228,19 +1211,26 @@ class SalesforceConnector(Connector):
 
     def _records(self, session: _Session, object: str, rows: list[dict[str, Any]],
                  floor: datetime | None = None) -> list[_Found]:
-        """Rows as records. A landed record is remembered whatever its stamp, since accounts and colleagues are read
-        whole every pass and a contact again whenever a task names it."""
+        """Rows as records."""
         if object in MAPPED:
-            return [replace(f, whole=True) for f in (self._landed(session, object, r) for r in rows) if f is not None]
+            return [f for f in (self._landed(session, object, r) for r in rows) if f is not None]
         if object == OPPORTUNITY:
             return [f for f in (self._deal(session, r, floor) for r in rows) if f is not None]
         return [f for f in (self._distilled(session, object, r) for r in rows) if f is not None]
 
     # -- what a listing reads
-    def _children(self, session: _Session, accounts: list[str], floor: datetime | None, stamp: str
-                  ) -> tuple[list[_Found], list[str]]:
-        """What hangs off accounts since the window's floor, each also meeting `stamp`, and the contacts the tasks
-        and events name."""
+    def _own(self, session: _Session, object: str, ids: list[str], floor: datetime | None) -> list[_Found]:
+        """The records of one object read by their own ids."""
+        if object == OPPORTUNITY:
+            rows = self._deal_rows(session, "", "Id", ids)
+        else:
+            fields = self.objects[object].select(object) if object in MAPPED else list(DISTILL[object])
+            rows = self._chunked(session, object, "Id", fields, ids)
+        return self._records(session, object, rows, floor)
+
+    def _logged(self, session: _Session, ids: list[str], floor: datetime | None, stamp: str) -> list[_Found]:
+        """The tasks and events logged on `ids` and the emails related to them, since the window's floor, each also
+        meeting `stamp`."""
         def day(name: str) -> str:
             return f"{name} >= {floor.date().isoformat()}" if floor else ""
 
@@ -1248,80 +1238,52 @@ class SalesforceConnector(Connector):
             return f"{name} >= {_stamp(floor)}" if floor else ""
 
         found: list[_Found] = []
-        if CONTACT in self.objects:
-            rows = self._chunked(session, CONTACT, "AccountId", self.objects[CONTACT].select(CONTACT), accounts,
-                                 _and(day("LastActivityDate"), stamp))
-            found += self._records(session, CONTACT, rows)
-        named: list[str] = []
-        changed, closed = moment("LastModifiedDate"), self._closed_window()
-        deals = f"(IsClosed = false OR {changed} OR {closed})" if changed and closed else ""
-        for object, key, where in ((OPPORTUNITY, "AccountId", deals),
-                                   (TASK, "AccountId", _or(day("ActivityDate"), moment("CreatedDate"))),
-                                   (EVENT, "AccountId", _or(day("ActivityDate"), moment("CreatedDate"))),
+        for object, key, where in ((TASK, LOGGED, _or(day("ActivityDate"), moment("CreatedDate"))),
+                                   (EVENT, LOGGED, _or(day("ActivityDate"), moment("CreatedDate"))),
                                    (EMAIL, "RelatedToId", moment("MessageDate"))):
             if object == EMAIL and self.no_email:
                 continue
             try:
-                if object == OPPORTUNITY:
-                    rows = self._deal_rows(session, _and(where, stamp), key, accounts)
-                else:
-                    rows = self._chunked(session, object, key, DISTILL[object], accounts, _and(where, stamp))
+                rows = self._chunked(session, object, key, DISTILL[object], ids, _and(where, stamp))
             except Refused as refused:
                 if object != EMAIL or refused.code != "INVALID_TYPE":
                     raise
                 self.no_email = True
                 self.notices.append(self._say("this org has no EmailMessage object, so emails are not read"))
                 continue
-            named += [id18(_text(r, "WhoId")) for r in rows if id18(_text(r, "WhoId")).startswith("003")]
             found += self._records(session, object, rows, floor)
-        return found, named
+        return found
 
-    def _deleted(self, session: _Session, accounts: list[str], since: str) -> list[tuple[str, str]]:
-        """The ids, with their stamps, of the records of the accounts deleted since a time."""
+    def _deleted(self, session: _Session, ids: list[str], since: str) -> list[tuple[str, str]]:
+        """The ids, with their stamps, of the records read for `ids` that were deleted since a time."""
         where = f"IsDeleted = true AND SystemModstamp >= {since}"
-        asks = [(ACCOUNT, "Id"), (CONTACT, "AccountId"), (OPPORTUNITY, "AccountId"), (TASK, "AccountId"),
-                (EVENT, "AccountId"), (EMAIL, "RelatedToId")]
+        asks = [*((object, "Id") for object in OWN_ID), (TASK, LOGGED), (EVENT, LOGGED), (EMAIL, "RelatedToId")]
         gone = []
         for object, key in asks:
             if (object in MAPPED and object not in self.objects) or (object == EMAIL and self.no_email):
                 continue
-            for row in self._chunked(session, object, key, ("Id", "SystemModstamp"), accounts, where, deleted=True):
+            among = [i for i in ids if PREFIXES.get(i[:3]) == object] if key == "Id" else ids
+            for row in self._chunked(session, object, key, ("Id", "SystemModstamp"), among, where, deleted=True):
                 gone.append((id18(_text(row, "Id")), _text(row, "SystemModstamp")))
         return [(id, stamp) for id, stamp in gone if id]
 
     def _scan(self, session: _Session, state: _State, scope: list[str]) -> list[_Found]:
-        """Every record a pass from the state reads, in the order they land: colleagues, accounts, contacts, then
-        opportunities, tasks, events and emails."""
-        now = self.now()
-        floor = now - self.behind if self.behind is not None else None
-        accounts = self._chunked(session, ACCOUNT, "Id", (self.objects[ACCOUNT].select(ACCOUNT) if ACCOUNT in
-                                                          self.objects else NEED[ACCOUNT]), scope)
-        colleagues = _unique(id18(_text(r, "OwnerId")) for r in accounts)
-        colleagues = [c for c in colleagues if c != session.me]
+        """Every record a pass from the state reads, in the order they land: the records of the ids handed in, users,
+        accounts, contacts then opportunities, and then the tasks, events and emails logged on any of them."""
+        floor = self.now() - self.behind if self.behind is not None else None
         found: list[_Found] = []
-        if USER in self.objects and colleagues:
-            rows = self._chunked(session, USER, "Id", self.objects[USER].select(USER), colleagues)
-            found += self._records(session, USER, rows)
-        if ACCOUNT in self.objects:
-            found += self._records(session, ACCOUNT, accounts)
+        for object in OWN_ID:  # each read whole every pass, so it is remembered whatever its stamp
+            if object not in MAPPED or object in self.objects:
+                ids = [i for i in scope if PREFIXES.get(i[:3]) == object]
+                found += [replace(f, whole=True) for f in self._own(session, object, ids, floor)]
         since = _since(state)
         known = [a for a in scope if state.mark is not None and a in state.read and since is not None]
         fresh = [a for a in scope if a not in known]
         cut = f"SystemModstamp >= {since}" if known else ""
-        children, named = [], []
         for group, stamp in ((known, cut), (fresh, "")):
             if group:
-                more, who = self._children(session, group, floor, stamp)
-                children += more
-                named += who
-        listed = {f.record.id for f in found + children}
-        named = [n for n in _unique(named) if n not in listed]
-        if CONTACT in self.objects and named:
-            fields = self.objects[CONTACT].select(CONTACT)
-            rows = [r for r in self._chunked(session, CONTACT, "Id", fields, named)
-                    if id18(_text(r, "AccountId")) in scope]
-            children = self._records(session, CONTACT, rows) + children
-        return found + children
+                found += self._logged(session, group, floor, stamp)
+        return found
 
     # -- the cursor
     def _cursor(self, state: _State) -> str:
@@ -1361,8 +1323,7 @@ class SalesforceConnector(Connector):
     def list(self, since: str | None = None) -> Listing:
         state = self._state(since)
         session = self._session()
-        scope = sorted(_unique(id18(a) for a in self.accounts()))
-        scope = [a for a in scope if a.startswith("001")]
+        scope = sorted(_unique(id18(a) for a in self.admitted()))
         state.began = state.began or _stamp(self.now())
         held = self._held is not None and self._held[0] == (state.began, tuple(scope))
         if not held:  # a pass reads the org once, and its later pages list from what it read
@@ -1598,13 +1559,7 @@ class SalesforceConnector(Connector):
         if not object or (object in MAPPED and object not in self.objects):
             raise RecordNotFound(self._say(f"{id!r} is not the id of a record this source reads: list the source "
                                            f"for the ids it holds"))
-        session = self._session()
-        if object == OPPORTUNITY:
-            rows = self._deal_rows(session, "", "Id", [full])
-        else:
-            fields = self.objects[object].select(object) if object in MAPPED else list(DISTILL[object])
-            rows = self._chunked(session, object, "Id", fields, [full])
-        found = self._records(session, object, rows, self.now() - self.behind if self.behind is not None else None)
+        found = self._own(self._session(), object, [full], self.now() - self.behind if self.behind is not None else None)
         if not found:
             raise RecordNotFound(self._say(f"the login reads no {object} {full}: it was deleted, or the login "
                                            f"cannot see it"))

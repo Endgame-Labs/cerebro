@@ -153,7 +153,7 @@ def test_a_held_line_names_the_articles_it_would_hang_off_marks_the_proposed_one
         assert parts["P3"]["links_to"] == [{"id": "things/birch-hall"}]  # in the working set: no proposer
         assert parts["P4"]["links_to"] == [  # an outside party's address meets the domain the proposal holds
             {"id": "things/alder-works", "proposed_by": "agents/things/curator.md"}]
-        assert "P2" not in parts  # it links only to an article nobody made or proposed: it waits
+        assert "links_to" not in parts["P2"]  # it links only to an article nobody made or proposed: shown all the same
         things = held_lines(workspace, "things")
         assert things["T1"]["proposed"] == {"id": "things/alder-works", "by": "agents/things/curator.md"}
         assert "T2" not in things  # things/birch-hall, in the working set, binds it: in scope, so not held
@@ -181,9 +181,9 @@ def test_a_curators_own_proposals_never_wake_it_and_another_curators_its_records
     script = Script({"things/curator": [by_record("T1")], "parts/curator": []})
     with open_it(lay_out_workspace(tmp_path), script) as workspace:
         run(workspace, choose=None)
-        # round 1 asks things alone, as parts holds nothing yet; things/alder-works, proposed, is what P1 links to,
-        # so round 2 asks parts, and things, whose only change is its own proposal, is not asked
-        assert script.ran == ["things/curator", "parts/curator"]
+        # round 1 asks both; things/alder-works, proposed, is what P1 links to, so round 2 asks parts again, and
+        # things, whose only change is its own proposal, is not asked
+        assert sorted(script.ran[:2]) == ["parts/curator", "things/curator"] and script.ran[2:] == ["parts/curator"]
         assert workspace.store.state(KEY)["rounds"] == 2
 
 
@@ -233,13 +233,12 @@ def test_a_curator_does_not_weigh_what_another_proposed_in_the_same_round_and_we
     script = Seen({"parts/curator": [by_record("P5")], "things/curator": [by_record("T1")]})
     with open_it(lay_out_workspace(tmp_path), script, loose_and_its_holder()) as workspace:
         run(workspace, choose=None)
-        # parts runs first and proposes parts/free-bolt; things, in the same round, reads the queue as the round
-        # began, so the thing that links to it is not shown; round 2 shows it to things, and asks parts again for
-        # Alder Gear, which links to things/alder-works, proposed in round 1
+        # parts proposes parts/free-bolt; things, in the same round, reads the queue as the round began, so the
+        # thing that links to it is shown linked to nothing; round 2 shows it under parts/free-bolt, and asks parts
+        # again for Alder Gear, which links to things/alder-works, proposed in round 1
         assert [sorted(script.ran[:2]), sorted(script.ran[2:])] == [["parts/curator", "things/curator"]] * 2
         first, second = script.read["things/curator"]
-        assert "parts/free-bolt" not in first and "Cedar Rack" not in first
-        assert "parts/free-bolt" in second and "Cedar Rack" in second
+        assert "Cedar Rack" in first and "parts/free-bolt" not in first and "parts/free-bolt" in second
         assert sorted(p.by.name for p in proposals(workspace.store, "waiting")) == ["parts/curator", "things/curator"]
         assert workspace.store.state(KEY)["rounds"] == 2 and workspace.store.state(KEY)["pinned"] is None
 
@@ -329,14 +328,14 @@ def test_after_the_build_a_curator_that_took_part_stays_out_and_one_that_failed_
         run(workspace, choose=Choices.starter)
         lists = workspace.store.state(KEY)["lists"]
         assert lists["parts/curator"]["state"] == "nothing"  # it read held parts and proposed none: it took part
-        assert script.ran.count("parts/curator") == 1  # round 2 of discovery, once P1's parent is proposed; no late run
+        assert script.ran.count("parts/curator") == 2  # rounds 1 and 2 of discovery, once P1's parent is proposed
 
-    failing = Fails({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]}, "parts/curator", 1)
+    failing = Fails({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]}, "parts/curator", 2)
     with open_it(lay_out_workspace(tmp_path / "failed"), failing) as workspace:
         out = run(workspace, choose=Choices.starter)
         assert workspace.store.state(KEY)["lists"]["parts/curator"]["state"] == "failed"
-        # one failed, one late, and the one that makes what was accepted of its late list
-        assert failing.ran.count("parts/curator") == 3 and out is not None and out.late is not None
+        # its two rounds of discovery failed, one late, and the one that makes what was accepted of its late list
+        assert failing.ran.count("parts/curator") == 4 and out is not None and out.late is not None
         assert [row.name for listed in out.late.lists for row in listed.proposed()] == ["Alder Gear"]
 
 

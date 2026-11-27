@@ -342,7 +342,7 @@ def test_salesforce_asks_for_what_the_org_stamped_since_its_own_latest_stamp_les
     assert _sf_state(changed.cursor)["stamp"] == org.find(task)["SystemModstamp"]
 
 
-def test_salesforce_in_full_reads_every_window_whole_and_lists_only_what_changed_unstamped() -> None:
+def test_salesforce_in_full_reads_every_window_whole_and_a_record_read_by_its_id_lists_an_unstamped_change() -> None:
     from suites.connector import every_page
     from test_connector_salesforce import NOW, FakeOrg, make, seed, sf_id
 
@@ -352,10 +352,10 @@ def test_salesforce_in_full_reads_every_window_whole_and_lists_only_what_changed
     deal = sf_id("006", 1)
     org.find(deal)["Amount"] = 123456  # a rolled-up or formula field changes with no new stamp
     by_changes = every_page(connector, connector.cursor_for(first.cursor, full=False))
-    assert by_changes.records == []
+    assert [r.id for r in by_changes.records] == [deal]  # read whole by its id on every pass
     org.queries.clear()
     in_full = every_page(connector, connector.cursor_for(by_changes.cursor, full=True))
-    assert [r.id for r in in_full.records] == [deal] and _cuts(org) == set()
+    assert in_full.records == [] and _cuts(org) == set()
     again = every_page(connector, connector.cursor_for(in_full.cursor, full=True))
     assert again.records == [] and again.removed == []
 

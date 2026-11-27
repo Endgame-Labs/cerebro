@@ -28,7 +28,6 @@ from .connector import Record
 from .curate import proposing
 from .errors import CerebroError
 from .first_run import in_first_run
-from .held import waits_for_own
 from .runner import DROP, FIRST_HOLD, HOLD, NOTHING, REFUSE, Decision, PassResult, _Listed
 from .source import ALL, SourceError, read_source, span
 from .store import LogRow, record_from
@@ -53,7 +52,6 @@ GOT_NOTHING = "for the next pass, which gets it and takes in its fields alone: "
 REFUSED = "for the next pass, which gets it and stops at the spending cap: it and every record after it wait unread"
 LET_GO = "let go: past the bound of held records, it comes back when its source lists it again"
 RUNS = "cerebro serve --once runs it before it takes records in"
-WAITS = "it is read, and waits for its own collection's curator, since no article there binds it"
 
 
 @dataclass
@@ -392,14 +390,8 @@ def _plan(workspace: Cerebro, name: str, result: Checked, tried: list[str]) -> N
     ahead = replace(ahead, first={row["id"] for row in was_held})
     fresh = {record.id for record in result.listed}
     before = [record_from(row) for row in was_held if row["id"] not in ahead.gone and row["id"] not in fresh]
-    taken = {row["id"] for row in was_held if row.get("read") and row["id"] not in fresh}
-    curated = ahead.curated
     for record in [*before, *result.listed]:
         listed = record.id in fresh
-        if record.id in taken:  # read already, as the pass skips it: held while it waits for its own article
-            if waits_for_own(store, record, curated):
-                result.held[record.id], result.into[record.id] = Decision(HOLD, WAITS), record.into
-            continue
         decision = runner.decide(workspace, record, ahead)
         if decision.act == HOLD:
             result.held[record.id] = decision
@@ -408,8 +400,6 @@ def _plan(workspace: Cerebro, name: str, result: Checked, tried: list[str]) -> N
                 result.rows[record.id] = (record.extract, f"held: {decision.why}")
             continue
         result.held.pop(record.id, None)
-        if waits_for_own(store, record, curated):  # read, and held for its own collection's curator all the same
-            result.held[record.id], result.into[record.id] = Decision(HOLD, WAITS), record.into
         if decision.act == NOTHING:
             result.unread.append(record.id)
             result.rows.setdefault(record.id, (record.extract, UNREAD + decision.why))
