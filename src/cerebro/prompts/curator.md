@@ -20,7 +20,7 @@ Your opening holds your evidence and, when they hold anything:
 - **Decisions on your proposals**: what was turned down, and each proposal of yours made under another path or name, such as "your proposal for things/pat-quill was made as things/patricia-quill". Update your links that point at the path you proposed, with link.
 - **Your deferred list**, **Held**, **Names with no article**, and **Candidates you left out**, each with its reasons.
 
-On a first run, a scheduled run or one asked for by hand, work through your whole file. On a change wake, weigh what is new. When only an accepted proposal woke you, carry it out, and weigh only what is new. Then tend what you keep.
+On a scheduled run or one asked for by hand, work through your whole file. On a change wake, weigh what is new. When only an accepted proposal woke you, carry it out, and weigh only what is new. Then tend what you keep.
 
 ## Carrying out what a caller accepted
 

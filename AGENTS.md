@@ -28,6 +28,7 @@ The usual way to handle a judgment is a few hundred lines of deterministic code:
 - **Do not build schemas over free text.** Prompting changes the shape of content, and a rigid structure breaks.
 - **Do not guard what cannot happen, and do not guard what is not ours to guard.**
 - **When a model decides, measure it.** A prompt line is not a control until a run on real models shows the difference. Keep a labelled set and run it again when wording changes.
+- **A caller's yes is carried out by its curator, in a model run, never by code.** Code never makes or changes an article because a proposal was accepted.
 
 **What code must always enforce.** These are the things that must never happen whatever a model says. Keep them in code, tested, and do not soften them:
 

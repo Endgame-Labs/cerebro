@@ -191,20 +191,35 @@ def gather(agent: Agent, lookup: Lookup, functions: dict[str, Callable[..., Any]
         elif line.kind == "sql":
             out.append(gatherer.sql(n, line, sources or {}))
         elif line.kind == "held":  # the records held for a curator's collection
-            out.append(_held(agent, lookup, sources or {}, n, line, root))
+            out.append(_held(agent, lookup, sources or {}, n, line, root, now))
         else:
             raise EvidenceError(f"{gatherer.name}: evidence kind {line.kind!r} is not one Cerebro or an app gives: "
                                 f"use one of {', '.join(BUILTIN)}, or an @evidence name")
     return preload(out, agent.budget)
 
 
+RECENT_DAYS = 14  # while the workspace's first run is open, a held list lists the records of these last days
+
+
 def _held(agent: Agent, lookup: Lookup, sources: Mapping[str, Connector], n: int, line: EvidenceLine,
-          root: Path | None) -> Evidence:
-    """A held line's entry, with who is on the workspace's own side as the workspace at `root` says, or no one."""
-    from .held import entry  # held imports this module, so it loads at the call
+          root: Path | None, now: datetime | None) -> Evidence:
+    """A held line's entry, with who is on the workspace's own side as the workspace at `root` says, or no one. While
+    the workspace's first run is open, it lists the records of the last `RECENT_DAYS` days before `now`, and counts
+    the older ones, which the runs after it list."""
+    from .held import entry, first_run_open  # held imports this module, so it loads at the call
     from .project import read_ours
     ours = read_ours(root) if root is not None else NOBODY
-    return entry(agent, getattr(lookup, "store", None), list(sources), n, line, ours)
+    store = getattr(lookup, "store", None)
+    out = entry(agent, store, list(sources), n, line, ours)
+    if now is None or not first_run_open(store):
+        return out
+    since = (now - timedelta(days=RECENT_DAYS)).date().isoformat()
+    kept = [item for item in out.items if not item.at or item.at[:10] >= since]
+    if older := len(out.items) - len(kept):
+        out.items = kept
+        out.notes.append(f"{older} held records from before {since} are not listed on the first run: the runs after "
+                         "it list them")
+    return out
 
 
 def _ordered(filters: dict[str, Any]) -> tuple[dict[str, Any], str | None]:

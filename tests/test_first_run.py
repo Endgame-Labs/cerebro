@@ -136,7 +136,7 @@ def carry_out(store: Any, collection: str) -> list[tuple[str, dict[str, Any]]]:
 
 @pytest.fixture
 def every_curator_weighs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every curator is asked in every round, one that has nothing to weigh yet too, as a source that answers
+    """Every curator is asked on the first run, one that has nothing to weigh yet too, as a source that answers
     questions makes it, for a test that is not about who has something to weigh."""
     monkeypatch.setattr(FakeConnector, "questions", {"lookup": "a stand-in question"})
 
@@ -488,7 +488,7 @@ def test_the_cap_stops_discovery_and_a_run_after_it_stops_again_with_no_model_ca
         out = run(workspace, choose=None, say=say)
         assert out is not None and out.waits and script.ran == ["things/curator"]
         assert "stopped   topics/curator: budget reached for topics collection" in told
-        stop = ("Discovery stopped at its budget after 1 round; topics did not finish: raise budget.first_run_usd in "
+        stop = ("Discovery stopped at its budget; topics did not finish: raise budget.first_run_usd in "
                 "settings.yaml, or narrow what your source files under sources/ read, and run again.")
         assert out.lines[0] == stop and out.lines[1].startswith("the first run's list: 2 admit proposals")
         pile = LocalApproval(workspace).pile()
@@ -541,6 +541,24 @@ def test_a_late_curator_finds_nothing_before_the_first_facts_then_its_list_waits
         assert [listed.agent for listed in out.late.lists] == ["topics/curator"]
         assert out.lines == []  # the screen took the late list too
         assert "topics/renewals" in articles(workspace)  # approved, and the one more pass ran
+
+
+def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: Path) -> None:
+    class Moves(Script):  # a record about Alder Works comes in while the late curator runs
+        crm: Any = None
+
+        def run(self, agent: Agent, evidence: list[Evidence], tools: list[Any], budget: Budget) -> Run:
+            if agent.id == "topics/curator" and self.calls.get(agent.id):
+                self.crm.add(account("001D", "Alder Works", "alder.example", at="2026-11-18T08:00:00Z"))
+            return super().run(agent, evidence, tools, budget)
+
+    script = Moves({"things/curator": list(ADMITS), "topics/curator": list(TOPIC)})
+    with open_it(lay_out_workspace(tmp_path, knowledge=True), script) as workspace:
+        script.crm = workspace.connectors["crm"]
+        out = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
+        assert out is not None and out.late is not None and "topics/renewals" in articles(workspace)
+        runs = [row.data["target"] for row in workspace.store.rows("agent-runs") if row.data["agent"] == "things/article"]
+        assert runs.count("things/alder-works") == 1  # built once: its new record waits for a later pass
 
 
 def test_off_a_terminal_a_late_list_waits_with_the_line_that_names_the_review_command(tmp_path: Path) -> None:

@@ -6,7 +6,7 @@ evidence:
   - query: { from: open-pipeline, status: archived }   # the briefs archived, each with the deal it is about
 heartbeat: [change, daily]
 budget:
-  tool_calls: 120   # about 115 for an admit for each open deal, a read of each kept brief's deal that is no longer open, and a proposed archive for each one closed; 5 kept for deciding
+  tool_calls: 60    # about 55 for an admit for each open deal that closes soonest, a read of each kept brief's deal that is no longer open, and a proposed archive for each one closed; 5 kept for deciding
 ---
 
 # Instructions

@@ -148,8 +148,7 @@ class Progress:
     `kind` is open, with the `total` the stage counts, or start or end of the work `key` names. An end's `mark` is
     done, failed, warning, skipped, or for a compile ran, a run that ran and wrote nothing, `text` what its row says
     after its key, `cost` what an agent's run spent, and `why` what went wrong. A check's end carries in `total` how many records it listed, and a
-    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts. A
-    first run's discover `round` starts its round `done` of up to `total`."""
+    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts."""
 
     stage: str
     kind: str
@@ -245,11 +244,12 @@ def _sources_held(workspace: Cerebro, result: PassResult) -> str:
 
 def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = None,
              agents: bool = True, say: Callable[[str], None] | None = None, curators: bool = True,
-             on: Callable[[Progress], None] | None = None) -> PassResult:
+             on: Callable[[Progress], None] | None = None, articles: Collection[str] | None = None) -> PassResult:
     """One pass over `workspace`: list, curate, extract, link, compile, each agent only when it is due. `scheduled`, as
     under `serve`, checks only the sources whose freshness window has passed; otherwise every source is checked now,
     or the one named `only`. With `agents` false, as `distill` runs it, no agent runs. With `curators` false, as the
-    first run builds what a person approved, no curator runs and the writers do."""
+    first run builds what a person approved, no curator runs and the writers do. With `articles`, only those are
+    compiled, and every other one due stays due."""
     result = PassResult(refused=list(workspace.refused), notices=list(workspace.notices), say=say, on=on)
     workspace.gateway.said = ""  # a host's refusal stops one pass: the next tries again
     if agents and workspace.store.state(FIRST_RUN_KEY) is None and left_first_run(workspace.store):
@@ -275,7 +275,7 @@ def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = 
     if workspace.extraction is not None:
         result.notices += workspace.class_notices()
     if agents:
-        _compile(workspace, result, served=scheduled)
+        _compile(workspace, result, served=scheduled, articles=articles)
         session = workspace.store.state(FIRST_RUN_KEY)
         if (not isinstance(session, dict) or session.get("status") == "done") and not _first_waits(workspace):
             pass_first_run(workspace.store, stamp(workspace.clock()))  # nothing of a first run holds it or waits
@@ -1190,14 +1190,14 @@ def _curate(workspace: Cerebro, result: PassResult) -> None:
             result.warnings.append(first_list_line(agent.id, len(ids)))
 
 
-def run_curators(workspace: Cerebro, agents: list[Agent], result: PassResult, *, changed_only: bool) -> None:
+def run_curators(workspace: Cerebro, agents: list[Agent], result: PassResult) -> None:
     """Run each curator of `agents` in turn, outside a pass's own choice of what is due, holding their leases, as the
-    first run runs them: `changed_only` skips one whose evidence has not moved since its last run. Each turn
+    first run runs them, whether or not its evidence moved. Each turn
     is kept as a pass keeps it, its run on `result` and its heartbeat in the store, so a later pass does not run it
     again before it is due. A run that did not fail is its schedule's run of the period it began in, so a pass the
     same day does not run it again for its schedule."""
     with _holding(workspace, agents, result.token):
-        _curate_due(workspace, [(agent, None) for agent in agents], result, changed_only=changed_only, spends=True)
+        _curate_due(workspace, [(agent, None) for agent in agents], result, changed_only=False, spends=True)
 
 
 def _curate_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassResult,
@@ -2128,21 +2128,23 @@ def writers_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, str
     return _due(workspace, [agent for agent in workspace.agents if agent.role != "curator"], result)
 
 
-def _compile(workspace: Cerebro, result: PassResult, served: bool = False) -> None:
-    """Compile each article each due writer writes, one job per article, side by side. `served`, a pass under
-    `serve`, holds each rebuild that new evidence alone asks for to its cooldown; a pass at a person's hand runs
-    everything due."""
+def _compile(workspace: Cerebro, result: PassResult, served: bool = False,
+             articles: Collection[str] | None = None) -> None:
+    """Compile each article each due writer writes, or each of `articles` alone, one job per article, side by side.
+    `served`, a pass under `serve`, holds each rebuild that new evidence alone asks for to its cooldown; a pass at a
+    person's hand runs everything due."""
     _going(workspace)
     due = writers_due(workspace, result)
     with _holding(workspace, [agent for agent, _ in due], result.token):
-        _compile_due(workspace, due, result, served)
+        _compile_due(workspace, due, result, served, articles)
 
 
 def _compile_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassResult,
-                 served: bool = False) -> None:
-    """Compile each article of each due writer, side by side, one collection at a time, then keep each writer's turn
-    as its heartbeat. `served` hands each change's compile the cooldown's hold, as `_hold` gives it."""
-    plan, parts, changes = _plan(workspace, due, result)
+                 served: bool = False, articles: Collection[str] | None = None) -> None:
+    """Compile each article of each due writer, or each of `articles` alone, side by side, one collection at a time,
+    then keep each writer's turn as its heartbeat. `served` hands each change's compile the cooldown's hold, as
+    `_hold` gives it."""
+    plan, parts, changes = _plan(workspace, due, result, articles)
     for agent, _, article in plan:
         if fixed(agent) and workspace.store.article(article) is None:
             birth(workspace.store, agent, article, stamp(workspace.clock()))
@@ -2185,11 +2187,13 @@ def _key(agent: Agent, article: str) -> str:
     return agent.id if article == agent.target else f"{agent.id} on {article}"
 
 
-def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]],
-          result: PassResult) -> tuple[list[tuple[Agent, str | None, str]], set[tuple[str, str]], set[tuple[str, str]]]:
-    """The articles a pass compiles, each with its agent and the schedule word it runs for, in path order; the
-    articles whose next run runs only the parts that did not run; and those an agent on `change` runs for a change
-    while its period is owed. Why a due writer runs on none goes on `result.skipped`."""
+def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassResult,
+          only: Collection[str] | None = None) -> tuple[list[tuple[Agent, str | None, str]], set[tuple[str, str]],
+                                                        set[tuple[str, str]]]:
+    """The articles a pass compiles, each with its agent and the schedule word it runs for, in path order, of `only`
+    alone when given; the articles whose next run runs only the parts that did not run; and those an agent on
+    `change` runs for a change while its period is owed. Why a due writer runs on none goes on `result.skipped`, and
+    one with none of `only` stays due, unsaid."""
     plan: list[tuple[Agent, str | None, str]] = []
     parts: set[tuple[str, str]] = set()
     changes: set[tuple[str, str]] = set()
@@ -2200,6 +2204,9 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]],
             result.failed[agent.id] = f"{type(error).__name__}: {error}"
             result.due.pop(agent.id, None)
             _ran(workspace, agent, word, None, True)
+            continue
+        if only is not None and not (articles := [article for article in articles if article in only]):
+            del result.due[agent.id]
             continue
         if not articles:  # an archived article of its own is left alone, and nothing is wrong
             result.skipped[agent.id] = left_alone(agent, workspace.lookup) or \

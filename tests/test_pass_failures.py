@@ -286,33 +286,11 @@ def test_a_writers_wait_on_one_article_is_not_ended_by_its_run_on_another(tmp_pa
     assert split.asked.count("things/b") == 1 and split.asked.count("things/a") == 3, split.asked
 
 
-def test_a_first_run_curator_that_failed_then_ran_is_a_warning_and_not_a_failure(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Beside a list that goes on: a lone curator that fails ends the first run.
-    from test_first_run import Script
-    from test_first_run_structure import by_record, lay_out_workspace, open_it
-
-    class FailsOnce(Script):
-        def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Run:
-            if agent.id == "parts/curator" and "parts/curator" not in self.ran:
-                self.ran.append(agent.id)
-                return Run("run_f", agent.id, agent.target, "failed", note="the stand-in failed")
-            return super().run(agent, evidence, tools, budget)
-
-    script = FailsOnce({"things/curator": [by_record("T1")], "parts/curator": []})
-    root = lay_out_workspace(tmp_path)
-    monkeypatch.setattr(cli, "open_workspace", lambda where: open_it(root, script))
-    done = CliRunner().invoke(main, ["serve", "--once", "--yes", "--workspace", str(root)])
-    assert script.ran.count("parts/curator") == 2, done.output
-    assert "failed    parts/curator" not in done.output and done.exit_code == 0, done.output
-    assert ("warning   parts/curator: failed in this first run, and did not fail when it ran after: discovery for "
-            "parts collection did not finish: the stand-in failed") in done.output, done.output
-    assert done.output.splitlines()[-1] == "Done.", done.output
-
-
 def test_a_first_run_that_stops_on_an_error_still_says_what_failed_before(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from test_first_run import Script
+    from test_first_run import FakeConnector, Script
+
+    monkeypatch.setattr(FakeConnector, "questions", {"lookup": "a stand-in question"})  # parts is asked
     from test_first_run_structure import by_record, lay_out_workspace, open_it
 
     from cerebro.errors import CerebroError

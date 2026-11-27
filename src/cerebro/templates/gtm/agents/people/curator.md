@@ -10,7 +10,7 @@ evidence:
 heartbeat: [change, daily]
 budget:                    # sized for the longest held list a run is shown, 500 people
   tokens_per_run: 230000   # 100000 for the opening, the list at about 80 tokens a person beside your evidence; 30000 for the mandate's fetches; 100000 for reads and decisions
-  tool_calls: 120          # about 15 for the mandate's fetches, a read for each person whose line leaves the decision open, an admit for each group, a leave_out for each reason, archives, and 5 kept for deciding
+  tool_calls: 60           # about 15 for the mandate's fetches, a read for each person whose line leaves the decision open, an admit for each group, a leave_out for each reason, and 5 kept for deciding
 ---
 
 # Instructions
@@ -61,7 +61,13 @@ the first. Admit at most 50 a run.
   marks so is not on your side: never leave them out as perhaps on it.
 
 Admit each person with fields linked set to a list of the path of the account
-they are placed at.
+they are placed at. When that account has no article and nobody has proposed
+one, propose it beside the person: admit with collection set to accounts, by
+the account's record when a fetch returned it, else by the company's name and
+domain, under the person's group.
+
+What clearly matters first: a person with a role on an open deal, and a
+person on a call coming up.
 
 Admit people only: a company is no person. Each reason names the one account
 this person belongs to, and their role there.

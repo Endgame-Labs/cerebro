@@ -1870,7 +1870,8 @@ WOKE = "What woke this run"
 def _woke(wake: str, accepted: Collection[str] = (), news: bool = True) -> list[Evidence]:
     """What woke a curator's run, the first lines of its opening: the accepted proposals that woke it, if any, then
     the schedule, the change or the hand that ran it, unless the accepted ones alone woke it."""
-    line = {"first": "What woke this run: the first run.",
+    line = {"first": "What woke this run: the first run. Propose what clearly matters, then stop: the runs after "
+                     "this one fill in the rest.",
             "hand": "What woke this run: a run you asked for with agents run.",
             "change": "What woke this run: a change wake: your evidence moved since your last run. Weigh by your "
                       "mandate what is new in it, each held record and proposal, and nothing more."}.get(
@@ -2034,7 +2035,7 @@ def _asks(p: Proposal) -> str:
 
 def _on_yours(store: Store, agent: Agent) -> list[Evidence]:
     """The waiting proposals other curators filed on this curator's collection that it may answer, oldest first, as
-    the first run's round under way pinned them."""
+    the first run's discovery pinned them when it began."""
     named = cited(proposals(store))
     rows = [p for p in pinned_waiting(store) if may_answer(agent, p, named)]
     items = [Item(f"proposal:{p.id}", f"- {p.id} {_asks(p)}, by {p.by.name}: {_why(store, p)}, {p.at[:10]}")

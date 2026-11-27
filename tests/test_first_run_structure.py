@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from test_first_run import Script
+import pytest
+from test_first_run import Script, every_curator_weighs  # noqa: F401  (a fixture)
 
 from cerebro import Cerebro
 from cerebro.connector import Record
@@ -92,6 +93,7 @@ def parent_of(record: str, reason: str = "Alder Gear belongs to it.") -> tuple[s
                       "group": "parents of your parts"})
 
 
+@pytest.mark.usefixtures("every_curator_weighs")  # parts is asked before the parent of its part is proposed
 def test_a_curator_proposing_the_parent_of_what_it_found_files_a_row_of_that_collection_and_a_second_is_not_refused(
         tmp_path: Path) -> None:
     from cerebro.first_run import LocalApproval
@@ -109,7 +111,7 @@ def test_a_curator_proposing_the_parent_of_what_it_found_files_a_row_of_that_col
         pile = LocalApproval(workspace).pile()
         things = next(listed for listed in pile.lists if listed.collection == "things")
         assert [row.agent for row in things.proposed()] == ["things/curator"]  # the person sees its own curator's
-        assert script.ran.count("things/curator") == 2  # a later round asks it about the row aimed at it
+        assert script.ran.count("things/curator") == 1  # one round: the row aimed at it waits for its next run
 
 
 def test_the_same_curator_does_not_file_one_parent_twice_and_a_record_not_held_there_is_refused(tmp_path: Path) -> None:
@@ -177,16 +179,6 @@ def test_what_a_record_links_to_is_its_links_under_its_keys_and_the_domains_of_i
                                                              ("email", "t-alder"), ("domain", "cedar.example")}
 
 
-def test_a_curators_own_proposals_never_wake_it_and_another_curators_its_records_link_to_do(tmp_path: Path) -> None:
-    script = Script({"things/curator": [by_record("T1")], "parts/curator": []})
-    with open_it(lay_out_workspace(tmp_path), script) as workspace:
-        run(workspace, choose=None)
-        # round 1 asks things alone, as parts holds nothing yet; things/alder-works, proposed, is what P1 links to,
-        # so round 2 asks parts, and things, whose only change is its own proposal, is not asked
-        assert script.ran == ["things/curator", "parts/curator"]
-        assert workspace.store.state(KEY)["rounds"] == 2
-
-
 # -- what a held line shows beyond keys -----------------------------------------------------------------------------
 
 
@@ -205,8 +197,6 @@ def test_a_held_line_shows_the_outside_domains_of_its_parties_and_the_names_of_y
         assert "outside" not in held_lines(workspace, "parts")["P1"]  # a record that names no party by address
 
 
-# -- rounds: every curator of a round reads the queue as the round began ---------------------------------------------
-
 
 class Seen(Script):
     """A `Script` that keeps the text of each run's evidence, by curator, in the order the runs came."""
@@ -220,6 +210,23 @@ class Seen(Script):
         return super().run(agent, evidence, tools, budget)
 
 
+def test_the_first_run_lists_the_held_records_of_the_last_two_weeks_and_a_later_run_lists_the_older(
+        tmp_path: Path) -> None:
+    old = Record(id="T9", source="src", revision="1", at="2026-10-01T09:00:00Z",
+                 keys={"code": ["t-oak"], "name": ["Old Oak"]}, fields={"name": "Old Oak"}, body="Old Oak.",
+                 into="things")
+    script = Seen({"things/curator": [by_record("T1")], "parts/curator": []})
+    with open_it(lay_out_workspace(tmp_path), script, [*RECORDS, old]) as workspace:
+        run(workspace, choose=Choices.starter)
+        first, build = script.read["things/curator"]  # discovery, then the run that makes what was approved
+        assert "Birch Hall" in first and "Old Oak" not in first
+        assert "2026-11-04" in first  # the older one is counted, from the day the window opens
+        assert "Old Oak" in build
+
+
+# -- every curator reads the queue as discovery began -----------------------------------------------------------
+
+
 def loose_and_its_holder() -> list[Record]:
     """A part with no parent, and a thing that links to that part's code."""
     holder = Record(id="T3", source="src", revision="1", at="2026-11-10T09:00:00Z",
@@ -228,20 +235,17 @@ def loose_and_its_holder() -> list[Record]:
     return [*RECORDS, part("P5", "Free Bolt"), holder]
 
 
-def test_a_curator_does_not_weigh_what_another_proposed_in_the_same_round_and_weighs_it_in_the_next(
-        tmp_path: Path) -> None:
+def test_a_curator_does_not_weigh_what_another_proposes_beside_it(tmp_path: Path) -> None:
     script = Seen({"parts/curator": [by_record("P5")], "things/curator": [by_record("T1")]})
     with open_it(lay_out_workspace(tmp_path), script, loose_and_its_holder()) as workspace:
         run(workspace, choose=None)
-        # parts runs first and proposes parts/free-bolt; things, in the same round, reads the queue as the round
-        # began, so the thing that links to it is not shown; round 2 shows it to things, and asks parts again for
-        # Alder Gear, which links to things/alder-works, proposed in round 1
-        assert [sorted(script.ran[:2]), sorted(script.ran[2:])] == [["parts/curator", "things/curator"]] * 2
-        first, second = script.read["things/curator"]
+        # parts proposes parts/free-bolt; things reads the queue as discovery began, so the thing that links to it
+        # is not shown
+        assert sorted(script.ran) == ["parts/curator", "things/curator"]
+        [first] = script.read["things/curator"]
         assert "parts/free-bolt" not in first and "Cedar Rack" not in first
-        assert "parts/free-bolt" in second and "Cedar Rack" in second
         assert sorted(p.by.name for p in proposals(workspace.store, "waiting")) == ["parts/curator", "things/curator"]
-        assert workspace.store.state(KEY)["rounds"] == 2 and workspace.store.state(KEY)["pinned"] is None
+        assert workspace.store.state(KEY)["pinned"] is None
 
 
 def test_discovery_keeps_the_curators_in_the_order_of_their_ids_whatever_one_reads_of_another(tmp_path: Path,
@@ -323,20 +327,13 @@ class Fails(Script):
         return super().run(agent, evidence, tools, budget)
 
 
-def test_after_the_build_a_curator_that_took_part_stays_out_and_one_that_failed_runs_late(tmp_path: Path) -> None:
-    script = Script({"things/curator": [by_record("T1")], "parts/curator": []})
+def test_after_the_build_a_curator_whose_records_waited_for_their_parent_runs_late(tmp_path: Path) -> None:
+    script = Script({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]})
     with open_it(lay_out_workspace(tmp_path), script) as workspace:
-        run(workspace, choose=Choices.starter)
-        lists = workspace.store.state(KEY)["lists"]
-        assert lists["parts/curator"]["state"] == "nothing"  # it read held parts and proposed none: it took part
-        assert script.ran.count("parts/curator") == 1  # round 2 of discovery, once P1's parent is proposed; no late run
-
-    failing = Fails({"things/curator": [by_record("T1")], "parts/curator": [by_record("P1")]}, "parts/curator", 1)
-    with open_it(lay_out_workspace(tmp_path / "failed"), failing) as workspace:
         out = run(workspace, choose=Choices.starter)
-        assert workspace.store.state(KEY)["lists"]["parts/curator"]["state"] == "failed"
-        # one failed, one late, and the one that makes what was accepted of its late list
-        assert failing.ran.count("parts/curator") == 3 and out is not None and out.late is not None
+        assert workspace.store.state(KEY)["lists"]["parts/curator"]["state"] == "empty"  # P1 waited for its parent
+        # one late, and the one that makes what was accepted of its late list
+        assert script.ran.count("parts/curator") == 2 and out is not None and out.late is not None
         assert [row.name for listed in out.late.lists for row in listed.proposed()] == ["Alder Gear"]
 
 
@@ -361,38 +358,3 @@ def test_a_query_of_a_collection_on_a_first_run_gives_its_pending_admits_as_mark
         after = workspace.lookup.query(curator, "things")
         assert [getattr(item, "identity", None) and item.identity.id for item in after.items] == ["things/alder-works"]
         assert not any(isinstance(item, dict) for item in after.items)  # decided: the article, and no stand-in
-
-
-def test_a_round_that_rejects_one_row_and_aims_another_is_no_standstill(tmp_path: Path) -> None:
-    class Steps(Script):  # each curator's runs in turn, each a function of the store that gives that run's calls
-        def __init__(self, steps: dict[str, list[Any]]) -> None:
-            super().__init__()
-            self.steps, self.store = steps, None
-
-        def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Any:
-            queue = self.steps.get(agent.id, [])
-            self.calls[agent.id] = queue.pop(0)(self.store) if queue else []
-            return super().run(agent, evidence, tools, budget)
-
-    def own(id: str) -> Any:
-        return lambda store: [("admit", {"record": {"source": "src", "id": id}, "reason": "Listed."})]
-
-    def answer(store: Any) -> list[Any]:  # parts rejects the row things aimed at it, and aims one at alpha
-        aimed = [p for p in proposals(store, "waiting") if p.by.name == "things/curator"]
-        return [("reject", {"proposals": [{"id": aimed[0].id, "reason": "No record lists it."}]}),
-                ("admit", {"name": "Gadget", "collection": "alpha", "reason": "Bolt fits it."})] if aimed else []
-
-    for collection in ("alpha", "parts", "things"):
-        (tmp_path / "agents" / collection).mkdir(parents=True)
-        (tmp_path / "agents" / collection / "curator.md").write_text(THINGS)
-    (tmp_path / "settings.yaml").write_text("compile: {concurrency: 1}\n")  # one at a time, in id order
-    script = Steps({"alpha/curator": [own("A1")], "parts/curator": [own("P1"), answer],
-                    "things/curator": [lambda store: [("admit", {"name": "Loose Pin", "collection": "parts",
-                                                                 "reason": "Widget lists it."})]]})
-    records = [Record(id=id, source="src", revision="1", at="2026-11-10T09:00:00Z", keys={"code": [id]},
-                      fields={"name": id}, body=f"{id}.", into=into)
-               for id, into in (("A1", "alpha"), ("P1", "parts"), ("T1", "things"))]
-    with open_it(tmp_path, script, records) as workspace:
-        script.store = workspace.store
-        run(workspace, choose=None)
-    assert script.ran.count("alpha/curator") == 2  # a later round asks it about Gadget
