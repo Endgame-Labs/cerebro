@@ -587,7 +587,8 @@ class Editor:
                     said, why = (f"{verdict.score:.2f}", verdict.reason) if verdict.score is not None else \
                         verdict.reason.split(": ", 1)
                     self.scores.append(f'{passage.heading or BEFORE_ANY}: {said} "{unit.shown}": {why}')
-                    self.tally.update({"marked": verdict.weak, "unscored": said == "unscored"})
+                    self.tally.update(kind for kind, said_so in (("marked", verdict.weak), ("unscored", said == "unscored"))
+                                      if said_so)
         return "".join(out) + plain[at:]
 
     def review(self, text: str) -> str:

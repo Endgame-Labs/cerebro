@@ -69,7 +69,7 @@ def test_a_pass_counts_what_grounding_marked_keeps_each_score_on_the_runs_line_a
         written = body(workspace.store.article("digests/weekly"))
     assert result.compiled == ["digests/weekly"]
     tally = result.grounding["digests/weekly"]
-    assert tally == {"marked": 2, "unscored": 0} and not result.warnings
+    assert tally == {"marked": 2} and not result.warnings
     note = next(e for e in events if e.kind == "note")
     assert (note.stage, note.key, note.text) == ("compile", "digests/weekly", "marked 2 sentences not fully backed")
     kept = rows[-1]  # the run's line, as it stood, with what grounding did on it
