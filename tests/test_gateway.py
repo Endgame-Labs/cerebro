@@ -26,7 +26,7 @@ from cerebro.project import WorkspaceError, load
 from cerebro.secrets import open_secrets
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "checks"))
-from gateway_standin import _chat, _decide, _vector
+from gateway_standin import _chat, _decide, _sent, _vector
 
 HOST = "http://gateway.example.internal:8769"
 VALUE = "sk-gateway-test-5d1e9a77"
@@ -93,7 +93,8 @@ def gateway(monkeypatch: pytest.MonkeyPatch) -> Iterator[Gateway]:
 
     def answering(request: httpx2.Request) -> httpx2.Response:
         status, reply = standin.answer(str(request.url), dict(request.headers), request.content)
-        return httpx2.Response(status, json=reply)
+        data, kind = _sent(status, reply, json.loads(request.content or b"{}"))
+        return httpx2.Response(status, content=data, headers={"content-type": kind})
 
     monkeypatch.setattr("pydantic_ai.providers._openai_compatible.create_async_httpx2_client",
                         lambda *args, **kwargs: httpx2.AsyncClient(transport=httpx2.MockTransport(answering)))

@@ -43,7 +43,8 @@ def test_todays_models_block_reads_as_one_model_per_job_and_names_each_key() -> 
     assert models["compilation"].wire_id == "claude-sonnet-5-5"
     assert [m.key_name for m in models.values()] == ["fireworks", "fireworks", "anthropic"]
     assert [m.variable for m in models.values()] == ["FIREWORKS_API_KEY", "FIREWORKS_API_KEY", "ANTHROPIC_API_KEY"]
-    assert models["extraction"].block() == {"provider": "fireworks", "model": "glm-5p3-flash", "effort": "low"}
+    assert models["extraction"].block() == {"provider": "fireworks", "model": "glm-5p3-flash", "effort": "low",
+                                            "retries": 3}
     assert read_models({}) == DEFAULTS
 
 
@@ -66,6 +67,7 @@ def test_the_default_models_are_named_to_the_version_and_the_decision_one_has_a_
     ("decision", {"provider": "fireworks", "model": "glm-5p3"}, "models.decision.model is 'glm-5p3'"),
     ("compilation", {"provider": "openai", "model": "gpt-5", "effort": "huge"}, "models.compilation.effort"),
     ("compilation", {"provider": "openai", "model": "gpt-5", "temp": 1}, "has 'temp'"),
+    ("compilation", {"provider": "openai", "model": "gpt-5", "retries": -1}, "models.compilation.retries is -1"),
 ])
 def test_a_bad_models_entry_is_refused_with_one_line_that_names_its_key(job: str, entry: Any, names: str) -> None:
     settings = {"models": {**TODAY["models"], job: entry}}
@@ -262,8 +264,9 @@ def test_a_dropped_connection_is_tried_again_and_then_named() -> None:
     assert HttpDecider(spec, key=lambda: "k", send=flaky, sleep=slept.append).decide("t", {"a": YesNo("A?")})
     assert slept == [1.0, 2.0]
     drops.extend([OSError()] * 2)
+    once = ModelSpec("fireworks", "rune", job="decision", retries=1)
     with pytest.raises(DecisionError, match="did not answer \\(OSError\\): check the network"):
-        HttpDecider(spec, key=lambda: "k", send=flaky, sleep=slept.append, attempts=2).decide("t", {"a": YesNo("A?")})
+        HttpDecider(once, key=lambda: "k", send=flaky, sleep=slept.append).decide("t", {"a": YesNo("A?")})
 
 
 def test_odd_replies_neither_crash_the_client_nor_leak_the_reply_or_the_key() -> None:

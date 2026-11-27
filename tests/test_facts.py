@@ -502,10 +502,11 @@ def test_the_gtm_template_defines_every_kind_its_agent_files_filter_on(tmp_path:
 
 
 @pytest.mark.parametrize("down", ["refused", 529])
-def test_a_model_call_of_the_facts_layer_gives_up_after_a_few_tries_so_a_pass_always_ends(down: Any) -> None:
+def test_a_model_call_of_the_facts_layer_gives_up_after_its_models_retries_so_a_pass_always_ends(
+        tmp_path: Path, down: Any) -> None:
     import httpx
 
-    from cerebro.facts import MODEL_TRIES, ModelUnreachable, _Bounded
+    from cerebro.facts import ModelUnreachable
 
     class Down(httpx.BaseTransport):
         def handle_request(self, request: httpx.Request) -> httpx.Response:
@@ -513,14 +514,14 @@ def test_a_model_call_of_the_facts_layer_gives_up_after_a_few_tries_so_a_pass_al
                 raise httpx.ConnectError("refused")
             return httpx.Response(down)
 
-    http = httpx.Client(transport=_Bounded(Down()))
-    for _ in range(MODEL_TRIES - 1):  # what Factoid's own loop catches, or is answered, and tries again
-        if down == "refused":
-            with pytest.raises(httpx.ConnectError):
-                http.post("https://api.example/v1")
-        else:
-            assert http.post("https://api.example/v1").status_code == down
-    with pytest.raises(ModelUnreachable, match=f"did not answer after {MODEL_TRIES} tries"):
+    http = FactoidExtraction(tmp_path, ModelSpec("fireworks", "glm-5p3-flash", "low", retries=1)).app.client._http
+    http._transport.inner = Down()
+    if down == "refused":  # what Factoid's own loop catches, or is answered, and tries again
+        with pytest.raises(httpx.ConnectError):
+            http.post("https://api.example/v1")
+    else:
+        assert http.post("https://api.example/v1").status_code == down
+    with pytest.raises(ModelUnreachable, match="did not answer after 2 tries"):
         http.post("https://api.example/v1")
 
 

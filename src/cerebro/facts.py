@@ -824,7 +824,6 @@ def _keyed() -> Any:
 
 # -- each model call: its tries, its time and what it spends --------------------------------------------------------
 
-MODEL_TRIES = 3  # tries of one model call of Factoid's before a pass gives up on it
 MODEL_SECONDS = 120.0  # seconds one model call of Factoid's may take in all, its tries included
 
 
@@ -833,21 +832,22 @@ class ModelUnreachable(CerebroError, RuntimeError):
 
 
 class _Bounded(httpx.BaseTransport):
-    """Factoid's HTTP transport, held to `MODEL_TRIES` tries in a row and `MODEL_SECONDS` in all for one call: past
-    either, it raises an error Factoid does not try again, so a pass always ends. Counted per thread. Once a host of
-    `gateway` refused a call in a way no try mends, no call is sent, as Factoid would try another call of the record.
-    An error's body is masked whole by `mask` before Factoid cuts it into its error, which no mask could then find."""
+    """Factoid's HTTP transport, held to `tries` tries in a row, its extraction model's retries and one, and
+    `MODEL_SECONDS` in all for one call: past either, it raises an error Factoid does not try again, so a pass always
+    ends. Counted per thread. Once a host of `gateway` refused a call in a way no try mends, no call is sent, as Factoid
+    would try another call of the record. An error's body is masked whole by `mask` before Factoid cuts it into its
+    error, which no mask could then find."""
 
-    def __init__(self, inner: httpx.BaseTransport, gateway: Gateway | None = None,
+    def __init__(self, inner: httpx.BaseTransport, tries: int, gateway: Gateway | None = None,
                  mask: Callable[[str], str] | None = None):
-        self.inner, self.gateway, self.mask = inner, gateway, mask
+        self.inner, self.tries, self.gateway, self.mask = inner, tries, gateway, mask
         self._local = threading.local()
 
     def _failed(self, why: str) -> None:
         tries = getattr(self._local, "tries", 0) + 1
         began = getattr(self._local, "began", None) or seconds()
         self._local.tries, self._local.began = tries, began
-        if tries >= MODEL_TRIES or seconds() - began > MODEL_SECONDS:
+        if tries >= self.tries or seconds() - began > MODEL_SECONDS:
             self._local.tries, self._local.began = 0, None
             raise ModelUnreachable(f"the facts layer's model did not answer after {tries} tries ({why}): check the "
                                    "network and the provider's status, then the next pass tries again")
@@ -1022,7 +1022,8 @@ class FactoidExtraction(Extraction):
         self._kinds = [kind_name(k) for k in self.classes] or ["fact"]
         self.data = self.root / STATE
         self.origins = _read_origins(self.data / ORIGINS)
-        models = factoid_models(model or DEFAULTS["extraction"], key, gateway)
+        model = model or DEFAULTS["extraction"]
+        models = factoid_models(model, key, gateway)
         settings = type("WorkspaceSettings", (Settings,), {"models": models, "concurrency": 16})
         make_folder(self.data)
         with _lock, owner_only():  # making an app makes it Factoid's active one, and opens its three SQLite files
@@ -1035,9 +1036,10 @@ class FactoidExtraction(Extraction):
         http = getattr(getattr(self.app, "client", None), "_http", None)
         if client is None and isinstance(http, httpx.Client):  # its own client, which a test has not stood in for
             # Factoid tries a failing call 12 times, for minutes
-            http._transport = _Bounded(http._transport, gateway, mask)
-            http._mounts = {pattern: _Bounded(mounted, gateway, mask) if mounted is not None else None  # a proxy's
-                            for pattern, mounted in http._mounts.items()}
+            tries = model.retries + 1
+            http._transport = _Bounded(http._transport, tries, gateway, mask)
+            http._mounts = {pattern: _Bounded(mounted, tries, gateway, mask) if mounted is not None else None
+                            for pattern, mounted in http._mounts.items()}  # a proxy's
             self.app.client.meter = _attributing(self.app.client.meter, self._lock_ahead)
             self.app.client._post = self._checked(self.app.client._post)
 
