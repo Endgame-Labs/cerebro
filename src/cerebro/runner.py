@@ -121,8 +121,8 @@ from .held import (
 )
 from .identity import (
     DecisionJudge,
-    apart_by_name,
     follow,
+    kept_off,
     link,
     link_ties,
     linked_keys,
@@ -1899,7 +1899,7 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
         if p.kind == "article.link" and p.target in changed:
             removed = ((p.applied or {}).get("keys") or {}).get("removed", {})
             taken_off[p.target] |= {(k, v.lower()) for k, vs in removed.items() for v in vs}
-    moved = redirects(workspace.store)
+    moved, among = redirects(workspace.store), near_pool(store) if changed else []
     keys: dict[str, dict[str, dict[str, list[str]]]] = {}
     ours: dict[str, dict[str, list[str]]] = {}  # who each record marks as the workspace's own, which binds no namesake
     only: dict[str, dict[str, list[str]]] = {}  # the keys each record only carries
@@ -1919,7 +1919,7 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
             for id in changed - set(reached(store, record)):
                 if RECORD in store.ties_of(fact.id).get(id, []):
                     store.unlink(fact.id, [id], RECORD)
-            for id in apart_by_name(store, fact, record, sorted(changed & set(store.ties_of(fact.id)))):
+            for id in sorted(changed & set(kept_off(store, fact, record, among)) & set(store.ties_of(fact.id))):
                 store.unlink(fact.id, [id], SUBJECT)  # `link` below ties it again by what still holds, such as a key
                 store.unlink(fact.id, [id], MENTIONS)
             carried = {(k, v.lower()) for m in fact.mentions for k, vs in m.keys.items() for v in vs}

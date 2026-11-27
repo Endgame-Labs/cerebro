@@ -54,7 +54,7 @@ from .facts import Fact, field_name
 from .models import Decider, DecisionError, YesNo
 from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
-__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "apart_by_name", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
+__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "kept_off", "link", "link_to",
            "linked_keys", "naming_keys", "own_articles", "reached", "redirects", "tied", "working", "would_bind"]
 
 THRESHOLD = 0.7  # the probability a judge must give a candidate
@@ -252,19 +252,25 @@ def link_ties(store: Store, fact_id: str, made: list[tuple[str, str]], at: str =
 
 
 def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | None = None, *,
-         among: list[tuple[Identity, list[str]]] | None = None) -> list[tuple[str, str]]:
+         among: list[tuple[Identity, list[str]]] | None = None,
+         kept_off: list[str] | None = None) -> list[tuple[str, str]]:
     """The articles a fact is tied to as the store stands, each with how, without linking. A judge, if given, is asked
     about a near match of the subject among `near_pool`, or `among` read from it before. A tie by a name, the
     subject's, a mention's or a judge's near match of the subject, is not made to an article `_apart` tells the
     record from when that name is one of the record's own, as `_record_names` gives them: the fact speaks of the
-    record's thing. A mention's key that names one thing still ties."""
+    record's thing. A mention's key that names one thing still ties. `kept_off`, when given, gathers each article
+    that rule keeps the fact off."""
     made: list[tuple[str, str]] = []
     mine = _record_names(record)
 
     def tie(ids: list[str], how: str, name: str = "") -> None:
         own = record if record is not None and name and _tokens(name) in mine else None
-        made.extend((id, how) for id in ids
-                    if (id, how) not in made and not (own is not None and _apart(store, own, id)))
+        for id in ids:
+            if own is not None and _apart(store, own, id):
+                if kept_off is not None and id not in kept_off:
+                    kept_off.append(id)
+            elif (id, how) not in made:
+                made.append((id, how))
 
     if record is not None:
         tie(_keyed(store, record, linked_keys(record)), RECORD)  # by every key, those it only carries too
@@ -294,13 +300,21 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
     return made
 
 
-def apart_by_name(store: Store, fact: Fact, record: Record | None, articles: Iterable[str]) -> list[str]:
-    """Those of `articles` no tie by a name holds `fact` to when it gives one of its record's own names, by its
-    subject or a mention: each `_apart` tells the record from, as `ties` makes no such tie."""
-    mine = _record_names(record)
-    if record is None or not any(_tokens(name) in mine for name in [fact.subject, *(m.text for m in fact.mentions)]):
-        return []
-    return [id for id in articles if _apart(store, record, id)]
+def kept_off(store: Store, fact: Fact, record: Record, among: list[tuple[Identity, list[str]]]) -> list[str]:
+    """The articles the rule in `ties` keeps a fact off as the store stands: each that one of its record's own names
+    finds, by a title, a mention's keys or a near match of the subject among `among`, that `_apart` tells the record
+    from. No judge is asked: a near match is read as found."""
+    found: list[str] = []
+    near = _Found() if _tokens(fact.subject) in _record_names(record) else None  # only its own name keeps it off
+    ties(store, fact, record, near, among=among, kept_off=found)
+    return found
+
+
+class _Found(Judge):
+    """A near match as a name finds it, whatever a judge would say of it: every candidate passes."""
+
+    def judge(self, fact: Fact, candidates: list[Identity]) -> list[str]:
+        return [candidate.id for candidate in candidates]
 
 
 def _record_names(record: Record | None) -> list[list[str]]:
