@@ -902,6 +902,7 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
 
     from cerebro.article import Property
     from cerebro.connector import Record
+    from cerebro.errors import CerebroError
     from cerebro.fakes import FakeExtraction
     from cerebro.lookup import StoreLookup
     from cerebro.records import retract
@@ -922,6 +923,18 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
     store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
     said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
 
+    class Failing(FakeExtraction):  # a retract whose take-back stops partway
+        def retract(self, fact_id: str) -> None:
+            raise OSError("the disk is full")
+
+    failing = Failing()
+    store.keep(Record(id="note_2", source="note", revision="1", body="The gate opens at five.", by=you))
+    failing.extract(store.record("note_2"))  # type: ignore[arg-type]
+    try:
+        retract(store, failing, you, "note_2")
+    except CerebroError as error:
+        said.append(str(error))
+
     class Racing(FakeExtraction):  # a retract lands as a pass reads the note
         def extract(self, record: Record) -> Any:
             if not raced:
@@ -932,7 +945,7 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
     cerebro = kept_notes(tmp_path, Racing())
     cerebro.handle.keep(you, "note", "The gate opens at six.", {"collection": "notes"})
     said += [line for line in cerebro.run_once().notices if "retracted" in line]
-    assert len(said) == 11 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+    assert len(said) == 12 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:
