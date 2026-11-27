@@ -64,8 +64,8 @@ from .curate import (
     yes_left,
 )
 from .errors import CerebroError
-from .evidence import IN_FIRST_BUILD, RECENT_DAYS, recent_since
-from .held import Held, _name, held_for, own_held, own_names, own_side, passed_first_run, same_name
+from .evidence import IN_FIRST_BUILD, RECENT_DAYS
+from .held import Held, _name, first_run_since, held_for, own_held, own_names, own_side, passed_first_run, same_name
 from .identity import redirects, working
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
 from .records import _slug as record_slug
@@ -437,8 +437,7 @@ class LocalApproval(Approval):
         for d in theirs:
             if not d.record:
                 pick(d.name, d.keys)
-        began = str((_state(self.workspace) or {}).get("at") or "")
-        since = recent_since(datetime.fromisoformat(began)) if began else ""
+        since = first_run_since(self.workspace.store)
         return [Row(f"not-weighed:{h.source}:{h.id}", agent.id, agent.target,
                     h.name or (base := h.id.rpartition("/")[2]).rpartition(".")[0] or base,
                     prior.get((h.source, h.id), OLDER if h.at and h.at[:10] < since else NOT_WEIGHED), True, dict(h.keys),
@@ -1264,7 +1263,7 @@ def _run(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | None, sa
     if out.late is not None:
         _decide_late(workspace, out, out.late, out.result, choose, say)
         rest += [row.id for row in out.late.rows() if not row.left_out and row.id not in rest]  # it waits too
-    if older := len(out.result.older):
+    if (older := len(out.result.older)) and out.result.compiled:
         out.result.notices.append(f"The wiki starts from the last {RECENT_DAYS} days. cerebro serve reads "
                                   f"{_n(older, 'older record')} over the next hours and rewrites the articles "
                                   f"{'it changes' if older == 1 else 'they change'}.")

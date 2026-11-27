@@ -105,7 +105,7 @@ What you approve is written once, from the same 14 days. When older records wait
 notice    The wiki starts from the last 14 days. cerebro serve reads 30 older records over the next hours and rewrites the articles they change.
 ```
 
-Leave `cerebro serve` running and the wiki fills in. Only the articles those records change are rewritten.
+Leave `cerebro serve` running and the wiki fills in.
 
 Your agent can list and decide what waits, as you can. Off a terminal, the whole list waits:
 

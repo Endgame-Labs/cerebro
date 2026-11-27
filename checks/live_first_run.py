@@ -97,7 +97,7 @@ def stand_in(root: Path) -> Cerebro:
     records.append(Record(id="c1", source="crm", revision="1", at=stamp(now - timedelta(days=3)),
                           keys={"account": ["Brightwater Logistics"]}, fields={"subject": "Brightwater security call"},
                           body="Brightwater Logistics asked for SSO.", into="calls"))
-    call = [("admit", {"record": {"source": "crm", "id": "c1"}, "name": "Brightwater security call, 2026-11-14",
+    call = [("admit", {"record": {"source": "crm", "id": "c1"}, "name": "Brightwater security call",
                        "reason": "a call in your notes", "group": "calls in your notes",
                        "fields": {"linked": ["accounts/brightwater-logistics"]}})]
 

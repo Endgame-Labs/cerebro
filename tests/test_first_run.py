@@ -5,7 +5,6 @@ curator. Fakes only: each curator's calls are scripted, and a run spends what it
 from __future__ import annotations
 
 import uuid
-from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -562,29 +561,24 @@ def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: P
         assert runs.count("things/alder-works") == 1  # built once: its new record waits for a later pass
 
 
-def test_the_build_reads_the_last_two_weeks_and_builds_each_article_once_then_serve_rebuilds_what_older_records_change(
+def test_the_build_reads_the_first_runs_14_days_however_late_its_list_is_decided_and_serve_reads_the_older_records(
         tmp_path: Path) -> None:
-    crm = FakeConnector("crm", [*RECORDS, account("001O", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z")])
-    script, extraction = Script({"things/curator": list(ADMITS)}), FakeExtraction()
-
-    def built(clock: datetime, step: Any) -> tuple[Counter[str], set[str], Any]:
-        with Cerebro(tmp_path, agent_run=script, extraction=extraction, clock=lambda: clock,
-                     connectors=[crm]) as workspace:
-            script.store = workspace.store
-            done = step(workspace)
-            runs = {(row.data["target"], row.data["run"]) for row in workspace.store.rows("agent-runs")
-                    if row.data["agent"] == "things/article"}
-            return Counter(target for target, _ in runs), {f.record for f in extraction.facts()}, done
-
-    lay_out_workspace(tmp_path)  # each article reads its own facts alone
-    (tmp_path / "agents" / "things" / "article.md").write_text(ARTICLE.replace("query: { from: facts, source: crm }",
-                                                                               "facts: {}"))
-    builds, read, out = built(NOW, lambda workspace: run(workspace, choose=Choices.starter))
-    assert builds == {"things/alder-works": 1, "things/birch-yard": 1} and read == {"001A", "001B"}
-    assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 1 older record over "
-                                      "the next hours and rewrites the articles it changes.")
-    builds, read, _ = built(NOW + timedelta(hours=5), lambda workspace: workspace.run_once(scheduled=True))
-    assert builds == {"things/alder-works": 2, "things/birch-yard": 1} and "001O" in read
+    on_the_cut = account("001E", "Birch Yard", "birch.example", at="2026-11-04T09:00:00Z")  # 14 days before NOW
+    older = account("001O", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z")
+    script, extraction, clock = Script({"things/curator": list(ADMITS)}), FakeExtraction(), [NOW]
+    with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=extraction, clock=lambda: clock[0],
+                 connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older])]) as workspace:
+        script.store = workspace.store
+        assert run(workspace, choose=None).waits  # off a terminal, the list waits
+        clock[0] = NOW + timedelta(days=8)  # a person decides it a week later
+        workspace.decide(YOU, accept=[p.id for p in proposals(workspace.store, "waiting")])
+        out = run(workspace, choose=None)  # the pass that builds
+        assert {f.record for f in extraction.facts()} == {"001A", "001B", "001E"}
+        assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 1 older record "
+                                          "over the next hours and rewrites the articles it changes.")
+        clock[0] += timedelta(hours=5)
+        workspace.run_once(scheduled=True)  # a pass of serve once the source is due
+        assert "001O" in {f.record for f in extraction.facts()}
 
 
 def test_off_a_terminal_a_late_list_waits_with_the_line_that_names_the_review_command(tmp_path: Path) -> None:

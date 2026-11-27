@@ -37,6 +37,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from _first_run import FIRST, placed, taken_whole
@@ -56,6 +57,13 @@ from cerebro.records import proposals
 from cerebro.runner import PassResult
 
 MAX_PASSES = 8
+
+
+def day(back: int) -> str:
+    """The day `back` days before today: the notes are dated from today, so a first run's last 14 days hold them all."""
+    return (datetime.now(UTC) - timedelta(days=back)).date().isoformat()
+
+
 LOCAL = """kind: files
 window: { behind: all }
 select:
@@ -69,9 +77,9 @@ select:
   - glob: "local/email/**/*.md"
     extract: facts
 """
-LATE = ("local/calls/2026-11-18-tidewater-intro.md", """Account: Tidewater Freight
+LATE = ("local/calls/2026-11-18-tidewater-intro.md", f"""Account: Tidewater Freight
 Attendees: Lina Brooks <lina@ourco.example>
-Date: 2026-11-18
+Date: {day(0)}
 
 Ravi Menon, head of finance operations at Tidewater Freight, took an intro call with Lina Brooks from our side.
 Ravi said Tidewater matches about 4,000 carrier invoices a month by hand.
@@ -80,57 +88,57 @@ Lina Brooks will send Ravi a demo recording by 25 November.
 MIN_SCORE = 0.85  # the question score a healthy run clears with room
 QUESTIONS = Path(__file__).resolve().parent / "gtm_questions.yaml"
 NOTES = {
-    "local/calls/2026-11-03-brightwater-discovery.md": """Account: Brightwater Logistics
+    "local/calls/2026-11-03-brightwater-discovery.md": f"""Account: Brightwater Logistics
 Attendees: Nessa Torvik <nessa@brightwater.example>, Sam Okoye <sam@ourco.example>
-Date: 2026-11-03
+Date: {day(13)}
 
 Nessa Torvik, VP of Operations at Brightwater Logistics, said their warehouse team loses about six hours a week
 reconciling shipment exceptions by hand.
 Nessa wants a pilot in the Reno warehouse before the end of January.
 Sam Okoye from our side agreed to send a pilot plan by 10 November.
 """,
-    "local/email/2026-11-10-brightwater-pilot-plan.md": """Account: Brightwater Logistics
+    "local/email/2026-11-10-brightwater-pilot-plan.md": f"""Account: Brightwater Logistics
 Attendees: Nessa Torvik <nessa@brightwater.example>, Sam Okoye <sam@ourco.example>
-Date: 2026-11-10
+Date: {day(7)}
 
 Sam Okoye sent Nessa Torvik the pilot plan for the Reno warehouse, priced at $18,000 for eight weeks.
 Nessa Torvik replied that the plan looks right and that procurement needs a security questionnaire first.
 """,
-    "local/calls/2026-11-14-brightwater-security.md": """Account: Brightwater Logistics
+    "local/calls/2026-11-14-brightwater-security.md": f"""Account: Brightwater Logistics
 Attendees: Nessa Torvik <nessa@brightwater.example>, Priya Nair <priya@brightwater.example>, Sam Okoye <sam@ourco.example>
-Date: 2026-11-14
+Date: {day(3)}
 
 Priya Nair, Brightwater's IT security lead, joined the call and asked for SSO and a data retention policy.
 Sam Okoye said the security questionnaire will be back to Priya by 21 November.
 Nessa Torvik said the pilot can start on 1 December if security signs off.
 """,
-    "local/calls/2026-11-05-kestrel-intro.md": """Account: Kestrel Foods
+    "local/calls/2026-11-05-kestrel-intro.md": f"""Account: Kestrel Foods
 Attendees: Omar Haddad <omar@kestrel.example>, Lina Brooks <lina@ourco.example>
-Date: 2026-11-05
+Date: {day(12)}
 
 Omar Haddad, CFO of Kestrel Foods, said they are comparing us with one other vendor for invoice matching.
 Omar's budget for the project is $40,000 this fiscal year.
 Lina Brooks from our side will send a reference customer by 12 November.
 """,
-    "local/email/2026-11-12-kestrel-reference.md": """Account: Kestrel Foods
+    "local/email/2026-11-12-kestrel-reference.md": f"""Account: Kestrel Foods
 Attendees: Omar Haddad <omar@kestrel.example>, Lina Brooks <lina@ourco.example>
-Date: 2026-11-12
+Date: {day(5)}
 
 Lina Brooks introduced Omar Haddad to a reference customer at a regional grocery chain.
 Omar Haddad said Kestrel will decide between the two vendors by 15 December.
 Omar Haddad said the final call on the vendor is his, and he signs the contract himself.
 """,
-    "local/meetings/2026-11-07-novaline-kickoff.md": """Account: Novaline Health
+    "local/meetings/2026-11-07-novaline-kickoff.md": f"""Account: Novaline Health
 Attendees: Grace Liu <grace@novaline.example>, Sam Okoye <sam@ourco.example>
-Date: 2026-11-07
+Date: {day(10)}
 
 Grace Liu, director of IT at Novaline Health, kicked off the rollout to their three clinics.
 The first clinic, in Tacoma, goes live on 2 December.
 Grace Liu asked for weekly status calls on Tuesdays.
 """,
-    "local/calls/2026-11-17-novaline-status.md": """Account: Novaline Health
+    "local/calls/2026-11-17-novaline-status.md": f"""Account: Novaline Health
 Attendees: Grace Liu <grace@novaline.example>, Sam Okoye <sam@ourco.example>
-Date: 2026-11-17
+Date: {day(0)}
 
 Grace Liu said the Tacoma clinic's staff training is done.
 Grace Liu raised that the second clinic's network upgrade slips to January, which moves its go-live.
