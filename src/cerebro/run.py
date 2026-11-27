@@ -169,6 +169,22 @@ def _loop() -> Any:
     return pydantic_ai
 
 
+@contextlib.contextmanager
+def _loop_closed_as_it_ends() -> Iterator[None]:
+    """A new event loop as the thread's, which Pydantic AI's sync calls take, closed with its async generators as the
+    block ends. It waits for no host lookup still under way on its executor, so a stop ends the call at once."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield
+    finally:
+        try:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
+
+
 def model_name(block: dict[str, Any]) -> str:
     """The Pydantic AI model id for a `models:` block of `settings.yaml`, the model named as its provider's API takes
     it (see `models.wire_id`): `{ provider: fireworks, model: glm-5p3 }` is
@@ -1434,8 +1450,7 @@ class PydanticRun(AgentRun):
         token = pydantic_ai.CancellationToken()
         with pydantic_ai.capture_run_messages() as messages:
             try:
-                # run_sync takes the thread's loop, the Runner's, closed with its async generators as the run ends
-                with asyncio.Runner(), cancelling(token.cancel):  # a stop of serve cancels the run where it is
+                with _loop_closed_as_it_ends(), cancelling(token.cancel):  # a stop of serve cancels the run where it is
                     done = loop.run_sync([text, *files] if files else text, usage_limits=limits,
                                          model_settings=settings or None, cancellation_token=token)
                 history = done.all_messages()
@@ -1571,7 +1586,7 @@ class PydanticRewriter(Rewriter):
         from pydantic_ai.exceptions import UserError
 
         try:
-            with asyncio.Runner():  # the call takes the Runner's loop, as a run does
+            with _loop_closed_as_it_ends():
                 reply = model_request_sync(
                     model, [ModelRequest(parts=[SystemPromptPart(system), UserPromptPart(request)])],
                     model_settings={**model_settings(block), **sent, "max_tokens": self.max_tokens})

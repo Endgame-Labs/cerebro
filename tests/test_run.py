@@ -89,7 +89,7 @@ def test_a_model_call_ends_with_its_event_loop_closed_and_no_async_generator_lef
         {"index": 0, "delta": {"role": "assistant", "tool_calls": [hand_in]}, "finish_reason": "tool_calls"}]}
     left = []
 
-    async def pieces() -> AsyncIterator[bytes]:  # a reply's stream left part read, as a provider's can be
+    async def pieces() -> AsyncIterator[bytes]:  # a stand-in for a provider stream's generator, left part read
         yield f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode()
         yield b"unread"
 
