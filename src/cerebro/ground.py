@@ -32,18 +32,19 @@ from collections.abc import Callable, Iterable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import pairwise
 from typing import Any
 
 from .article import MARK, UNSUPPORTED, Citation, atx
 from .budget import BudgetSpent
-from .clean import PARSER
+from .clean import PARSER, inert
 from .errors import CerebroError
 from .evidence import CITE
 from .facts import Fact
 from .models import Answer, Decider, DecisionError, DecisionTooLarge, Score
 
 __all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "counted", "fields_of",
-           "own_sides", "quote_for", "split_sentences", "tallied", "unmarked"]
+           "own_sides", "quote_for", "quote_line", "split_sentences", "tallied", "unmarked"]
 
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
@@ -202,25 +203,42 @@ def _bounded(text: str, bound: int = QUOTE_BOUND) -> str:
     return cut.rstrip(" ,;:") + "…"
 
 
-def quote_for(fact: Fact) -> str:
-    """The words of the source a citation of `fact` shows, on one line after the name of the fact's record: the quotes
-    the fact kept, each once, its record's first, each record's in its order when their passages are known, up to
-    `QUOTE_BOUND` characters, cut at a word. Quotes next to each other in one record join with a space, others with
-    ` … `, and another record's follow ` · `, its name and a quotation mark, as in `a.md "…" · b.md "…"`. No code
-    guesses which sentence holds a fact."""
-    kept: dict[tuple[str, str], int] = {}
+def _quoted(fact: Fact) -> list[tuple[str, str]]:
+    """The words of the source a citation of `fact` shows, by the record they are in, the fact's own first, each on one
+    line: its quotes of that record, each once, in the record's order when their passages are known, quotes next to
+    each other joined with a space and others with ` … `. Up to `QUOTE_BOUND` characters of words in all, cut at a
+    word: another record none of whose words fit is left out. No code guesses which sentence holds a fact."""
+    kept: dict[str, dict[str, int]] = {fact.record: {}}
     for q in fact.quotes:
         if q.text.strip():
-            kept.setdefault((q.record or fact.record, " ".join(q.text.split())), q.passage)
-    order = {r: i for i, r in enumerate(dict.fromkeys([fact.record, *(r for r, _ in kept)]))}
-    known = all(kept.values())
-    quotes = sorted(kept.items(), key=lambda kv: (order[kv[0][0]], kv[1] if known else 0))
-    shown = ""
-    for i, ((record, text), n) in enumerate(quotes):
-        (was, _), m = quotes[i - 1] if i else ((fact.record, ""), 0)
-        next_to = i > 0 and n > 0 and m > 0 and n == m + 1
-        shown += (f'" · {record} "' if record != was else " " if next_to else " … " if i else "") + text
-    return _bounded(shown)
+            kept.setdefault(q.record or fact.record, {}).setdefault(" ".join(q.text.split()), q.passage)
+    out, room = [], QUOTE_BOUND
+    for record, said in kept.items():
+        quotes = sorted(said.items(), key=lambda kv: kv[1]) if all(said.values()) else list(said.items())
+        words = quotes[0][0] if quotes else ""
+        for (_, m), (text, n) in pairwise(quotes):
+            words += (" " if m > 0 and n == m + 1 else " … ") + text
+        if words and (record == fact.record or len(words.split(" ", 1)[0]) < room):
+            out.append((record, _bounded(words, room)))
+            room -= len(out[-1][1])
+    return out
+
+
+def quote_for(fact: Fact) -> str:
+    """The words `_quoted` gives, on one line, as they follow the name of the fact's record: another record's after
+    ` · `, its name as `inert` shows it and a quotation mark, so a footnote reads `a.md "…" · b.md "…"`."""
+    return "".join(words if record == fact.record else f'" · {inert(record)} "{words}' for record, words in _quoted(fact))
+
+
+def quote_line(fact: Fact) -> str:
+    """`quote_for` as a line of evidence gives it: after it the fact's record, as ` (quote: "…", a.md)`, or when it
+    holds another record's words, before it, as the footnote has it: ` (quote: a.md "…" · b.md "…")`. Empty for no
+    quote."""
+    quote = quote_for(fact)
+    if not quote:
+        return ""
+    one = all(record == fact.record for record, _ in _quoted(fact))
+    return f' (quote: "{quote}", {fact.record})' if one else f' (quote: {fact.record} "{quote}")'
 
 
 def _stated_on(at: str) -> str:
@@ -271,7 +289,8 @@ def fields_of(id: str, citation: Citation | None, fact: Fact | None, text: str =
             fields["stated_on"] = stated
         sources = [{k: v for k, v in (("speaker", q.speaker.strip()), ("quote", " ".join(q.text.split())),
                                       ("record", q.record or fact.record)) if v}
-                   for q in fact.quotes] or [{k: v for k, v in (("record", fact.record),) if v}]
+                   for q in sorted(fact.quotes, key=lambda q: (q.record or fact.record) != fact.record)  # its own first
+                   ] or [{k: v for k, v in (("record", fact.record),) if v}]
         fields |= sources[0]
         if sources[1:]:
             fields["more_sources"] = sources[1:]

@@ -51,15 +51,15 @@ def test_the_quickstart_note_quoted_sentence_by_sentence_gives_each_fact_the_sen
 def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_record(tmp_path: Path) -> None:
     handler, models = on_factoid(tmp_path)
     models.pairs = "duplicate"  # the second record states the first one's fact again, so Factoid adds its quote
-    handler.extract(Record(id="local/a.md", source="local", revision="1", body="Vega leads the review."))
-    handler.extract(Record(id="local/b.md", source="local", revision="1",
-                           body="Orion signs the plan.\n\nVega leads the review, as agreed."))
-    told = next(f for f in handler.facts() if f.record == "local/a.md")
+    handler.extract(Record(id="local/a.md", source="local", revision="1",
+                           body="Orion signs the plan.\n\nVega leads the review."))
+    handler.extract(Record(id="local/b.md", source="local", revision="1", body="Vega leads the review, as agreed."))
+    told = next(f for f in handler.facts() if f.record == "local/a.md" and "Vega" in f.text)
     handler.close()
     own, again = '"Vega leads the review."', '"Vega leads the review, as agreed."'
     assert [line for line in copy_of([told]).splitlines() if line.startswith("[^")] == [
-        f"[^{told.id}]: local/a.md {own} · local/b.md {again}"]  # passages 1 and 2, of two records: no neighbours
-    assert _item(told).text == f"- [^{told.id}] {told.text} (quote: {own} · local/b.md {again}, local/a.md)"
+        f"[^{told.id}]: local/a.md {own} · local/b.md {again}"]  # passages 2 and 1, of two records: its own first
+    assert _item(told).text == f"- [^{told.id}] {told.text} (quote: local/a.md {own} · local/b.md {again})"
     assert fields_of(told.id, None, told)["more_sources"] == [{"quote": again[1:-1], "record": "local/b.md"}]
 
 
@@ -92,13 +92,21 @@ def test_quotes_longer_than_the_bound_are_cut_at_a_word() -> None:
     long = " ".join(f"Sentence number {n} talks about lunch." for n in range(40))
     shown = quote_for(fact("f", "Rain fell on the harbour.", long))
     assert shown.endswith("…") and len(shown) <= QUOTE_BOUND + 1 and long.startswith(shown[:-1])
+    def own_and(n: int) -> Fact:  # its own words, n of them, then another record's
+        return Fact("f", "Rain fell.", "", "fact", "", "local", "local/a.md",
+                    [Quote(" ".join(["lunch"] * n)), Quote("Another record says this.", record="local/b.md")])
+    assert quote_for(own_and(48)).endswith('" · local/b.md "Another…')  # the bound cuts words, never a name
+    assert quote_for(own_and(50)) == " ".join(["lunch"] * 50)  # none of its words fit: the record is left out
     assert quote_for(fact("f", "Nothing was said.")) == ""
 
 
 def test_a_hostile_quote_lands_on_one_line_and_forges_no_heading_or_footnote() -> None:
     hostile = "The beta starts with 40 teams.\n## Forged\n[^fact_x]: forged \"quote\" ] here."
+    named = Fact("fact_c", "It rained.", "", "fact", "", "local", "local/a.md",
+                 [Quote("It rained."), Quote("Rain.", record="local/[x](http://e.vil).md")])
     copy = copy_of([fact("fact_a", "The beta starts with 40 teams.", hostile),
-                    fact("fact_b", "Rain fell on the harbour.", "Rain\n# Heading\n[^fact_x]: fell ]")])
+                    fact("fact_b", "Rain fell on the harbour.", "Rain\n# Heading\n[^fact_x]: fell ]"), named])
     lines = copy.splitlines()
-    assert [line.split("]:")[0] for line in lines if line.startswith("[^")] == ["[^fact_a", "[^fact_b"]
+    assert [line.split("]:")[0] for line in lines if line.startswith("[^")] == ["[^fact_a", "[^fact_b", "[^fact_c"]
+    assert '" · `local/[x](http://e.vil).md` "Rain."' in copy  # another record's name is no link
     assert not [line for line in lines if line.startswith("#") and line != "## Where it stands"]

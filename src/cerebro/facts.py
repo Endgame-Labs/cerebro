@@ -1327,9 +1327,9 @@ class FactoidExtraction(Extraction):
 
 
 def _fact(fact: Any, origin: Callable[[str], tuple[str, str]], kind: str) -> Fact:
-    """A Factoid fact as Cerebro's `Fact`, of the kind given, it and each quote from the record `origin` gives its
-    document. Its time is its record's, or when the record gives none, when it was extracted. A quote has no side,
-    since Factoid does not give one."""
+    """A Factoid fact as Cerebro's `Fact`, of the kind given. `origin` gives the source and record of a document: the
+    fact's own, and each quote's. Its time is its record's, or when the record gives none, when it was extracted. A
+    quote has no side, since Factoid does not give one."""
     mentions = [Mention(m.text, m.role or "about") for m in fact.mentions]
     subject = next((m.text for m in mentions if m.role == "subject"), mentions[0].text if mentions else "")
     source, record = origin(fact.document_id)
