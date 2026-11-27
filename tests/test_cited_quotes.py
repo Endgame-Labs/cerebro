@@ -4,6 +4,7 @@ source does not hold."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from test_facts import on_factoid
@@ -13,6 +14,7 @@ from cerebro.connector import Record
 from cerebro.evidence import _item
 from cerebro.facts import Fact, Quote
 from cerebro.ground import QUOTE_BOUND, fields_of, quote_for
+from cerebro.mcp import _fact_line
 
 HARBOR = ("Mara Okafor said the Harbor beta moves from 2 December to 9 December, because the data export is not "
           "finished.\nBen Ito owns the data export and expects to finish it by 4 December.\nThe beta starts with "
@@ -48,7 +50,8 @@ def test_the_quickstart_note_quoted_sentence_by_sentence_gives_each_fact_the_sen
                          "local/2026-11-16-harbor-sync.md)")
 
 
-def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_record(tmp_path: Path) -> None:
+def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_record_and_names_it_first_alone(
+        tmp_path: Path) -> None:
     handler, models = on_factoid(tmp_path)
     models.pairs = "duplicate"  # the second record states the first one's fact again, so Factoid adds its quote
     handler.extract(Record(id="local/a.md", source="local", revision="1",
@@ -61,6 +64,11 @@ def test_a_fact_another_record_states_again_shows_each_quote_under_its_own_recor
         f"[^{told.id}]: local/a.md {own} · local/b.md {again}"]  # passages 2 and 1, of two records: its own first
     assert _item(told).text == f"- [^{told.id}] {told.text} (quote: local/a.md {own} · local/b.md {again})"
     assert fields_of(told.id, None, told)["more_sources"] == [{"quote": again[1:-1], "record": "local/b.md"}]
+    alone = replace(told, quotes=[q for q in told.quotes if q.record == "local/b.md"])  # none of its own words kept
+    assert [line for line in copy_of([alone]).splitlines() if line.startswith("[^")] == [
+        f"[^{told.id}]: local/b.md {again}"]
+    assert _item(alone).text == f"- [^{told.id}] {told.text} (quote: local/b.md {again})"
+    assert _fact_line(alone).endswith(f"] {told.text} local/b.md {again}")
 
 
 def test_a_fact_that_kept_a_whole_passage_shows_it_and_never_a_sentence_guessed_from_shared_words() -> None:

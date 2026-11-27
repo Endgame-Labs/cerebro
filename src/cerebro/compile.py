@@ -79,7 +79,7 @@ from .evidence import (
     gather,
 )
 from .facts import Fact
-from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, quote_line, tallied, unmarked
+from .ground import FLOOR, Editor, Judge, Verdict, citation_of, fields_of, own_sides, quote_line, tallied, unmarked
 from .identity import in_working_set
 from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
@@ -357,11 +357,10 @@ def _by_tool(read: list[Fact | Article]) -> list[Evidence]:
         return []
     entry = Evidence(BY_TOOL)
     for fact in sorted({f.id: f for f in facts}.values(), key=lambda f: f.id):
-        quote, text = quote_for(fact), f"- [^{fact.id}] {fact.text}" + quote_line(fact)
-        entry.items.append(Item(f"fact:{fact.id}:{fact.status}", text, [Citation("fact", fact.id, fact.record, quote)],
-                                fact.at, fact.record))
+        text = f"- [^{fact.id}] {fact.text}" + quote_line(fact)
+        entry.items.append(Item(f"fact:{fact.id}:{fact.status}", text, [citation_of(fact)], fact.at, fact.record))
         entry.lines.append(text)
-        entry.citations.append(Citation("fact", fact.id, fact.record, quote))
+        entry.citations.append(citation_of(fact))
     return [entry]
 
 

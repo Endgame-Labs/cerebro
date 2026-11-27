@@ -43,8 +43,9 @@ from .evidence import CITE
 from .facts import Fact
 from .models import Answer, Decider, DecisionError, DecisionTooLarge, Score
 
-__all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "bounded", "counted",
-           "fields_of", "own_sides", "quote_for", "quote_line", "split_sentences", "tallied", "unmarked"]
+__all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "bounded",
+           "citation_of", "counted", "fields_of", "own_sides", "quote_for", "quote_line", "split_sentences", "tallied",
+           "unmarked"]
 
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
@@ -228,20 +229,28 @@ def _quoted(fact: Fact) -> list[tuple[str, str]]:
 
 
 def quote_for(fact: Fact) -> str:
-    """The words `_quoted` gives, on one line, as they follow the name of the fact's record: another record's after
-    ` · `, its name as `inert` shows it and a quotation mark, so a footnote reads `a.md "…" · b.md "…"`."""
-    return "".join(words if record == fact.record else f'" · {inert(record)} "{words}' for record, words in _quoted(fact))
+    """The words `_quoted` gives, on one line, as they follow the name of the first record they are in: another
+    record's after ` · `, its name as `inert` shows it and a quotation mark, so a footnote reads
+    `a.md "…" · b.md "…"`."""
+    quoted = _quoted(fact)
+    return "".join(words if n == 0 else f'" · {inert(record)} "{words}' for n, (record, words) in enumerate(quoted))
+
+
+def citation_of(fact: Fact) -> Citation:
+    """A citation of `fact`: the record named before its words, the fact's own unless none of the words `quote_for`
+    gives are its own, and those words."""
+    return Citation("fact", fact.id, next((record for record, _ in _quoted(fact)), fact.record), quote_for(fact))
 
 
 def quote_line(fact: Fact) -> str:
     """`quote_for` as a line of evidence gives it: after it the fact's record, as ` (quote: "…", a.md)`, or when it
-    holds another record's words, before it, as the footnote has it: ` (quote: a.md "…" · b.md "…")`. Empty for no
-    quote."""
+    holds another record's words, before it the record they start with, as the footnote has it:
+    ` (quote: a.md "…" · b.md "…")`. Empty for no quote."""
     quote = quote_for(fact)
     if not quote:
         return ""
     one = all(record == fact.record for record, _ in _quoted(fact))
-    return f' (quote: "{quote}", {fact.record})' if one else f' (quote: {fact.record} "{quote}")'
+    return f' (quote: "{quote}", {fact.record})' if one else f' (quote: {citation_of(fact).source} "{quote}")'
 
 
 def _stated_on(at: str) -> str:

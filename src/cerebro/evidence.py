@@ -383,12 +383,11 @@ TITLE_CAP = 120  # the characters of a title a fact's label shows
 
 def _item(thing: Any) -> Item:
     if isinstance(thing, Fact):
-        from .ground import quote_for, quote_line  # grounding imports this module, so its helpers load at the call
-        quote, text = quote_for(thing), f"- [^{thing.id}] {thing.text}" + quote_line(thing)
+        from .ground import citation_of, quote_line  # grounding imports this module, so its helpers load at the call
+        text = f"- [^{thing.id}] {thing.text}" + quote_line(thing)
         if thing.status == "superseded":  # history only, which the judge holds to what was
             text += f" [{superseded(thing)}]"
-        return Item(f"fact:{thing.id}", text, [Citation("fact", thing.id, thing.record, quote)], thing.at,
-                    thing.record)
+        return Item(f"fact:{thing.id}", text, [citation_of(thing)], thing.at, thing.record)
     if isinstance(thing, Article):
         id = thing.identity.id
         text = f"- [^{id}] {thing.identity.title}: {json.dumps(_front(thing), sort_keys=True, default=str)}"
