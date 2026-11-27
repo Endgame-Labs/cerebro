@@ -306,10 +306,10 @@ def test_a_query_on_a_field_some_articles_lack_keeps_those_that_hold_it_and_coun
         store.create(Identity(path, "projects", title, status=status))
     store.set_field("projects/orion", "size", Property(3, YOU, "2026-11-01T09:00:00Z"))
     store.set_field("projects/orion", "linked", Property(["projects/apollo"], YOU, "2026-11-01T09:00:00Z"))
-    store.set_field("projects/lyra", "stage", Property(None, YOU, "2026-11-01T09:00:00Z"))  # a null is no value
+    store.set_field("projects/lyra", "stage", Property(None, YOU, "2026-11-01T09:00:00Z"))  # a null: it has the field
     some = lookup.query(YOU, "projects", {"stage": "open"})
     assert [a.identity.id for a in some.items] == ["projects/apollo"]
-    assert some.warnings == ["2 articles of projects have no field stage, so the query left them out"]
+    assert some.warnings == ["1 article of projects has no field stage, so the query left it out"]
     one = "1 article of projects that the other filters keep has no field stage, so the query left it out"
     assert lookup.query(YOU, "projects", {"stage": "open", "size": 3}).warnings == [one]
     assert lookup.query(YOU, "projects", {"stage": "open"}, where=[Where("size", ">", 2)]).warnings == [one]
