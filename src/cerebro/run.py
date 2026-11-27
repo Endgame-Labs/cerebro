@@ -14,11 +14,12 @@ The file follows the parts of a run:
 - Which text lands. A candidate is a hand-in, or a reply that holds text under a heading the agent was given: the
   model marks its article by writing those headings, and code only reads the mark. The run lands its latest candidate
   with the mark. The first hand-in is held while the model is told, once, what `REVIEW` says of it, when it says
-  anything: grounding's scores of each sentence under its floor. A reply that hands in nothing is asked once to hand
-  in. With nothing to land, a normal end wrote nothing, which is no
+  anything: grounding's scores of each sentence under its floor, which takes one retry of its own. A reply that hands
+  in nothing is asked once to hand in. With nothing to land, a normal end wrote nothing, which is no
   failure, and a run whose room or calls were spent, or whose reply was cut at its output limit, fails, so it runs
   again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
-  content standing. An error on any request fails the run, once its tries are spent: a request to a provider is
+  content standing. An error on any request fails the run, once its tries are spent, unless it holds a hand-in,
+  which then lands: a request to a provider is
   streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with
   nothing new, and a timeout, a rate limit or a server error is tried again up to the model's `retries`, each try
   again checked first against the cap of the run's meter, and each failed try counted in what the run spent.
@@ -1389,10 +1390,11 @@ class PydanticRun(AgentRun):
             raise ModelRetry(unwritten(agent, self.root))
 
         said = _told(agent)
+        again = 1 + (takes.review is not None)  # the editor's word on a hand-in takes one retry of its own
         outputs: list[Any] = [ToolOutput(takes.handed, name=hand_in(agent), description=said[hand_in(agent)],
-                                         max_retries=1),
+                                         max_retries=again),
                               ToolOutput(nothing, name=NOTHING, description=said[NOTHING]), TextOutput(spoke)]
-        loop = pydantic_ai.Agent(_provided(model, self.key, route, tries), instructions=told,
+        loop = pydantic_ai.Agent(_provided(model, self.key, route, tries), instructions=told, retries={"output": again},
                                  output_type=outputs if writes else str, end_strategy="exhaustive",
                                  capabilities=[_guarded(room, takes, asked, self.masks, name)],
                                  tools=[_bounded(tool, room, self.masks) for tool in tools])
@@ -1423,8 +1425,7 @@ class PydanticRun(AgentRun):
                     error, ContentFilterError) and (not asked.offered or not _calls(messages[-1]))
                 if gave_up:  # the library's words go to the debug log, never the note
                     takes.ended(result, self._mask(), error=_cut(str(error), 200, self._mask()))
-                else:  # an error on a request, a refusal, or a call the loop refused until it gave up, whatever
-                    # the run held
+                else:  # an error on a request, a refusal, or a call the loop refused until it gave up
                     self._failed(result, error)
             except RoundCut as error:  # its meter's cap was reached: stopped, keeping what it spent
                 result.status, result.note = "cut", str(error)
@@ -1447,6 +1448,8 @@ class PydanticRun(AgentRun):
                 result.ended_at = stamp(self.clock())
                 error.partial_run = result  # type: ignore[attr-defined]
                 raise
+        if result.status == "failed" and takes.held is not None:  # a hand-in is never lost
+            result.status, result.result, result.note = "done", takes.held, f"{result.note}, so its first hand-in lands"
         kept = history if history is not None and len(history) >= len(messages) else messages
         result.usage = _spent(result.usage.model, kept, tries.failed)
         if result.status == STOPPED and asked.asking > 0:  # no count came back: what it read is held as spent

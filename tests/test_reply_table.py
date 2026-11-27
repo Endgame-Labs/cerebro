@@ -155,9 +155,9 @@ ROWS = [
     Row("writer", "T,H", "budget@2", "budget spent", None),
     # errors
     Row("writer", "UnexpectedModelBehavior", "none", "failed", None),
-    Row("writer", "HG,UnexpectedModelBehavior", "none", "failed", None),
-    Row("writer", "HG,ConnectError", "none", "failed", None),
-    Row("writer", "HG,ContentFilterError", "none", "failed", None),
+    Row("writer", "HG,UnexpectedModelBehavior", "none", "done", HG),
+    Row("writer", "HG,ConnectError", "none", "done", HG),
+    Row("writer", "HG,ContentFilterError", "none", "done", HG),
     Row("writer", "ContentFilterError", "none", "failed", None),
     # an agent whose file names no heading: a whole-body agent
     Row("whole", "U", "none", WROTE_NOTHING, None),

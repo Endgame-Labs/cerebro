@@ -176,6 +176,24 @@ def test_the_first_hand_in_is_held_while_the_run_is_told_once_what_the_editor_sa
     assert said == [turns[0][0][1]["text"]] * 3 + [turns[1][0][1]["text"], turns[0][0][1]["text"]]  # each first, once
 
 
+def test_once_the_editor_spoke_a_reply_in_text_or_a_broken_hand_in_is_still_asked_again_and_its_next_hand_in_lands(
+        ) -> None:
+    from suites.agent_run import citing_nothing
+
+    from cerebro.run import REVIEW
+
+    uncited, cited = [("write_article", {"text": "Uncited."})], [("write_article", {"text": "Cited [^f_1]."})]
+    broken = [("write_article", {"words": "Cited [^f_1]."})]
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        talked, mended = (PydanticRun(_talker(turns, [])).run(AGENT, EVIDENCE, [], Budget()) for turns in (
+            [uncited, "I will cite it.", cited], [uncited, broken, cited]))
+    finally:
+        REVIEW.reset(reviewing)
+    assert talked.result is not None and talked.result.text == "Cited [^f_1]."
+    assert mended.result is not None and mended.result.text == "Cited [^f_1]."
+
+
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote_nothing_never_done() -> None:
     """A normal end with nothing to take ran and wrote nothing: no failure. Its last reply holds
     no text to take."""
@@ -240,19 +258,19 @@ def test_a_curator_run_is_told_it_curates_and_has_no_part_to_write() -> None:
     assert offered == [[]] and told[0].startswith("You are a curator.") and "hand in" not in told[0]
 
 
-def _talker(turns: list[list[tuple[str, dict[str, object]]]], seen: list[int],
+def _talker(turns: list[list[tuple[str, dict[str, object]]] | str], seen: list[int],
             then: str = "All four parts are written, and here is what each says.") -> object:
-    """A function model that makes each turn's calls in order, then keeps talking with text, `then`, and counts its
-    turns."""
+    """A function model that makes each turn's calls in order, or says a turn's text, then keeps talking with text,
+    `then`, and counts its turns."""
     from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
     from pydantic_ai.models.function import AgentInfo, FunctionModel
 
     def reply(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         n = sum(isinstance(m, ModelResponse) for m in messages)
         seen.append(n)
-        if n < len(turns):
+        if n < len(turns) and not isinstance(turns[n], str):
             return ModelResponse(parts=[ToolCallPart(name, args) for name, args in turns[n]])
-        return ModelResponse(parts=[TextPart(then)])
+        return ModelResponse(parts=[TextPart(turns[n] if n < len(turns) else then)])
 
     return FunctionModel(reply, model_name="talker")
 

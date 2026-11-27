@@ -5,15 +5,12 @@ it was."""
 
 from __future__ import annotations
 
-import logging
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
-from pydantic_ai.exceptions import ContentFilterError, UnexpectedModelBehavior
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from suites.agent_run import AGENT, EVIDENCE, citing_nothing
@@ -191,19 +188,6 @@ def test_a_hand_in_with_listed_headings_after_the_article_lands_as_the_latest() 
 
 
 # -- an error on any request after a held hand-in fails the run
-
-
-@pytest.mark.parametrize("error", [UnexpectedModelBehavior("Invalid response from the provider"),
-                                   ContentFilterError("filtered", body="{}"), httpx.ConnectError("connection reset")],
-                         ids=["unexpected", "content-filter", "connect"])
-def test_an_error_after_a_held_hand_in_fails_the_run(error: Exception) -> None:
-    logging.disable(logging.CRITICAL)
-    try:
-        run = _run(_hand("The review moved to March."), error)
-    finally:
-        logging.disable(logging.NOTSET)
-    assert run.status == "failed" and run.result is None, (run.status, run.note)
-    assert type(error).__name__ in run.note
 
 
 # -- a curator spent or cut with nothing decided ends with nothing new and waits
