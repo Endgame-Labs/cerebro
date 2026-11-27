@@ -95,15 +95,15 @@ def test_the_documented_file_reads_as_the_file_the_template_laid_down_before(tmp
     assert sorted(source.settings["objects"]) == ["Account", "Contact", "User"]
 
 
-def _workspace(root: Path, text: str, run: ScriptedRun) -> tuple[Cerebro, Any]:
+def _workspace(root: Path, text: str, run: ScriptedRun, rows: dict[str, Any] | None = None) -> tuple[Cerebro, Any]:
     """A gtm workspace with `sources/salesforce.yaml` written as `text`, its curators taken out so the articles below
-    stand for what they admit, and the stand-in org in place of the CLI's login."""
+    stand for what they admit, and the stand-in org, holding `rows` or its seed, in place of the CLI's login."""
     scaffold.init(root, template="gtm", environ={})
     (root / "sources" / "salesforce.yaml").write_text(text, encoding="utf-8")
     for curator in (root / "agents").glob("*/curator.md"):
         curator.unlink()
     shutil.rmtree(root / "agents" / "digests")  # it lists the other collections, and reads no record
-    crm = make(FakeOrg(seed()), source=read_source(root / "sources" / "salesforce.yaml"))
+    crm = make(FakeOrg(rows or seed()), source=read_source(root / "sources" / "salesforce.yaml"))
     workspace = Cerebro(root, store=MemoryStore(), extraction=FakeExtraction(), secrets=FakeSecrets(),
                         connectors=[crm], clock=lambda: NOW, agent_run=run)
     workspace.sf_run = refuse_sf
@@ -175,10 +175,13 @@ class Keeping(Recording):
         return done
 
 
-def test_once_a_person_adds_the_documented_file_the_deal_agent_keeps_its_fields_and_the_report_sees_the_deals(
+def test_once_a_person_adds_the_documented_file_the_deal_agent_keeps_its_fields_however_old_and_the_report_sees_the_deals(
         tmp_path: Path) -> None:
     run = Keeping()
-    workspace, _ = _workspace(tmp_path, documented(), run)
+    rows = seed()
+    platform = next(row for row in rows["Opportunity"] if row["Name"] == "Initech platform")
+    platform["LastModifiedDate"] = platform["SystemModstamp"] = "2025-09-01T12:00:00.000+0000"  # over a year untouched
+    workspace, _ = _workspace(tmp_path, documented(), run, rows)
     for id, _, _ in ARTICLES[2:]:  # each deal linked to its account, as its curator admits it
         account = INITECH if "initech" in id else ACME
         workspace.store.set_field(id, "linked", Property([account], YOU, "2026-10-01T00:00:00Z"))

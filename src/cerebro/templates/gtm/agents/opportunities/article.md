@@ -1,6 +1,6 @@
 ---
 evidence:
-  - facts: { window: last_365_days }
+  - facts: {}   # every fact of this deal, whatever its date: a deal untouched for a year still gives its fields
 heartbeat: [change, manual]
 ---
 
