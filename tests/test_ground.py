@@ -64,7 +64,7 @@ term: ten years
 ```
 """
 MARKED = TEXT.replace("ten years [^f_1].", "ten years [^f_1].[^unsupported]").replace(
-    "now [^f_1].", "now [^f_1].[^unsupported]").replace(
+    "now [^f_1].", "now [^f_1].[^unsupported]").replace("years:**", "years:**[^unsupported]").replace(
     "ten years [^f_1] |", "ten years [^f_1][^unsupported] |").replace(
     "ten years\n```\n", "ten years\n```\n[^unsupported]\n")
 
@@ -82,7 +82,7 @@ class Weak(FakeDecider):
 
 
 def test_each_line_a_reader_sees_under_the_floor_lands_whole_with_one_mark_after_it_and_nothing_else_moves() -> None:
-    assert editor(Weak("ten years")).marked(TEXT) == MARKED  # a row, a comment and a fence, never a heading or a label
+    assert editor(Weak("ten years")).marked(TEXT) == MARKED  # a row, a comment, a label and a fence, never a heading
     copied = MARKED + "[^unsupported]: Not fully backed by the facts it cites.\n"
     assert editor(FakeDecider()).marked(copied) == TEXT  # a mark a later score does not call for comes off
 

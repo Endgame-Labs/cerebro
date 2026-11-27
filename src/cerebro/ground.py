@@ -8,8 +8,8 @@ short reason: the meaning on `SCALE` of the level it most likely holds. A citati
 nothing the run read, nor a fact of the article's own, reaches the judge and the writer as not found.
 
 Every sentence a reader sees is scored: a table's row and a block of code each as one, and an HTML comment as prose,
-since it lands shown as written. A heading, and a line that only labels what follows, such as `Risks:`, are context:
-the judge reads the heading with its passage, and neither is scored or marked. Code is what CommonMark reads as
+since it lands shown as written. A heading is context: the judge reads it with its passage, and it is neither
+scored nor marked. Code is what CommonMark reads as
 code: a fence, in a list item or a quote too, an indented block and a code span. A mark never goes inside it: a
 block's goes on a line of its own after it, where what holds the block holds text, and a fence left open, which holds
 the rest of the text, gets none.
@@ -491,11 +491,6 @@ def _said(text: str) -> str:
     return re.sub(r"\s+([.,;:!?])", r"\1", " ".join(re.sub(r"<!--|-->", " ", CITE.sub("", text)).split()))
 
 
-def _bare_label(text: str) -> bool:
-    """Whether a sentence only labels what follows, as `Risks:` does: it cites nothing and ends at a colon."""
-    return not CITE.search(text) and text.rstrip("*_ \t").endswith(":")
-
-
 def _unit(text: str, end: int | None, said: str = "", mark: str = MARK) -> _Unit:
     return _Unit(said or _said(text), list(dict.fromkeys(CITE.findall(text))), end, " ".join(text.split()), mark)
 
@@ -516,7 +511,7 @@ def _passages(text: str, first: str = "") -> list[_Passage]:
 
     def close(end: int) -> None:
         body, own = text[begin:end], _code(text[begin:end])
-        found = [_unit(s.text, begin + s.end) for s in _prose_sentences(body, own) if not _bare_label(s.text)] + [
+        found = [_unit(s.text, begin + s.end) for s in _prose_sentences(body, own)] + [
             _unit(s.text, begin + s.end) for s in _rows(body, own)] + [
             _unit(body[c.start:c.end], begin + c.end if c.mark else None, CITE.sub("", body[c.start:c.end]).strip(),
                   c.mark) for c in own]
