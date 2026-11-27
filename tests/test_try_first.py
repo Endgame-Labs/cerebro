@@ -1067,7 +1067,8 @@ def test_a_collection_compile_goes_on_past_a_failed_article_and_exits_1(tmp_path
     assert "failed   things/alpha  things/article: run run_failed wrote nothing: failed: the stand-in failed" in lines
     assert lines[-2:] == ["1 written, 0 fresh, 1 failed.", "Error: 1 agent run failed: see its line above"], lines
     one = w.run("compile", "--article", "things/beta")  # one article named: its line alone, rebuilt though fresh
-    assert one.output.splitlines() == ["wrote    things/beta  articles/things/beta.md"], one.output
+    assert one.output.splitlines() == ["wrote    things/beta  articles/things/beta.md",
+                                       "grounding things/beta: left 1 sentence unscored"], one.output
 
 
 # -- the small ones: refused forms, an empty name, refused files with --article, the sources line -----------------------

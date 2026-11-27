@@ -1081,7 +1081,7 @@ NOTES_MOST = 16_000  # characters of what grounding said that one run's line kee
 
 def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], lines: list[str]) -> None:
     """Keep what grounding did on the run's line of the `agent-runs` log: a later row of the same run, as it stood,
-    with `grounding`, the counts by kind, when there are any, and `notes`, the lines it held already, then each line
+    with `grounding`, the counts by kind, empty for a clean run, and `notes`, the lines it held already, then each line
     of what grounding scored and of what landing made safe, whole and masked as the store masks a row. One run keeps
     at most `NOTES_MOST` characters of them, whole lines in order, and a last line counts the rest, so the log grows by
     a bounded row a run."""
@@ -1099,8 +1099,7 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
             break
         kept.append(line)
         room -= len(line)
-    store.append("agent-runs", {**last, "article": run.target, **({"grounding": dict(tally)} if tally else {}),
-                                "notes": kept})
+    store.append("agent-runs", {**last, "article": run.target, "grounding": dict(tally), "notes": kept})
 
 
 def _scored(store: Store, run: Run, editor: Editor) -> None:

@@ -90,10 +90,11 @@ def test_off_a_terminal_a_pass_says_what_grounding_marked_as_counts_alone(
     assert "grounding digests/weekly: marked 2 sentences not fully backed" in passed.output.splitlines()
 
 
+@pytest.mark.parametrize("command", [["agents", "run"], ["compile", "--article"]])
 def test_a_run_by_hand_says_what_grounding_marked_and_keeps_the_count_on_its_runs_line_as_a_pass_does(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: list[str]) -> None:
     root = lay_out_workspace(tmp_path, monkeypatch)
-    ran = CliRunner().invoke(cli.main, ["agents", "run", "digests/weekly", "--workspace", str(root)])
+    ran = CliRunner().invoke(cli.main, [*command, "digests/weekly", "--workspace", str(root)])
     assert ran.exit_code == 0, ran.output
     assert "grounding digests/weekly: marked 1 sentence not fully backed" in ran.output.splitlines(), ran.output
     with cli.open_workspace(root) as workspace:  # no pass took in the note, so only the uncited line is marked
@@ -189,7 +190,8 @@ def test_what_landing_made_safe_is_counted_per_article_and_each_line_kept_on_its
     assert edits(kept) == edits(passed), kept
 
 
-def test_off_a_terminal_and_in_status_the_counts_are_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_off_a_terminal_and_in_status_the_latest_runs_counts_are_said(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import json
 
     root = lay_out_workspace(tmp_path, monkeypatch)
@@ -202,5 +204,15 @@ def test_off_a_terminal_and_in_status_the_counts_are_said(tmp_path: Path, monkey
     data = json.loads(CliRunner().invoke(cli.main, ["status", "--json", "--workspace", str(root)]).output)
     assert data["grounding"]["digests/weekly"]["marked"] == 2
     assert said is None or "marked" in said
+    with cli.open_workspace(root) as workspace:
+        extraction = workspace.extraction.handler  # the stand-in facts layer the pass filled
+    cited = Saying(lambda ids: {"Summary": f"The review moved [^{ids[0]}].", "Detail": f"Vega leads it [^{ids[1]}]."})
+    monkeypatch.setattr(cli, "open_workspace", lambda path: Cerebro(path, agent_run=cited, extraction=extraction,
+                                                                clock=lambda: datetime(2026, 11, 18, 9, tzinfo=UTC),
+                                                                decider=FakeDecider()))
+    clean = CliRunner().invoke(cli.main, ["agents", "run", "digests/weekly", "--workspace", str(root)])
+    assert clean.exit_code == 0 and "wrote    digests/weekly" in clean.output, clean.output
+    data = json.loads(CliRunner().invoke(cli.main, ["status", "--json", "--workspace", str(root)]).output)
+    assert data["grounding"] == {}, data["grounding"]  # the clean run by hand's, not the pass's before it
 
 

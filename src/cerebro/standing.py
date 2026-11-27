@@ -76,17 +76,17 @@ def runs_by_agent(workspace: Cerebro) -> dict[str, list[dict[str, Any]]]:
 
 
 def grounding(runs: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, int]]:
-    """What grounding did on each article, by its path, over the latest run of each agent on it that grounded
-    anything, as the run's line in the `agent-runs` log keeps it: the counts `status` adds up."""
+    """What grounding did on each article, by its path, over the latest run of each agent on it that landed text,
+    as the run's line in the `agent-runs` log keeps it: the counts `status` adds up. A clean article is left out."""
     latest: dict[tuple[str, str], dict[str, int]] = {}
     for agent, rows in runs.items():
         for row in rows:
-            if row.get("grounding"):
+            if "grounding" in row:
                 latest[(agent, str(row.get("article") or row.get("target")))] = row["grounding"]
     out: dict[str, dict[str, int]] = {}
     for (_, article), tally in latest.items():
-        kept = out.setdefault(article, {})
         for kind, n in tally.items():
+            kept = out.setdefault(article, {})
             kept[kind] = kept.get(kind, 0) + int(n)
     return out
 

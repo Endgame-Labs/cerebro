@@ -265,7 +265,7 @@ def test_each_command_runs_on_a_new_workspace(tmp_path: Path, stand_ins: None) -
     unscored = "grounding reports/weekly: left 2 sentences unscored"  # it has no decision model
     assert ran.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md", unscored], ran.output
     again = run("compile", "--article", "reports/weekly", "--workspace", workspace)  # a rebuild now runs whatever moved
-    assert again.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md"], again.output
+    assert again.output.splitlines() == ["wrote    reports/weekly  articles/reports/weekly.md", unscored], again.output
 
     read = json.loads(run("tools", "read", "--json", '{"ids": ["reports/weekly"]}', "--workspace", workspace).output)
     summary = read["articles"][0]["text"]
