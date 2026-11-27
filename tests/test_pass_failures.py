@@ -184,7 +184,7 @@ def test_a_writer_whose_run_stops_at_its_budget_with_nothing_handed_in_fails_and
     cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), clock=lambda: at[0],
                       connectors=[notes], agent_run=stand)
     first = cerebro.run_once()
-    assert first.failed["reports/weekly"].startswith("run run_1 wrote nothing: budget spent"), first
+    assert first.failed["reports/weekly"].startswith("run run_1: budget spent"), first
     waited = cerebro.run_once()
     assert stand.asked == ["reports/weekly"], waited
     assert waited.skipped["reports/weekly"] == (

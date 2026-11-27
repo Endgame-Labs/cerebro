@@ -88,7 +88,7 @@ def run(role: str, replies: str, limit: str = "none") -> Any:
     agent, forms = AGENTS[role], replies.split(",")
     budget = Budget(tool_calls=1) if limit == "calls" else Budget()
     if limit == "room@1":  # a budget the opening alone closes to tools, though it is not spent
-        held = tokens(instructions(agent) + opening(EVIDENCE, NOW))
+        held = tokens(instructions(agent) + opening(agent, EVIDENCE, NOW))
         budget = Budget(tokens_per_run=held + 10)
     first = {"room@2": int(budget.tokens_per_run * 0.85), "budget@2": budget.tokens_per_run}.get(limit, 0)
 
@@ -113,6 +113,7 @@ class Row:
     limit: str
     status: str  # how the run ends
     takes: str | None  # the text it lands, or None
+    note: str = ""  # what its note starts with, where the row says
 
 
 def _sub(text: str) -> str:
@@ -122,13 +123,13 @@ def _sub(text: str) -> str:
 ROWS = [
     # a writer of two headings, a normal end
     Row("writer", "H", "none", "done", ART),
-    Row("writer", "U", "none", WROTE_NOTHING, None),
-    Row("writer", "X", "none", WROTE_NOTHING, None),
-    Row("writer", "S", "none", WROTE_NOTHING, None),
-    Row("writer", "R", "none", WROTE_NOTHING, None),
-    Row("writer", "A", "none", WROTE_NOTHING, None),
-    Row("writer", "A,S", "none", WROTE_NOTHING, None),
-    Row("writer", "E", "none", WROTE_NOTHING, None),
+    Row("writer", "U", "none", "failed", None),
+    Row("writer", "X", "none", "failed", None),
+    Row("writer", "S", "none", "failed", None),
+    Row("writer", "R", "none", "failed", None),
+    Row("writer", "A", "none", "failed", None),
+    Row("writer", "A,S", "none", "failed", None),
+    Row("writer", "E", "none", "failed", None),
     Row("writer", "C", "none", "done", CUT),
     Row("writer", "HI", "none", "done", "## Summary\n\n" + U),
     Row("writer", "HG", "none", "done", HG),
@@ -147,8 +148,8 @@ ROWS = [
     Row("writer", "E,H", "none", "done", ART),
     Row("writer", "HG,H", "none", "done", ART),
     Row("writer", "HG,HG", "none", "done", HG),
-    Row("writer", "U,S", "none", WROTE_NOTHING, None),
-    Row("writer", "X,S", "none", WROTE_NOTHING, None),
+    Row("writer", "U,S", "none", "failed", None),
+    Row("writer", "X,S", "none", "failed", None),
     # a writer, spent or cut
     Row("writer", "E", "room@1", "failed", None),
     Row("writer", "U", "room@1", "failed", None),
@@ -159,6 +160,7 @@ ROWS = [
     Row("writer", "T,H", "calls", "done", ART),
     Row("writer", "T,E", "calls", "failed", None),
     Row("writer", "T,H", "budget@2", "budget spent", None),
+    Row("writer", "U", "budget@2", "budget spent", None),
     # errors
     Row("writer", "UnexpectedModelBehavior", "none", "failed", None),
     Row("writer", "HG,UnexpectedModelBehavior", "none", "done", HG),
@@ -169,9 +171,9 @@ ROWS = [
     Row("writer", "HG,H,ConnectError", "none", "done", ART),
     Row("writer", "ContentFilterError", "none", "failed", None),
     # an agent whose file names no heading: a whole-body agent
-    Row("whole", "U", "none", WROTE_NOTHING, None),
-    Row("whole", "H", "none", WROTE_NOTHING, None),
-    Row("whole", "S,U", "none", WROTE_NOTHING, None),
+    Row("whole", "U", "none", "failed", None),
+    Row("whole", "H", "none", "failed", None),
+    Row("whole", "S,U", "none", "failed", None),
     Row("whole", "HI", "none", "done", "## Summary\n\n" + U),
     Row("whole", "T,U", "calls", "done", U),
     Row("whole", "T,S", "calls", "done", "done"),
@@ -180,6 +182,7 @@ ROWS = [
     Row("subagent", "U", "none", WROTE_NOTHING, None),
     Row("subagent", "X", "none", WROTE_NOTHING, None),
     Row("subagent", "S", "none", WROTE_NOTHING, None),
+    Row("subagent", "U", "budget@2", WROTE_NOTHING, None, "the run holds "),
     Row("subagent", "H,N", "none", "done", _sub(RISKS)),
     Row("subagent", "S,H", "none", "done", _sub(RISKS)),
     Row("subagent", "T,U", "calls", "done", U),
@@ -211,3 +214,4 @@ def test_the_reply_table(row: Row) -> None:
         logging.disable(logging.NOTSET)
     taken = got.result.text if got.result is not None else None
     assert (got.status, taken) == (row.status, row.takes), (got.status, taken, got.note)
+    assert got.note.startswith(row.note), got.note

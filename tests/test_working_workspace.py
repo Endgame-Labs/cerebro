@@ -124,8 +124,6 @@ def test_a_pass_on_a_gtm_template_workspace_compiles_a_real_article_from_a_folde
                                     f"[^{renewal.id}].[^unsupported]")
         assert [c.id for c in compilation.citations] == [renewal.id]
         assert first.grounding["accounts/article on accounts/acme-corp"]["marked"] == 1
-        grounding = [r.data for r in workspace.store.rows("spend") if r.data["run"] == "ground accounts/subagents/overview"]
-        assert grounding and {row["layer"] for row in grounding} == {"compilation"}
         assert "Acme Corp renewed" in (root / "articles" / "accounts" / "acme-corp.md").read_text()
 
         # curators run one at a time, a curator after the ones whose collections it reads: the calls and risk

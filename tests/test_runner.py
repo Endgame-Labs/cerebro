@@ -168,7 +168,7 @@ def test_one_clock_reaches_the_window_the_run_and_the_ledger(tmp_path: Path) -> 
                       agent_run=PydanticRun.scripted(lambda p: seen.append(p) or cited(p)))
     cerebro.agent_run.clock, cerebro.agent_run.zone = cerebro.clock, ZoneInfo("Asia/Tokyo")
     assert cerebro.run_once().compiled == ["reports/weekly"]
-    assert seen[0].startswith("Today is Wed Nov 18, 2026.") and "A date-only note." in seen[0]
+    assert "Today is Wed Nov 18, 2026." in seen[0] and "A date-only note." in seen[0]
     assert cerebro.store.rows("spend")[0].data["at"] == "2026-11-17T20:00:00Z"
 
 

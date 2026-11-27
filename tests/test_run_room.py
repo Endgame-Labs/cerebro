@@ -1,7 +1,7 @@
 """What a run does with a model that never calls its hand-in, and with a curator that spends its room, each on a
 stand-in model of the shape live runs showed: a model that writes its text in its
 last reply in place of the hand-in has the parts its output names taken, and nothing written beside a tool call
-earlier; a run that ends with nothing to take ran and wrote nothing, and its inputs are recorded; calls made side by side each take only the room their reply uses; a
+earlier; a run that ends with nothing to take fails; calls made side by side each take only the room their reply uses; a
 curator keeps no room to write, since it decides with its tools, its decisions run whatever room is left, and at its
 floor its reads are refused with the line that says to decide now, told before that, ahead of a turn while it has its
 tools. The run's own lines count against no budget."""
@@ -9,13 +9,12 @@ tools. The run's own lines count against no budget."""
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from suites.agent_run import AGENT, EVIDENCE
 
-from cerebro.agent import Agent, Budget
+from cerebro.agent import Budget
 from cerebro.run import PydanticRun
 
 CITED = "## Summary\n\nThe review moved to March [^f_1]."
@@ -64,50 +63,12 @@ def test_the_last_reply_is_taken_whatever_it_cites_and_grounding_judges_it() -> 
     assert run.status == "done" and run.result is not None and run.result.text == uncited
 
 
-def test_text_beside_an_earlier_call_is_never_taken_and_a_run_whose_last_reply_is_empty_wrote_nothing() -> None:
+def test_text_beside_an_earlier_call_is_never_taken_and_a_run_whose_last_reply_is_empty_fails() -> None:
     turns = [[("lookup", {"id": "n1"})]]
     run = PydanticRun(_model(turns, "", beside={0: "Let me check [^f_1] next."})).run(
         AGENT, EVIDENCE, [lookup], Budget())
-    assert run.status == "wrote nothing" and run.result is None
+    assert run.status == "failed" and run.result is None
     assert run.note == "it handed in nothing, also after the turn that asked for it"
-
-
-def test_a_writer_that_handed_in_nothing_is_not_run_again_until_its_evidence_moves(tmp_path: Path) -> None:
-    from cerebro import Cerebro, Record
-    from cerebro.article import Identity
-    from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore
-
-    class Hands:
-        at = datetime(2026, 11, 17, 9, tzinfo=UTC)
-
-        def __call__(self) -> datetime:
-            return self.at
-
-    (tmp_path / "agents" / "things").mkdir(parents=True)
-    (tmp_path / "settings.yaml").write_text("{}\n")
-    (tmp_path / "agents" / "things" / "article.md").write_text(
-        "---\nevidence:\n  - query: { from: facts, source: notes }\n---\n\n# Output\n\n## Summary\n")
-    notes = FakeConnector("notes", [Record(id="n0", source="notes", revision="1", at="2026-11-17T08:00:00Z",
-                                           body="The first note.", keys={"topic": ["first"]})])
-    hands, said = Hands(), [""]
-
-    class Switching(PydanticRun):
-        def run(self, agent: Agent, evidence: Any, tools: Any, budget: Budget) -> Any:
-            done = PydanticRun(_model([], said[0])).run(agent, evidence, tools, budget)
-            return done
-
-    cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), clock=hands, connectors=[notes],
-                      agent_run=Switching("unused"))
-    cerebro.store.create(Identity("things/first", "things", "First", {"topic": ["first"]}))
-    first = cerebro.run_once()
-    assert first.compiled == [] and first.failed == {} and any("handed in nothing" in why for why in first.ran.values())
-    facts = cerebro.extraction.facts()  # type: ignore[union-attr]
-    said[0] = f"## Summary\n\nThe first note [^{facts[0].id}]."
-    hands.at += timedelta(minutes=1)
-    assert cerebro.run_once().compiled == []  # the same evidence: its inputs are recorded, so no model call
-    notes.add(Record(id="n1", source="notes", revision="1", at="2026-11-17T09:00:00Z", body="The second note.",
-                     keys={"topic": ["first"]}))
-    assert cerebro.run_once().compiled == ["things/first"]  # its evidence moved: never written, so at once
 
 
 # -- 2. calls made side by side

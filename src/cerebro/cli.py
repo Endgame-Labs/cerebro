@@ -40,7 +40,7 @@ from . import review as reviewing
 from . import trust as trusting
 from .agent import Agent, refusal_of, refused_ids
 from .app import Cerebro, PassResult
-from .budget import BudgetSpent
+from .budget import BudgetSpent, spend_digits
 from .caller import KIND_WORDS, Caller
 from .compile import Compiled, keep_grounding, left_alone, made_safe, out_of_working_set, targets
 from .connector import one_line
@@ -373,16 +373,6 @@ def _money(value: float | None, digits: int = 2) -> str:
     if value is None:
         return "no cap"
     return f"${value:,.{digits}f}"
-
-
-def _digits(total: float, parts: list[float]) -> int:
-    """The fewest places, two at least, at which the parts of a spend read as adding up to its total and no amount
-    spent reads as nothing."""
-    for digits in range(2, 7):
-        if round(sum(round(p, digits) for p in parts), digits) == round(total, digits) and all(
-                round(p, digits) > 0 for p in [total, *parts] if p > 0):
-            return digits
-    return 6
 
 
 def _key_line(variable: str) -> str:
@@ -1128,7 +1118,7 @@ def status(root: Path | None, as_json: bool) -> None:
         click.echo("search    search.rerank is on, and with no decision model matching keeps its search order")
     shown = ["extraction", "compilation"] + (["evaluation"] if spent.get("evaluation") else []) + (
         ["rerank"] if rerank["on"] or spent.get("rerank") else [])  # evals when run, re-ranking when on
-    digits = _digits(spent["total"], [spent[layer] for layer in shown])
+    digits = spend_digits(spent["total"], [spent[layer] for layer in shown])
     layers = [f"{layer} {_money(spent[layer], digits)}" + (f" of {_money(caps[layer])}" if caps[layer] is not None
                                                             else "") for layer in shown]
     _echo(f"spent     today {_money(spent['total'], digits)} of {_money(caps['total'])}: {', '.join(layers)}")
@@ -1437,6 +1427,7 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
         firsts: list[tuple[str, str, str]] = []
         named: set[str] = set()
         taken: dict[str, list[str]] = {"--accept-from": [], "--reject-from": []}
+        empty: list[tuple[str, list[str]]] = []  # each file with no admit waiting, and its newer proposals
         for flag, files in (("--accept-from", accept_from), ("--reject-from", reject_from)):
             for file in files:  # what the first run's list showed, when its stamp is at hand, and no newer row
                 agent = reviewing.agent_named(workspace, file, flag)
@@ -1450,17 +1441,23 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
                 until = first_run.shown_at(workspace, agent)
                 # a curator's flag decides its admits alone: its other proposals wait
                 shown = [id for id in reviewing.filed_by(workspace, YOU, file, until=until, flag=flag) if id in admits]
-                if not shown:  # a curator with no admit waiting is refused, exit 1
-                    later = _newer_than(workspace, file, flag, until)
-                    raise CerebroError(f"no admit from {file} is awaiting your review" + (
-                        f" that the first run's list showed, so nothing was decided: {_newer(later)}" if later else
-                        ", so nothing was decided: cerebro review lists what is"))
+                if not shown:  # each file is decided on its own: one with nothing waiting is said below
+                    empty.append((file, _newer_than(workspace, file, flag, until)))
+                    continue
                 if until:
                     firsts.append((file, flag, until))
                 taken[flag] += shown
         # an id --accept or --reject names stands as named: the ids are decided before the curators'
         accept = tuple(dict.fromkeys([*accept, *(id for id in taken["--accept-from"] if id not in reject)]))
         reject = tuple(dict.fromkeys([*reject, *(id for id in taken["--reject-from"] if id not in accept)]))
+        if empty and not (accept or reject):  # nothing at all to decide: refused, exit 1, naming each file
+            files, later = [file for file, _ in empty], [id for _, ids in empty for id in ids]
+            named = f"{', '.join(files[:-1])} or {files[-1]}" if len(files) > 1 else files[0]
+            raise CerebroError(f"no admit from {named} is awaiting your review" + (
+                f" that the first run's list showed, so nothing was decided: {_newer(later)}" if later else
+                ", so nothing was decided: cerebro review lists what is"))
+        skipped = [f"skipped   no admit from {file} is awaiting your review" + (
+            f" that the first run's list showed: {_newer(later)}" if later else "") for file, later in empty]
         if accept or reject:
             from .records import DecideResult
 
@@ -1479,8 +1476,10 @@ def review_command(root: Path | None, accept: tuple[str, ...], reject: tuple[str
                 raise SystemExit(1)
             if as_json:
                 _print_json(result)
+                for line in skipped:  # the reply has no key for them, so they go beside it
+                    _echo(line, err=True)
             else:
-                for line in reviewing.result_lines(result, stood):
+                for line in [*reviewing.result_lines(result, stood), *skipped]:
                     _echo(line)
                 newer = list(dict.fromkeys(id for file, flag, until in firsts
                                            for id in _newer_than(workspace, file, flag, until)))
@@ -1952,6 +1951,7 @@ def _capped(workspace: Cerebro, agent: Agent, article: str, line: str, capped: l
 def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled, capped: list[str]) -> str:
     """Print what `compile --article` did with one run, and give how it is
     counted: written, ran (it wrote nothing), fresh, waiting or failed."""
+    from .ground import counted
     from .run import WROTE_NOTHING
     from .runner import unmoved
 
@@ -1966,8 +1966,10 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         return "fresh"
     if compiled.article is not None:
         _echo(f"wrote    {article}  articles/{article}.md")
+        if did := counted(compiled.grounding):
+            _echo(f"grounding {article}: {did}")
         if compiled.cleaned:  # each line of it kept on its run's line, as a pass keeps it
-            keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+            keep_grounding(workspace.store, compiled.run, None, compiled.cleaned)
             _echo(f"cleaned  {article}: {made_safe(len(compiled.cleaned))}")
         if compiled.warning:
             _echo(f"warning  {compiled.warning}")
@@ -1979,8 +1981,7 @@ def _by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Compiled,
         key = agent.id if article == agent.id else f"{agent.id} on {article}"  # as agents run says it
         _echo(f"ran      {key}: wrote nothing: {run.note or 'it handed in nothing'}")
         return "ran"
-    why = f"run {run.id} wrote nothing: {run.status}" + (f": {run.note}" if run.note else "") if run else "no run"
-    _echo(f"failed   {article}  {agent.id}: {why}")
+    _echo(f"failed   {article}  {agent.id}: {failure(run, agent.id) if run else 'no run'}")
     return "failed"
 
 

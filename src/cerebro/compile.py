@@ -6,9 +6,10 @@ it writes, so the same evidence does not run it again. A run, or a gather, that 
 
 Every run goes through `run_agent`, so each is held to the cap and leaves its spend and its `agent-runs` row. An
 editor (`ground.Editor`) scores each sentence a run hands in against what it read, and the run is told, once, of
-each sentence under its floor: `min_grounding` in its agent file, else in `settings.yaml`, else `ground.FLOOR`. What
-it hands in lands whole in one write (`_land`), each sentence still under the floor marked, with the fields it set
-with `override`, or not at all; each sentence's score and why stay on its run's row of the `agent-runs` log. A run
+each number in brackets that cites nothing and each sentence under its floor: `min_grounding` in its agent file, else
+in `settings.yaml`, else `ground.FLOOR`. What it hands in lands whole in one write (`_land`), each sentence still
+under the floor marked, with the fields it set with `override`, or not at all; each sentence's score and why stay on
+its run's row of the `agent-runs` log. A run
 writes only its own part, its fields, and the article's identity only when a fixed article is first born. A run that
 lands nothing leaves the article as it was, but for a line whose facts were all withdrawn. Then the mirror copy is
 written. The store is the truth: a copy that fails to write is a warning, and the article stands.
@@ -65,7 +66,6 @@ from .errors import CerebroError
 from .evidence import (
     CITE,
     GATHER,
-    RUN_SPEND,
     SUMMARY_NOTE,
     DecisionKeepJudge,
     Evidence,
@@ -79,13 +79,13 @@ from .evidence import (
     gather,
 )
 from .facts import Fact
-from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, tallied, unmarked
+from .ground import FLOOR, Editor, Judge, Verdict, fields_of, own_sides, quote_for, quote_line, tallied, unmarked
 from .identity import in_working_set
 from .lookup import LINKED, MAX_READ, Lookup
 from .models import Decider, ModelSpec, TokenCount, cost, price_of, read_model
 from .records import RETRACTS, proposals
 from .reply import outside
-from .run import REVIEW, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, tokens
+from .run import REVIEW, RUN_ID, STANDS, STOPPED, WROTE_NOTHING, AgentRun, Run, Usage, masked, new_run_id, tokens
 from .secrets import MARK
 from .store import PropertyError, Store, StoreError, check_value, own_key, update_state
 from .tokens import MASKED
@@ -130,6 +130,7 @@ class Compiled:
     rendered: list[str] = field(default_factory=list)  # the headings code wrote from `rendered:` on a skip
     left_alone: str = ""  # why no agent ran: the article is out of the working set
     grounding: dict[str, int] = field(default_factory=dict)  # what grounding did, counted by kind
+    checks: float = 0.0  # what grounding's judge spent on its runs, in dollars
     cleaned: list[str] = field(default_factory=list)  # a line for each change landing made to the text, counted
 
 
@@ -356,8 +357,7 @@ def _by_tool(read: list[Fact | Article]) -> list[Evidence]:
         return []
     entry = Evidence(BY_TOOL)
     for fact in sorted({f.id: f for f in facts}.values(), key=lambda f: f.id):
-        quote = quote_for(fact)
-        text = f"- [^{fact.id}] {fact.text}" + (f' (quote: "{quote}", {fact.record})' if quote else "")
+        quote, text = quote_for(fact), f"- [^{fact.id}] {fact.text}" + quote_line(fact)
         entry.items.append(Item(f"fact:{fact.id}:{fact.status}", text, [Citation("fact", fact.id, fact.record, quote)],
                                 fact.at, fact.record))
         entry.lines.append(text)
@@ -609,6 +609,7 @@ class _Grounding:
         self.article, self.lookup, self.root, self.ledger = article, lookup, root, ledger
         self.clock, self.decider, self.decision, self.zone, self.floor = clock, decider, decision, zone, floor
         self.known: dict[tuple[str, str], list[Verdict]] = {}
+        self.judges: list[Held] = []  # each editor's judge held to the cap, which kept what it spent
 
     def linked(self) -> list[Fact]:
         """The current facts linked to the article, as `read` gives them."""
@@ -645,9 +646,10 @@ class _Grounding:
     def editor(self, agent: Agent, reads: Callable[[], list[Evidence]]) -> Editor:
         """An editor for one run of `agent`, held to the agent file's `min_grounding` or the workspace's. `reads`
         gives what the run has read when the editor is asked, so what it read by its tools is found too."""
-        decider = self.decider
+        decider, run = self.decider, new_run_id()
         if decider is not None and self.ledger is not None and self.decision is not None:
-            decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, f"{RUN_SPEND} {agent.id}")
+            decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, run)
+            self.judges.append(decider)
         judge = Judge(decider, self.article, _workspace(self.root), f"{self.clock().astimezone(self.zone):%Y-%m-%d}")
 
         def found(ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -667,7 +669,7 @@ class _Grounding:
                     for id in ids if id in citable or id in cited}
 
         floor = agent.min_grounding if agent.min_grounding is not None else self.floor
-        return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "")
+        return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "", run)
 
 
 def _workspace(root: Path) -> str:
@@ -753,8 +755,11 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
                  scheduled=scheduled, hold=hold, by_hand=by_hand, starter=starter, zone=zone, sources=sources,
                  judge=keep_judge(decider, store, clock, ledger, decision, root))
     if agent.role == "composer":
-        return _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
-    return _single(c, agent, article, descriptions, subagents)
+        compiled = _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
+    else:
+        compiled = _single(c, agent, article, descriptions, subagents)
+    compiled.checks = sum(judge.usd for judge in grounding.judges)
+    return compiled
 
 
 def keep_judge(decider: Decider | None, store: Store, clock: Clock, ledger: Ledger | None, decision: ModelSpec | None,
@@ -802,7 +807,7 @@ class _Compile:
         """`run_agent` under this compile's caps and in its log, priced on the model the agent's own file names, if it
         names one, else on the compile's, its first hand-in shown to `editor`."""
         return run_agent(agent, evidence, tools, agent_run=self.agent_run, store=self.store, ledger=self.ledger,
-                         model=_model(agent, self.model), clock=self.clock, review=editor.review)
+                         model=_model(agent, self.model), clock=self.clock, review=editor.review, run_id=editor.run)
 
 
 def _single(c: _Compile, agent: Agent, article: str, descriptions: Mapping[str, str] | None,
@@ -867,8 +872,6 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
                             _land_own(c, article, [agent.id], agent, evidence, writes, run.ended_at) or stamp_)
 
     lands = _lands(run, bool(text))  # land what it handed in
-    if lands and text:
-        _scored(store, run, editor)
     if not lands or not text:
         read()  # what it set lands, whatever its text
         notes: list[str] = []
@@ -903,6 +906,7 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
         again, noted = _land(store, article, parts, finished, [agent.id, *orphans], after)
     except _LeftAlone as left:
         return Compiled(run, store.article(article), skipped=True, waiting=str(left), left_alone=str(left), runs=[run])
+    _scored(store, run, editor)
     short = [] if run.status == "done" else [f"its run {run.status} ({run.note})"]
     short += [line for line in run.note.split("; ") if line.startswith(SUMMARY_NOTE)] if run.status == "done" else []
     return _finish(store, article, c.root, Compiled(run, None, dropped=dropped, runs=[run], notes=[*short, *noted],
@@ -1079,13 +1083,13 @@ def _wrote_nothing(store: Store, run: Run, dropped: list[str]) -> None:
 NOTES_MOST = 16_000  # characters of what grounding said that one run's line keeps, as `_kept_note` bounds a note
 
 
-def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], lines: list[str]) -> None:
+def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int] | None, lines: list[str]) -> None:
     """Keep what grounding did on the run's line of the `agent-runs` log: a later row of the same run, as it stood,
-    with `grounding`, the counts by kind, when there are any, and `notes`, the lines it held already, then each line
-    of what grounding scored and of what landing made safe, whole and masked as the store masks a row. One run keeps
-    at most `NOTES_MOST` characters of them, whole lines in order, and a last line counts the rest, so the log grows by
-    a bounded row a run."""
-    if run is None or not run.id or not (tally or lines):
+    with `notes`, the lines it held already, then each line of what grounding scored and of what landing made safe,
+    whole and masked as the store masks a row. A `tally` says the run's text lands: the row then names its `article`,
+    with `grounding`, the counts by kind, when there are any. One run keeps at most `NOTES_MOST` characters of the
+    lines, whole lines in order, and a last line counts the rest, so the log grows by a bounded row a run."""
+    if run is None or not run.id or tally is None and not lines:
         return
     if (last := _run_row(store, run)) is None:
         return
@@ -1099,15 +1103,15 @@ def keep_grounding(store: Store, run: Run | None, tally: Mapping[str, int], line
             break
         kept.append(line)
         room -= len(line)
-    store.append("agent-runs", {**last, "article": run.target, **({"grounding": dict(tally)} if tally else {}),
-                                "notes": kept})
+    landed = {} if tally is None else {"article": run.target, **({"grounding": dict(tally)} if tally else {})}
+    store.append("agent-runs", {**last, **landed, "notes": kept})
 
 
 def _scored(store: Store, run: Run, editor: Editor) -> None:
-    """Keep each sentence `editor` scored of a run's text on its run's row, and count what it marked and left unscored
-    toward the article compiling."""
+    """Keep each sentence `editor` scored of a run's text that lands, and what it marked and left unscored, on its
+    run's row, and count those toward the article compiling."""
     tallied(editor.tally)
-    keep_grounding(store, run, {}, editor.scores)
+    keep_grounding(store, run, editor.tally, editor.scores)
 
 
 # A subagent's run that failed fails the article's whole run, and nothing of it lands.
@@ -1484,7 +1488,6 @@ class _Composing:
             text, dropped = _landing(self.editor, composer, own.result.text)
             self.compiled.dropped += dropped
             if text:
-                _scored(self.c.store, own, self.editor)
                 self.plan = [_Part(composer.id, composer.id, text, self.everything, own.started_at, own.ended_at,
                                    whole=True)]
                 self.new = True
@@ -1613,10 +1616,6 @@ class _Composing:
             return compiled if not self.leave else _finish(store, article, c.root, compiled, c.grounding)
         if fixed(self.composer) and plan:
             birth(store, self.composer, article, min((p.started for p in plan if p.started), default=stamp(c.clock())))
-        for n, editor in self.editors.items():  # what each subagent's text that lands was scored, on its run's row
-            if self.subs[n].id in self.stood:
-                _scored(store, self.ran[n], editor)
-
         def after() -> None:
             self.land_sets()
             _keep_material(store, article, self.subs, self.held, landed=True)
@@ -1637,6 +1636,11 @@ class _Composing:
             compiled.notes += noted
         except _LeftAlone as left:
             return replace(compiled, article=store.article(article), skipped=True, waiting=str(left), left_alone=str(left))
+        for n, editor in self.editors.items():  # what each subagent's text that landed was scored, on its run's row
+            if self.subs[n].id in self.stood:
+                _scored(store, self.ran[n], editor)
+        if own is not None and self.composer.id in self.stood:
+            _scored(store, own, self.editor)
         if stood := [p.by for p in plan if p.by not in self.stood]:  # a part its writer left as it was, not text new
             compiled.dropped += _withdrawn(c.grounding, store, article, stood)  # to this run, which the editor scored
         return _finish(store, article, c.root, compiled, c.grounding)
@@ -1680,12 +1684,13 @@ def _cut(text: str, scrub: Callable[[str], str] | None, most: int) -> str:
 
 def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], *, agent_run: AgentRun,
               store: Store, ledger: Ledger | None = None, model: ModelSpec | None = None,
-              clock: Clock = system_clock, review: Callable[[str], str] | None = None) -> Run:
+              clock: Clock = system_clock, review: Callable[[str], str] | None = None, run_id: str = "") -> Run:
     """The part every agent's run shares, a writer's, a subagent's, a composer's or a curator's: reserve what the run
     may spend under the compilation cap, as `_estimate` gives it, run the agent with its tools on its evidence, its
-    first hand-in shown to `review`, and in every outcome, a run that fails or raises included, record what it spent
-    in the ledger and a row in the `agent-runs` log, then let the reservation go. Raises `BudgetSpent` before the run
-    when the cap is reached, or runs under way already hold what is left of it, as `HeldForRoom`."""
+    first hand-in shown to `review`, under `run_id` when its editor minted one, and in every outcome, a run that fails
+    or raises included, record what it spent in the ledger and a row in the `agent-runs` log, then let the reservation
+    go. Raises `BudgetSpent` before the run when the cap is reached, or runs under way already hold what is left of
+    it, as `HeldForRoom`."""
     if stopping(store):
         raise Stopped(f"serve is stopping, so {agent.id} does not run: it runs on a later pass")
     ticket = ledger.reserve("compilation", clock(), model, agent.budget.tokens_per_run,
@@ -1694,12 +1699,13 @@ def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., 
     interrupted = False  # an interrupt goes on up as itself, not as a stop of serve
     try:
         try:
-            reviewing = REVIEW.set(review)
+            reviewing, minted = REVIEW.set(review), RUN_ID.set(run_id)
             try:
                 with under(store):
                     run = agent_run.run(agent, evidence, tools, agent.budget)
             finally:
                 REVIEW.reset(reviewing)
+                RUN_ID.reset(minted)
         except BaseException as stopped:  # an interrupt: the turns it made before it count
             run, interrupted = getattr(stopped, "partial_run", None), True
             raise
@@ -1716,7 +1722,8 @@ def run_agent(agent: Agent, evidence: list[Evidence], tools: list[Callable[..., 
             "run": run.id if run else "", "agent": agent.id, "target": agent.target,
             "status": run.status if run else "failed", "provider": model.provider if model else "",
             "model": model.model if model else spent.model, "requests": spent.requests,
-            "tool_calls": spent.tool_calls, "ended_at": run.ended_at if run else stamp(clock()),
+            "tool_calls": spent.tool_calls, "input_tokens": spent.input_tokens, "output_tokens": spent.output_tokens,
+            "ended_at": run.ended_at if run else stamp(clock()),
             **({"note": _kept_note(store, run.note)} if run and run.note else {}),
             **({"refused": len(run.refused), "refused_tools": run.refused} if run and run.refused else {})})
         if run is not None and run.status == STOPPED and not interrupted:

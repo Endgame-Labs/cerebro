@@ -14,13 +14,13 @@ code: a fence, in a list item or a quote too, an indented block and a code span.
 block's goes on a line of its own after it, where what holds the block holds text, and a fence left open, which holds
 the rest of the text, gets none.
 
-`review` gives the writer each sentence under its floor, `min_grounding`, with its score and reason, while it can
-still revise. `marked` gives the text as it lands: `[^unsupported]` after each sentence under the floor, which the
-article defines once, as `UNSUPPORTED` reads. A passage scored once keeps its scores, by its heading and its text, as
-does one `seed` hands back with the scores it was given, so neither is asked about again; each reader marks them by
-its own floor. One with a sentence unscored, or an id not found, is asked about once a run, and again in a later run
-or once the run finds more of its ids. With no decision model, past the cap, or once a call fails, a sentence is
-unscored, and `scores` says why.
+`review` gives the writer each sentence under its floor, `min_grounding`, with its score and reason, and each number
+in brackets outside code that no line leads, while it can still revise. `marked` gives the text as it lands:
+`[^unsupported]` after each sentence under the floor, which the article defines once, as `UNSUPPORTED` reads. A
+passage scored once keeps its scores, by its heading and its text, as does one `seed` hands back with the scores it
+was given, so neither is asked about again; each reader marks them by its own floor. One with a sentence unscored,
+or an id not found, is asked about once a run, and again in a later run or once the run finds more of its ids. With
+no decision model, past the cap, or once a call fails, a sentence is unscored, and `scores` says why.
 """
 
 from __future__ import annotations
@@ -31,22 +31,25 @@ from collections.abc import Callable, Iterable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import pairwise
 from typing import Any
 
 from .article import MARK, UNSUPPORTED, Citation, atx
 from .budget import BudgetSpent
-from .clean import PARSER
+from .clean import PARSER, inert
 from .errors import CerebroError
 from .evidence import CITE
 from .facts import Fact
 from .models import Answer, Decider, DecisionError, DecisionTooLarge, Score
 
 __all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge", "Verdict", "counted", "fields_of",
-           "own_sides", "quote_for", "split_sentences", "tallied", "unmarked"]
+           "own_sides", "quote_for", "quote_line", "split_sentences", "tallied", "unmarked"]
 
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
 SPAN_OR_MARK = re.compile(r"(`+).*?(?<!`)\1(?!`)|" + re.escape(MARK))
+NUMBERED = re.compile(r"(?<!\\)\[(\d+)\](?![(\[])")  # a number in brackets, as [1], that no link holds
+LEADS = re.compile(r"[ >]*(?:(?:[-+*]|\d+[.)])[ \t]+)?\[(\d+)\]")  # a line it defines: `[1]: url`, or `- [1] a.md`
 # The judge's levels, lowest first, each with its value and what it means.
 SCALE = ((0.0, "made up: no cited fact holds what it says"),
          (0.2, "it misrepresents what its facts say of a person, a date, a number or a direction"),
@@ -201,20 +204,42 @@ def _bounded(text: str, bound: int = QUOTE_BOUND) -> str:
     return cut.rstrip(" ,;:") + "…"
 
 
-def quote_for(fact: Fact) -> str:
-    """The words of the source a citation of `fact` shows, on one line: the quotes the fact kept, each once, in the
-    record's order when their passages are known, up to `QUOTE_BOUND` characters, cut at a word. Quotes next to each
-    other in the record join with a space, others with ` … `. No code guesses which sentence holds a fact."""
-    kept: dict[str, int] = {}
+def _quoted(fact: Fact) -> list[tuple[str, str]]:
+    """The words of the source a citation of `fact` shows, by the record they are in, the fact's own first, each on one
+    line: its quotes of that record, each once, in the record's order when their passages are known, quotes next to
+    each other joined with a space and others with ` … `. Up to `QUOTE_BOUND` characters of words in all, cut at a
+    word: another record none of whose words fit is left out. No code guesses which sentence holds a fact."""
+    kept: dict[str, dict[str, int]] = {fact.record: {}}
     for q in fact.quotes:
         if q.text.strip():
-            kept.setdefault(" ".join(q.text.split()), q.passage)
-    quotes = sorted(kept.items(), key=lambda kv: kv[1]) if all(kept.values()) else list(kept.items())
-    shown = ""
-    for i, (text, n) in enumerate(quotes):
-        next_to = i > 0 and n > 0 and quotes[i - 1][1] > 0 and n == quotes[i - 1][1] + 1
-        shown += text if i == 0 else (" " if next_to else " … ") + text
-    return _bounded(shown)
+            kept.setdefault(q.record or fact.record, {}).setdefault(" ".join(q.text.split()), q.passage)
+    out, room = [], QUOTE_BOUND
+    for record, said in kept.items():
+        quotes = sorted(said.items(), key=lambda kv: kv[1]) if all(said.values()) else list(said.items())
+        words = quotes[0][0] if quotes else ""
+        for (_, m), (text, n) in pairwise(quotes):
+            words += (" " if m > 0 and n == m + 1 else " … ") + text
+        if words and (record == fact.record or len(words.split(" ", 1)[0]) < room):
+            out.append((record, _bounded(words, room)))
+            room -= len(out[-1][1])
+    return out
+
+
+def quote_for(fact: Fact) -> str:
+    """The words `_quoted` gives, on one line, as they follow the name of the fact's record: another record's after
+    ` · `, its name as `inert` shows it and a quotation mark, so a footnote reads `a.md "…" · b.md "…"`."""
+    return "".join(words if record == fact.record else f'" · {inert(record)} "{words}' for record, words in _quoted(fact))
+
+
+def quote_line(fact: Fact) -> str:
+    """`quote_for` as a line of evidence gives it: after it the fact's record, as ` (quote: "…", a.md)`, or when it
+    holds another record's words, before it, as the footnote has it: ` (quote: a.md "…" · b.md "…")`. Empty for no
+    quote."""
+    quote = quote_for(fact)
+    if not quote:
+        return ""
+    one = all(record == fact.record for record, _ in _quoted(fact))
+    return f' (quote: "{quote}", {fact.record})' if one else f' (quote: {fact.record} "{quote}")'
 
 
 def _stated_on(at: str) -> str:
@@ -263,9 +288,10 @@ def fields_of(id: str, citation: Citation | None, fact: Fact | None, text: str =
             fields["about"] = fact.subject
         if stated := _stated_on(fact.at):
             fields["stated_on"] = stated
-        sources = [{k: v for k, v in (("speaker", q.speaker.strip()),
-                                      ("quote", " ".join(q.text.split())), ("record", fact.record)) if v}
-                   for q in fact.quotes] or [{k: v for k, v in (("record", fact.record),) if v}]
+        sources = [{k: v for k, v in (("speaker", q.speaker.strip()), ("quote", " ".join(q.text.split())),
+                                      ("record", q.record or fact.record)) if v}
+                   for q in sorted(fact.quotes, key=lambda q: (q.record or fact.record) != fact.record)  # its own first
+                   ] or [{k: v for k, v in (("record", fact.record),) if v}]
         fields |= sources[0]
         if sources[1:]:
             fields["more_sources"] = sources[1:]
@@ -615,11 +641,12 @@ class Editor:
     by its own floor. A passage with a sentence left unscored, or an id not found, is not held there, and `asked`
     holds it for this run alone, by what it found of its ids. Text before any heading is read under `heading`, as a
     part is under the heading the article shows above it. `scores` keeps a line for each sentence of the text it marked, with its score and why, for the
-    run's log, and `tally` how many it marked and how many it left unscored."""
+    run's log, and `tally` how many it marked and how many it left unscored. `run` is the id of the run it scores,
+    which what its judge spends is kept under."""
 
     def __init__(self, judge: Judge, found: Found, floor: float = FLOOR,
-                 known: dict[tuple[str, str], list[Verdict]] | None = None, heading: str = ""):
-        self.judge, self.found, self.floor, self.heading = judge, found, floor, heading
+                 known: dict[tuple[str, str], list[Verdict]] | None = None, heading: str = "", run: str = ""):
+        self.judge, self.found, self.floor, self.heading, self.run = judge, found, floor, heading, run
         self.known = {} if known is None else known
         self.asked: dict[tuple[str, str, tuple[str, ...]], list[Verdict]] = {}
         self.scores: list[str] = []
@@ -682,13 +709,23 @@ class Editor:
 
     def review(self, text: str) -> str:
         """What the writer is told of `text` while it can revise: each sentence under the floor, with its score and
-        why, or "" when none is."""
+        why, and each number in brackets that no line leads, as `[1]: url` does, code read for neither, or "" when
+        there is nothing to tell."""
         weak = [v for v in self.judged(text) if v.weak]
-        if not weak:
-            return ""
+        plain, at, refs, led = unmarked(text), 0, [], []
+        code = _code(plain)
+        for line in plain.splitlines(keepends=True):
+            if not _in_code(code, at):
+                refs += NUMBERED.findall(SPAN_OR_MARK.sub("", line))
+                led += [m.group(1)] if (m := LEADS.match(line)) else []
+            at += len(line)
+        stray = [f"[{n}]" for n in dict.fromkeys(refs) if n not in led]
         lines = [f'- "{v.sentence}": ' + (f"{v.score:.2f}, " if v.score is not None else "") + v.reason
                  for v in weak]
-        return REVISE.format(floor=f"{self.floor:g}", sentences="\n".join(lines))
+        told = [REVISE.format(floor=f"{self.floor:g}", sentences="\n".join(lines))] if weak else []
+        if stray:
+            told.insert(0, CITE_BY_ID.format(refs=", ".join(stray)) + ("" if weak else f" {AGAIN}"))
+        return "\n\n".join(told)
 
 
 REVISE = """\
@@ -700,3 +737,8 @@ These sentences score under {floor}:
 For each, cite the evidence that backs it, say only what its facts say, or leave it as it stands when it is a fair \
 reading. Then hand in your whole text again. That hand-in lands as it is, and a sentence still under {floor} is \
 marked as not fully backed by the facts it cites."""
+CITE_BY_ID = """\
+These numbers in brackets cite nothing: {refs}. A citation is the id the evidence gives, copied exactly, as \
+[^fact_01m7p4qga4pxpjkgvf]. Cite the evidence by its id, take the number out, or leave it as it stands when it is \
+not a citation, as in words you quote from a source."""
+AGAIN = "Then hand in your whole text again."

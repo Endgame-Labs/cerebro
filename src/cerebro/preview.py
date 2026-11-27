@@ -440,7 +440,7 @@ def _sent(workspace: Cerebro, reading: _Reading, agent: Agent, evidence: list[Ev
           read: str, writes: bool = True) -> Shown:
     mask = workspace.mask_every()
     names = [getattr(t, "__name__", "") for t in tools] + ([hand_in(agent), NOTHING] if writes else [])
-    text = opening(evidence, workspace.clock().astimezone(workspace.zone), workspace.root)
+    text = opening(agent, evidence, workspace.clock().astimezone(workspace.zone), workspace.root)
     told = instructions(agent, workspace.root)
     room = _Room(agent.budget.tokens_per_run, told + text, agent.budget.tool_calls, deciding=not writes)
     closed = "" if not room.closed() else HAND_IN_ONLY if writes else NO_TOOL

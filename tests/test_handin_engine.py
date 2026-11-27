@@ -83,7 +83,7 @@ def test_text_then_an_empty_answer_or_a_cut_one_takes_the_text_before_the_ask() 
 def test_unheaded_text_before_the_ask_is_not_taken_for_a_writer_or_a_subagent() -> None:
     said = "The review moved to March [^f_1]."
     run = PydanticRun(_said(said, "Done.")).run(AGENT, EVIDENCE, [], Budget())
-    assert run.status == WROTE_NOTHING and run.result is None
+    assert run.status == "failed" and run.result is None
     sub = PydanticRun(_said(said, "Done.")).run(SUB, EVIDENCE, [], Budget())
     assert sub.status == WROTE_NOTHING and sub.result is None
     headed = PydanticRun(_said("## Other\n\n" + said, "Done.")).run(SUB, EVIDENCE, [], Budget())
@@ -106,9 +106,9 @@ def test_calls_spent_then_the_article_then_a_short_line_takes_the_article() -> N
     assert run.status == "done" and _taken(run) == ARTICLE
 
 
-def test_empty_then_empty_ran_and_wrote_nothing() -> None:
+def test_empty_then_empty_fails() -> None:
     run = PydanticRun(_said("")).run(AGENT, EVIDENCE, [], Budget())
-    assert run.status == WROTE_NOTHING and run.result is None and run.note == HANDED_NOTHING
+    assert run.status == "failed" and run.result is None and run.note == HANDED_NOTHING
 
 
 # -- a request of the ask that errors fails the run

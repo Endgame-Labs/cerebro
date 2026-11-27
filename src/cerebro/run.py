@@ -7,22 +7,24 @@ reaches a tool or any other module. This is the only module that imports Pydanti
 The file follows the parts of a run:
 
 - What the model is told. Bundled prompts wrap the agent's own words: `rules`, or `curator` for a curator, then the
-  headings its `# Output` names, as guidance, or for a subagent the heading its content goes under. Evidence reaches
-  the model as data, inside one `<evidence>` block whose tags no evidence can spell, so nothing a source or a person
-  wrote reads as an instruction. The model hands in with the loop's own output tools, named for its role, and one
-  more to say there is nothing to write, with why. An agent file's `model:` replaces the settings' model.
+  headings its `# Output` names, as guidance, or for a subagent the heading its content goes under. The opening names
+  the article a writer writes, by its path. Evidence reaches the model as data, inside one `<evidence>` block whose
+  tags no evidence can spell, so nothing a source or a person wrote reads as an instruction. The model hands in with the
+  loop's own output tools, named for its role, and one more to say there is nothing to write, with why. An agent file's
+  `model:` replaces the settings' model.
 - Which text lands. A candidate is a hand-in, or a reply that holds text under a heading the agent was given: the
   model marks its article by writing those headings, and code only reads the mark. The run lands its latest candidate
   with the mark. The first hand-in is held while the model is told, once, what `REVIEW` says of it, when it says
-  anything: grounding's scores of each sentence under its floor, which takes one retry of its own. A reply that hands
-  in nothing is asked once to hand in. With nothing to land, a normal end wrote nothing, which is no
-  failure, and a run whose room or calls were spent, or whose reply was cut at its output limit, fails, so it runs
-  again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
-  content standing. An error on any request fails the run, once its tries are spent: a held hand-in lands however
-  the run ends after it. A request to a provider is
-  streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with
-  nothing new, and a timeout, a rate limit or a server error is tried again up to the model's `retries`, each try
-  again checked first against the cap of the run's meter, and each failed try counted in what the run spent.
+  anything: grounding's scores of each sentence under its floor, and each number in brackets that cites nothing,
+  which takes one retry of its own. A reply that hands in nothing is asked once to hand in. With nothing to land, a
+  run that declined wrote nothing, which is no failure, as did a subagent's that ended normally or that its budget
+  stopped after a reply in plain text, and any other fails, so it runs again. A curator decides with its tools and
+  hands in nothing. A composer that adds nothing leaves its subagents' content standing. An error on any request
+  fails the run, once its tries are spent: a held hand-in lands however the run ends after it. A request to a
+  provider is streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes
+  `STALL` seconds with nothing new, and a timeout, a rate limit or a server error is tried again up to the model's
+  `retries`, each try again checked first against the cap of the run's meter, and each failed try counted in what
+  the run spent.
 - The room. A run holds against its token budget, each once, its opening, each reply of the model and each tool
   reply. One tool reply holds at most a quarter of the budget, and a fifth is kept to write with. A reply too large is
   cut, its largest lists first, then its longest texts, with a line first that says how to ask for less. Once tool
@@ -62,6 +64,7 @@ from .clock import Clock, stamp, system_clock
 from .errors import ArgumentsRefused, CerebroError
 from .evidence import Evidence
 from .file import File
+from .gateway import STOP
 from .models import RETRIES, TRIES, WAIT_MOST, ModelSpec, TokenCount, Tried, cost, wire_id
 
 if TYPE_CHECKING:
@@ -71,10 +74,10 @@ if TYPE_CHECKING:
     from .gateway import Gateway, Route
 
 __all__ = [
-    "ASK_MAX_TOKENS", "HAND_INS", "REVIEW", "ROLES", "WROTE_NOTHING", "AgentRun", "Entry", "PydanticRewriter",
+    "ASK_MAX_TOKENS", "HAND_INS", "REVIEW", "ROLES", "RUN_ID", "WROTE_NOTHING", "AgentRun", "Entry", "PydanticRewriter",
     "PydanticRun", "Result", "RewriteFailed", "Rewriter", "Run", "Usage", "block_model_requests", "fit", "hand_in",
     "instructions", "joined", "model_name",
-    "model_settings", "opening", "refused", "tokens",
+    "model_settings", "new_run_id", "opening", "refused", "tokens",
 ]
 
 
@@ -153,7 +156,6 @@ class AgentRun:
 
 FIRST_BYTE = 600.0  # seconds a request may wait for its reply to start, as a model that reasons unseen may take
 STALL = 60.0  # seconds a reply under way may go with nothing new before its request counts as failed
-REFUSALS = (401, 402, 403)  # a provider's answer that refuses the key itself, which no retry helps
 AGENT_CALL = "agent_run"  # what `{call}` holds in a header of an agent run's model calls
 
 
@@ -349,13 +351,18 @@ def _data(text: str, mask: Callable[[str], str] | None = None) -> str:
     return "\n".join([first, *(f"    {line}" for line in rest)])
 
 
-def opening(evidence: list[Evidence], now: datetime, root: Path | None = None,
+WRITES = "You write the article {}."  # its evidence may hold other articles' facts, and nothing else names it
+
+
+def opening(agent: Agent, evidence: list[Evidence], now: datetime, root: Path | None = None,
             mask: Callable[[str], str] | None = None) -> str:
-    """The run's first message: the day, then the evidence as data, inside one block no evidence can close: each
-    entry's heading, then each of its lines, as `_data` holds them, masked by `mask` when given."""
+    """The run's first message: the article it writes, but for a curator, then the day, then the evidence as data,
+    inside one block no evidence can close: each entry's heading, then each of its lines, as `_data` holds them,
+    masked by `mask` when given."""
     parts = [f"## {_data(entry.heading, mask)}\n\n"
              + "\n".join(_data(line, mask) for line in entry.lines or ["Nothing matched."]) for entry in evidence]
-    return prompts.fill("evidence", root, today=f"{now:%a %b %d, %Y}", evidence="\n\n".join(parts))
+    text = prompts.fill("evidence", root, today=f"{now:%a %b %d, %Y}", evidence="\n\n".join(parts))
+    return text if agent.role == "curator" else f"{WRITES.format(_data(agent.target, mask))}\n\n{text}"
 
 
 def unwritten(agent: Agent, root: Path | None = None) -> str:
@@ -381,6 +388,8 @@ def joined(agent: Agent, parts: dict[str, str]) -> str:
 # What a run's first hand-in is shown to, set around the run: what it gives back goes to the model, once, before the
 # run lands anything, and "" lets the hand-in land.
 REVIEW: ContextVar[Callable[[str], str] | None] = ContextVar("review", default=None)
+# The id a run takes, set around it when it was minted before the run, so what grounding spends on it is kept under it.
+RUN_ID: ContextVar[str] = ContextVar("run_id", default="")
 ENDS = " The run ends once it lands, so hand it in last, in the same reply as any field you set."
 
 
@@ -561,9 +570,9 @@ class _Candidates:
 
     def ended(self, run: Run, mask: Callable[[str], str] | None, cut: bool = False, error: str = "") -> None:
         """End the run on its replies that handed in nothing: it lands its latest candidate that carries the mark,
-        else a hand-in it holds. With none, a reply cut at its output limit, or a first such reply whose request
-        offered no tools, fails, so it runs again, but a curator's ends with what it decided; any other ran and wrote
-        nothing."""
+        else a hand-in it holds. With none, the run fails, so it runs again, but a curator's ends with what it
+        decided, a composer's leaves its subagents' content standing, and a subagent's wrote nothing, so its part
+        stands, but for one whose room or calls were spent or whose reply was cut."""
         cut = cut or any(reply.cut for reply in self.replies)
         last = CUT_NOTHING if cut else "" if not self.replies or self.replies[0].offered else SPENT_NOTHING
         if (got := self.latest()) is not None:
@@ -574,9 +583,9 @@ class _Candidates:
             run.status, run.note = WROTE_NOTHING, STANDS
         elif not self.writes and last:  # an empty verdict is no failure
             run.note = DECIDED_CUT if cut else DECIDED_SPENT
-        elif not last:  # no failure: its inputs are recorded, so it runs again only once one moves
+        elif not last:  # a subagent's failure fails its whole article, so its part stands instead
             said = self.writes and any(reply.text for reply in self.replies)
-            run.status = WROTE_NOTHING
+            run.status = "failed" if self.writes and self.agent.role != "subagent" else WROTE_NOTHING
             run.note = f"{HANDED_NOTHING}, and {UNMARKED}" if said else HANDED_NOTHING if self.writes \
                 else DECIDED_EMPTY
             logging.getLogger(__name__).debug("%s handed in nothing, also after the turn that asked: %s",
@@ -1369,7 +1378,7 @@ class PydanticRun(AgentRun):
         run.status, run.note = "failed", f"{type(error).__name__}: {_cut(str(error), 500, self._mask())}"
 
     def run(self, agent: Agent, evidence: list[Evidence], tools: list[Callable[..., Any]], budget: Budget) -> Run:
-        result = Run(id="run_" + uuid.uuid4().hex[:12], agent=agent.id, target=agent.target, status="done",
+        result = Run(id=RUN_ID.get() or new_run_id(), agent=agent.id, target=agent.target, status="done",
                      started_at=stamp(self.clock()))
         for tool in tools:
             if (name := getattr(tool, "__name__", "")) in HAND_INS:
@@ -1389,7 +1398,7 @@ class PydanticRun(AgentRun):
         model, name, settings, route = self._model(agent, result.id)
         takes = _Candidates(agent, REVIEW.get())
         writes = takes.writes
-        text = opening(evidence, self.clock().astimezone(self.zone), self.root, self._mask())
+        text = opening(agent, evidence, self.clock().astimezone(self.zone), self.root, self._mask())
         told = instructions(agent, self.root)
         room = _Room(budget.tokens_per_run, told + text, budget.tool_calls, deciding=not writes,
                      decisions=[getattr(t, "__name__", "") for t in tools if getattr(t, "decides", False)])
@@ -1444,16 +1453,19 @@ class PydanticRun(AgentRun):
                 result.status, result.note = "cut", str(error)
             except (UsageLimitExceeded, _OverBudget) as error:
                 answer = next((m for m in reversed(messages) if isinstance(m, ModelResponse)), None)
-                if isinstance(error, _OverBudget) and writes and answer is not None and not _calls(answer) and any(
-                        reply.text and not reply.calls for reply in takes.replies):
-                    takes.ended(result, self._mask())  # the budget stopped the ask to hand in, after a reply in plain text
-                else:
+                plain = isinstance(error, _OverBudget) and writes and answer is not None and not _calls(answer) \
+                    and any(reply.text and not reply.calls for reply in takes.replies)
+                if plain:  # the budget stopped the ask to hand in, after a reply in plain text
+                    takes.ended(result, self._mask())
+                if not plain or result.status == "failed":  # with nothing to land, the budget is why
                     takes.spent(result, str(error))
+                elif result.status == WROTE_NOTHING and takes.agent.role == "subagent":  # its part stands
+                    result.note = str(error) + takes.kept(result)
             except Exception as error:  # noqa: BLE001 - any model or loop error ends the run, and what it spent counts
                 self._failed(result, error)
                 if route is not None and isinstance(status := getattr(error, "status_code", None), int):
                     route.refused(status, AGENT_CALL)
-                if getattr(error, "status_code", None) in REFUSALS:  # the provider refuses the key: no retry helps
+                if getattr(error, "status_code", None) in STOP:  # a refused key or payment due: no retry helps
                     result.status = "refused"
             except BaseException as error:  # an interrupt: what the turns made spent counts, then it goes on up
                 result.status, result.note = "stopped", f"stopped by {type(error).__name__}"
@@ -1480,6 +1492,11 @@ class PydanticRun(AgentRun):
             result.result, result.note = masked(result.result, mask), masked(result.note, mask)
             result.transcript = masked(result.transcript, mask)
         return result
+
+
+def new_run_id() -> str:
+    """An id for a run, unique to it."""
+    return "run_" + uuid.uuid4().hex[:12]
 
 
 class RewriteFailed(CerebroError):

@@ -3,6 +3,9 @@ Neutral collections only: `things` and `parts`. Fakes only."""
 
 from __future__ import annotations
 
+import re
+from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +14,8 @@ from test_first_run import Script, carried, every_curator_weighs, review_rest  #
 from test_first_run_structure import RECORDS, by_record, lay_out_workspace, open_it
 
 from cerebro.connector import Record
-from cerebro.first_run import Choices, LocalApproval, run
+from cerebro.first_run import Choices, LocalApproval, lines, run
+from cerebro.identity import bound_to
 
 
 def rec(id: str, name: str, into: str, **keys: list[str]) -> Record:
@@ -28,12 +32,14 @@ def _names(one: Any) -> list[str]:
     return [] if one is None else [r.name for r in one.rows]
 
 
-# -- which held records a row speaks for is read by record or by one name, never by a shared domain
+# -- which held records a row speaks for is read by its record, its name and the keys its admit takes, never by a
+#    domain a record only carries
 
-VALE = [rec("P7", "Kim Vale", "parts", email=["kim@vale.example"], domain=["vale.example"]),
-        rec("P8", "Lee Moss", "parts", email=["lee@vale.example"], domain=["vale.example"]),
-        rec("M1", "Vale kickoff", "things", email=["kim@vale.example"], domain=["vale.example"]),
-        rec("M2", "Vale renewal", "things", email=["lee@vale.example"], domain=["vale.example"])]
+VALE = [replace(r, carried=["domain"]) for r in (  # a party's domain, which a record carries and is not named by
+    rec("P7", "Kim Vale", "parts", email=["kim@vale.example"], domain=["vale.example"]),
+    rec("P8", "Lee Moss", "parts", email=["lee@vale.example"], domain=["vale.example"]),
+    rec("M1", "Vale kickoff", "things", email=["kim@vale.example"], domain=["vale.example"]),
+    rec("M2", "Vale renewal", "things", email=["lee@vale.example"], domain=["vale.example"]))]
 
 
 def test_a_held_record_sharing_only_a_domain_with_a_proposed_row_is_on_a_list(tmp_path: Path) -> None:
@@ -55,19 +61,43 @@ def test_a_held_record_sharing_only_a_domain_with_a_declined_row_is_on_the_next_
         assert "Kim Vale" not in _names(listed(workspace, "parts"))  # what a person declined stays decided
 
 
+# -- each admit counts the held records it binds when it alone is accepted, and none of them is left out
+
+def test_each_admit_counts_the_held_records_it_binds_when_it_alone_is_accepted(tmp_path: Path) -> None:
+    records = [rec("U1", "Unit 7", "things", tag=["x"]), rec("U2", "Unit 8", "things", tag=["x"]),
+               rec("U3", "Unit 7 log", "things", tag=["x"]), rec("U4", "Unit 9", "things")]
+    things = [("admit", {"name": "Unit 7", "keys": {"tag": ["x"]}, "reason": "Named in three readings."}),
+              by_record("U2"), by_record("U4")]
+    shown, landed = {}, Counter()
+    for title in ("Unit 7", "Unit 8", "Unit 9"):  # each in a workspace of its own, accepted alone
+        with open_it(lay_out_workspace(tmp_path / title), Script({"things/curator": things, "parts/curator": []}),
+                     records) as workspace:
+            run(workspace, choose=None, say=lambda line: None)
+            pile = LocalApproval(workspace).pile()
+            assert [row.name for row in pile.rows() if row.left_out] == []
+            name = ""
+            for line in lines(pile):  # each count is a line under the row it counts for
+                if line.startswith("    ["):
+                    name = line[8:].rpartition("  ")[0]
+                elif counted := re.fullmatch(r" {10}(\d+) records", line):
+                    shown[name] = int(counted[1])
+            run(workspace, choose=lambda pile, title=title: Choices([[row.id] for row in pile.rows()
+                                                                     if row.name == title]), say=lambda line: None)
+            landed += Counter(workspace.store.article(id).identity.title for r in records
+                              for id in bound_to(workspace.store, r))
+    assert shown == {title: n for title, n in landed.items() if n > 1} and landed["Unit 9"] == 1, (shown, landed)
+
+
 # -- a row by name stands for one held record of that name
 
-def test_a_row_by_name_stands_for_one_namesake_and_the_other_is_on_the_list(tmp_path: Path) -> None:
+def test_a_left_out_row_by_name_stands_for_one_namesake_and_the_other_is_on_the_list(tmp_path: Path) -> None:
     records = [*RECORDS, rec("P7", "Kim Vale", "parts", email=["kim@vale.example"]),
                rec("P9", "Kim Vale", "parts", email=["kim@other.example"])]
-    for call in (("leave_out", {"name": "Kim Vale", "reason": "Named once."}),
-                 ("admit", {"name": "Kim Vale", "reason": "Named.", "group": "named"})):
-        script = Script({"things/curator": [], "parts/curator": [by_record("P1"), call]})
-        root = tmp_path / call[0]
-        root.mkdir()
-        with open_it(lay_out_workspace(root), script, records) as workspace:
-            run(workspace, choose=None, say=lambda line: None)
-            assert _names(listed(workspace, "parts")).count("Kim Vale") == 2, call[0]
+    script = Script({"things/curator": [], "parts/curator": [by_record("P1"), ("leave_out", {
+        "name": "Kim Vale", "reason": "Named once."})]})
+    with open_it(lay_out_workspace(tmp_path), script, records) as workspace:
+        run(workspace, choose=None, say=lambda line: None)
+        assert _names(listed(workspace, "parts")).count("Kim Vale") == 2
 
 
 @pytest.mark.parametrize("keys", [{"domain": ["other.example"]}, {"email": ["kim@other.example"]}])
@@ -83,7 +113,7 @@ def test_a_row_by_name_takes_the_namesake_its_keys_give(tmp_path: Path, keys: di
         assert ("Kim Vale", "not weighed", "P7") in rows
 
 
-# -- no fold of records into one in engine code: every held record is a row of its own
+# -- held records no admit takes are a row each, whatever name and address they share
 
 def test_two_records_of_one_name_and_one_address_are_two_rows(tmp_path: Path) -> None:
     records = [*RECORDS, rec("M1", "Weekly sync", "things", email=["kim@vale.example"]),

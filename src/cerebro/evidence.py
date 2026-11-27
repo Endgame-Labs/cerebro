@@ -73,7 +73,7 @@ from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, update_sta
 from .window import Span, WindowError, holds, is_window, read_time, span
 from .workspace import Workspace
 
-__all__ = ["BUILTIN", "KEEP_BAR", "KEEP_BARS", "LEFT_OUT", "RUN_SPEND", "DecisionKeepJudge", "Evidence",
+__all__ = ["BUILTIN", "KEEP_BAR", "KEEP_BARS", "LEFT_OUT", "DecisionKeepJudge", "Evidence",
            "EvidenceError", "Finished", "Item", "KeepJudge", "KeepScores", "LastSets", "Launch", "NotBuilt", "Passage",
            "ScriptError", "SqlError", "Starter", "blocks", "choose", "digest", "estimate_tokens", "fingerprint", "gather",
            "gather_failed", "keep_bar", "left_key", "preload", "render", "start"]
@@ -383,9 +383,8 @@ TITLE_CAP = 120  # the characters of a title a fact's label shows
 
 def _item(thing: Any) -> Item:
     if isinstance(thing, Fact):
-        from .ground import quote_for  # grounding imports this module, so its helper loads at the call
-        quote = quote_for(thing)
-        text = f"- [^{thing.id}] {thing.text}" + (f' (quote: "{quote}", {thing.record})' if quote else "")
+        from .ground import quote_for, quote_line  # grounding imports this module, so its helpers load at the call
+        quote, text = quote_for(thing), f"- [^{thing.id}] {thing.text}" + quote_line(thing)
         if thing.status == "superseded":  # history only, which the judge holds to what was
             text += f" [{superseded(thing)}]"
         return Item(f"fact:{thing.id}", text, [Citation("fact", thing.id, thing.record, quote)], thing.at,
@@ -1015,8 +1014,6 @@ def _spawn(launch: Launch, keeper: bool) -> subprocess.Popen[bytes]:
 
 # -- the gatherer: a method for each kind of line
 
-# What a run's grounding calls are kept under in the spend log, before its agent's id.
-RUN_SPEND = "ground"
 READ_AT_ONCE = 20  # the most articles one read asks for
 SUMMARY_NOTE = "summary:"  # how a line that says a summary fell back to an article's first part opens
 
@@ -1074,7 +1071,7 @@ class _Gatherer:
             return row.get("agent") in self.writers
         if source == "spend":
             run = str(row.get("run") or "")
-            return run in self.runs() or run in {f"{RUN_SPEND} {w}" for w in self.writers}
+            return run in self.runs()
         if source == "merges":
             return row.get("by") in self.writers
         if source == "proposals":
@@ -1626,12 +1623,15 @@ class _Gatherer:
             rows: Rows = select(query)
         except CerebroError as error:
             raise SqlError(f"{self.name}: evidence {n}, sql {name}: {error}") from None
+        from .ground import _bounded  # grounding imports this module, so its helper loads at the call
+
+        key = hashlib.sha256(query.encode()).hexdigest()[:8]  # the query as it ran: another query's rows get other ids
         query = " ".join(query.split())
         entry = Evidence(f"Sql {name}, the rows of {query}", spelled=f"sql {name}: {query}")
         for i, row in enumerate(rows.rows, 1):
-            cid = f"sql:{name}:{i}"
-            entry.items.append(Item(cid, f"- [^{cid}] {row_text(rows.columns, row)}",
-                                    [Citation("record", cid, f"sql:{name}")]))
+            cid, text = f"sql:{name}:{key}:{i}", row_text(rows.columns, row)
+            entry.items.append(Item(cid, f"- [^{cid}] {text}",
+                                    [Citation("record", cid, f"sql:{name}", _bounded(text))]))
         if rows.more:
             entry.notes.append(f"it gave more than {len(rows.rows)} rows, so the rest were not read: aggregate or "
                                "filter in the query")

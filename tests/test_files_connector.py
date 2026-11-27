@@ -350,16 +350,16 @@ def rows_of(root: Path, path: str, text: str, entry: Select, **options) -> tuple
     return connector, [connector.get(r.id) for r in every_page(connector).records]
 
 
-def test_a_csv_row_is_a_record_with_its_templates_filled(root: Path) -> None:
-    _, records = rows_of(root, "data/usage.csv", "thing_id,seats,login\nA1,42,2026-10-09\n\"A2\",\"7\",\n",
+def test_a_csv_row_is_a_record_with_its_templates_filled_and_its_text_leaves_out_an_empty_column(root: Path) -> None:
+    _, records = rows_of(root, "data/usage.csv", "thing_id,seats,login\nA1,42,2026-10-09\n\"A2\",,2026-10-11\n",
                          Select(rows="csv", id="thing-{row.thing_id}", url="{path}#L{line}", into="things",
                                 identity={"thing_id": "{row.thing_id}"},
                                 fields={"seats_active": "{row.seats}", "last_login": "{row.login}"}))
     assert [(r.id, r.url, r.into, r.keys, r.fields, r.body, r.extract) for r in records] == [
         ("thing-A1", "data/usage.csv#L2", "things", {"thing_id": ["A1"]},
          {"seats_active": "42", "last_login": "2026-10-09"}, "thing_id: A1\nseats: 42\nlogin: 2026-10-09\n", "records"),
-        ("thing-A2", "data/usage.csv#L3", "things", {"thing_id": ["A2"]}, {"seats_active": "7", "last_login": ""},
-         "thing_id: A2\nseats: 7\nlogin: \n", "records")]
+        ("thing-A2", "data/usage.csv#L3", "things", {"thing_id": ["A2"]},
+         {"seats_active": "", "last_login": "2026-10-11"}, "thing_id: A2\nlogin: 2026-10-11\n", "records")]
     assert all(r.revision.startswith("sha256:") for r in records)
 
 
@@ -374,13 +374,14 @@ def test_a_rows_default_id_and_url_are_its_path_and_the_line_it_starts_on(root: 
 def test_a_jsonl_row_reads_nested_and_numeric_values_and_leaves_out_a_field_it_lacks(root: Path) -> None:
     connector, records = rows_of(
         root, "data/things.jsonl",
-        "{\"id\": 7, \"owner\": {\"email\": \"dana@cedar.example\"}, \"arr\": 1.50}\n\n{\"id\": 8, \"owner\": null}\n",
+        "{\"id\": 7, \"owner\": {\"email\": \"dana@cedar.example\"}, \"arr\": 1.50}\n\n"
+        "{\"id\": 8, \"owner\": null, \"note\": \"  \", \"n\": 0}\n",
         Select(rows="jsonl", id="{row.id}", fields={"owner": "{row.owner.email}", "arr": "{row.arr}",
                                                     "missing": "{row.nope}"}))
     assert [(r.id, r.url, r.fields, r.body) for r in records] == [
         ("7", "data/things.jsonl#L1", {"owner": "dana@cedar.example", "arr": "1.50"},
          "arr: 1.50\nid: 7\nowner: {\"email\":\"dana@cedar.example\"}\n"),
-        ("8", "data/things.jsonl#L3", {"owner": ""}, "id: 8\nowner: \n")]
+        ("8", "data/things.jsonl#L3", {"owner": ""}, "id: 8\nn: 0\n")]
     assert ("7: fields.missing: the row has no nope, so the field is left out, and so in 1 more row "
             "(data/things.jsonl line 3)") in connector.list().notices
 

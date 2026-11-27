@@ -379,6 +379,14 @@ def _values(article: Article) -> dict[str, Any]:
     return values | {"id": article.identity.id}
 
 
+def _held(article: Article, key: str) -> list[Any]:
+    """The values an article holds in the field `key`, a list item by item, a null as no value: none when it has no
+    such field."""
+    prop = fields(article).get(key)
+    values = [] if prop is None else prop.value if isinstance(prop.value, list) else [prop.value]
+    return [v for v in values if v is not None]
+
+
 def _after_last_run(article: Article) -> str:
     """The first second after the article's last run started. A fact learned while that run was under way counts,
     one stamped in the second it started was linked by the pass that compiled it,
@@ -926,12 +934,12 @@ class StoreLookup(Lookup):
                    follow(_path(str(v)), moved)) if k == "id" else v
                for k, v in filters.items() if k in OWN and k not in windows}
 
-        def meets(article: Article) -> bool:
+        def meets(article: Article, but: str | None = None) -> bool:
             values = _values(article) | {"status": _status(article)}
             if "status" not in filters and not in_working_set(article.identity):
                 return False
             return all(compares(values.get(k), "in", v) for k, v in own.items()) \
-                and all(holds(w, values.get(k), zone) for k, w in windows.items())
+                and all(holds(w, values.get(k), zone) for k, w in windows.items() if k != but)
 
         kept = [a for a in found if meets(a)]
         ordered = order_by or (self._order_field(kept) if kept else "")
@@ -945,9 +953,28 @@ class StoreLookup(Lookup):
                            reverse=order_by is None or descending)
             kept = timed + [a for a in kept if not moment(a)]
         result = QueryResult(source, [*kept, *standing], len(kept) + len(standing), said, ordered)
-        if not kept and not standing:  # only a query that matched nothing reads the whole collection, to say why
+        if not kept and not standing:
             result.warnings += self._why_empty(source, self.store.query(source), filters, windows, where)
+        elif kept and not narrowed:  # a search's words keep fewer than the filters, so a count would be too many
+            result.warnings += self._lacking(source, filters, literal, where, meets)
         return result
+
+    def _lacking(self, source: str, filters: dict[str, Any], literal: dict[str, Any], where: list[Where] | None,
+                 meets: Callable[[Article, str], bool]) -> list[str]:
+        """For a query that kept some articles, a line for each filtered field that articles the other filters keep
+        lack, so the query left them out, with how many. None for `linked`: an article with no links links to nothing,
+        so it is rightly out of what links to one. A query that kept none says why instead, so no count moves the
+        digest of an evidence line that matched nothing."""
+        lines = []
+        for key in filters:
+            if key in OWN or key == LINKED:
+                continue
+            others = [self._wanted(k, v) for k, v in literal.items() if k != key] + list(where or [])
+            if n := sum(1 for a in self.store.query(source, others) if meets(a, key) and not _held(a, key)):
+                kept_by = " that the other filters keep" if len(filters) > 1 or where else ""
+                lines.append(f"{n} article{'s' if n > 1 else ''} of {source}{kept_by} {'have' if n > 1 else 'has'} "
+                             f"no field {key}, so the query left {'them' if n > 1 else 'it'} out")
+        return lines
 
     def _order_field(self, articles: list[Article]) -> str:
         """The field a collection comes newest first by: the first of `ORDER_FIELDS` one of its articles holds as a
@@ -978,8 +1005,7 @@ class StoreLookup(Lookup):
         for key, want in filters.items():
             if key in windows or key in OWN:
                 continue
-            held = [v for a in every if (prop := fields(a).get(key)) is not None for v in
-                    (prop.value if isinstance(prop.value, list) else [prop.value])]
+            held = [v for a in every for v in _held(a, key)]
             if not held:
                 lines.append(f"no article of {source} has a field {key}: check its name")
                 continue

@@ -642,6 +642,7 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
         tmp_path: Path, monkeypatch: Any) -> None:
     from cerebro import cli
     from cerebro.fakes import FakeExtraction
+    from cerebro.records import Proposal, propose
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     root = tmp_path / "w"
@@ -657,7 +658,14 @@ def test_reviews_refusals_of_a_curators_flag_and_of_a_faulty_line_say_no_section
 
     seen = [run("--reject-from", "agents/projects/article.md"), run("--accept-from", "agents/projects/curator.md"),
             run("--reject-from", "agents/projects/curator.md,projects/curator"), run("--accept", "p_nothing")]
+    (root / "agents" / "places").mkdir()
+    (root / "agents" / "places" / "curator.md").write_text((root / "agents" / "projects" / "curator.md").read_text())
+    with Cerebro(root, extraction=FakeExtraction()) as workspace:  # one curator with an admit waiting, one with none
+        propose(workspace.store, Proposal("p_east00000001", "article.admit", "places/east", Caller("places/curator",
+                                          "agent"), "2026-11-18T09:00:00Z", payload={"name": "East"}, reason="Named."))
+    seen.append(run("--accept-from", "agents/projects/curator.md,agents/places/curator.md"))
     assert any("curates no collection" in line for line in seen), seen
+    assert any(line.startswith("skipped") for line in seen[-1].splitlines()), seen
     assert any("no admit from agents/projects/curator.md is awaiting your review" in line for line in seen), seen
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
@@ -888,7 +896,8 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
 
 
-def test_what_a_find_or_a_query_that_matched_nothing_says_has_no_section_brain_or_page() -> None:
+def test_what_a_find_or_a_query_that_matched_nothing_or_left_some_out_says_has_no_section_brain_or_page() -> None:
+    from cerebro.article import Property
     from cerebro.fakes import FakeExtraction
     from cerebro.lookup import StoreLookup
 
@@ -901,7 +910,11 @@ def test_what_a_find_or_a_query_that_matched_nothing_says_has_no_section_brain_o
     for source, filters in (("facts", {"kind": "decision"}), ("proposals", {"kind": "merge"}), ("merges", {}),
                             ("things", {}), ("things", {"status": "waiting"}), ("things", {"id": "things/a"})):
         said += lookup.query(you, source, filters).warnings
-    assert len(said) == 8 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+    for id in ("things/b", "things/c"):
+        store.create(Identity(id, "things", id[-1].upper()))
+    store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
+    said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
+    assert len(said) == 9 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:
