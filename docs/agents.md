@@ -225,7 +225,7 @@ Atlas moves to spring because the audit runs late [^fact_01m7p4qga4pxpjkgvf].[^u
 [^unsupported]: Not fully backed by the facts it cites.
 ```
 
-When a person or a source takes a fact back, Cerebro takes out the lines that cite only that fact from text its writer did not rewrite in that run.
+When a person takes a fact back, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
 
 The floor is 0.6. Set `min_grounding` in an agent's front matter to change it for that agent, or in `settings.yaml` for every agent:
 
@@ -233,7 +233,7 @@ The floor is 0.6. Set `min_grounding` in an agent's front matter to change it fo
 min_grounding: 0.8   # this agent's sentences are marked under 0.8
 ```
 
-The run counts what it marked, as `grounding projects/atlas: marked 1 sentence not fully backed`. Each sentence's score and why stay on its run's row of the `agent-runs` log: `query { "from": "agent-runs", "run": "run_4f2a9c1e7b3d" }` reads them. With no decision model, no sentence is scored or marked, and the run says how many it left unscored.
+The run counts what it marked, as `grounding projects/atlas: marked 1 sentence not fully backed`. Each sentence's score and why stay on its run's row of the `agent-runs` log, up to 16,000 characters a run, and a last line counts the rest. `query { "from": "agent-runs", "run": "run_4f2a9c1e7b3d" }` reads them. With no decision model, no sentence is scored or marked, and the run says how many it left unscored.
 
 ## Kinds of fact
 
