@@ -15,11 +15,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .caller import Caller, describe
-from .connector import Record, one_line
+from .connector import one_line
 from .errors import CerebroError
 from .identity import would_bind
 from .records import DecideResult, Decision, Review, proposals
-from .store import scrubbed
+from .store import record_from, scrubbed
 
 if TYPE_CHECKING:
     from .app import Cerebro
@@ -117,7 +117,7 @@ def binds(workspace: Cerebro, item: Review) -> list[dict[str, Any]]:
     found = []
     for source in sorted(workspace.connectors):
         for row in workspace.store.state(f"held:{source}") or []:
-            held = Record(id=str(row["id"]), source=source, revision="", keys=row.get("keys") or {})
+            held = record_from({"source": source, "revision": "", **row})  # with the keys it only carries
             if would_bind(workspace.store, keys, title, held):  # as the store binds: by keys, any case, or by title
                 found.append({"source": source, "id": row["id"], "fields": row.get("fields") or {}})
     return scrubbed(found, workspace.mask_every())  # every secret the store holds, read yet or not

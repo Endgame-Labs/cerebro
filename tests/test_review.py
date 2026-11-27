@@ -277,8 +277,10 @@ def test_binds_matches_an_admits_keys_as_the_store_does_without_regard_to_case_a
     (tmp_path / "agents" / "things" / "curator.md").write_text("---\nauthority: { admit: true, archive: true, merge: true, split: true }\nheartbeat: [manual]\n---\nKeep.\n")
     mail = Record(id="m1", source="mail", revision="1", body="Hi.", keys={"domain": ["alder.example"]}, into="things")
     note = Record(id="n1", source="mail", revision="1", body="Hi.", keys={"account": ["Birch Yard"]}, into="things")
+    party = Record(id="p1", source="mail", revision="1", body="Hi.", keys={"domain": ["alder.example"]}, into="things",
+                   carried=["domain"])  # a key it only carries binds nothing, as landing reads it
     with Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), connectors=[
-            FakeConnector("mail", [mail, note])], agent_run=ScriptedRun(lambda prompt: {})) as workspace:
+            FakeConnector("mail", [mail, note, party])], agent_run=ScriptedRun(lambda prompt: {})) as workspace:
         workspace.run_once()
         by_key = SimpleNamespace(proposal=SimpleNamespace(kind="article.admit", target="things/alder", payload={
             "keys": {"domain": ["Alder.example"]}}))
