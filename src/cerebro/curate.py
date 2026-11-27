@@ -1329,6 +1329,7 @@ class _Curation:
                     there = follow(q.target, moved)
                     said = called if there == path else str(q.payload.get("name") or q.payload.get("title") or "")
                     raise CurateError(f"{q.id} was approved as {said} at {there}: admit it there")
+            payload["name"] = called  # as approved, though the curator gave its path or another spelling
             made = [p.payload for p in proposals(self.store, "accepted") if p.kind == "article.admit"
                     and p.applied.get("article") == path]  # another thing made there takes the next free path
             asked = path if all(one_thing(m, own[0].payload) for m in made) else free_path(self.store, path)

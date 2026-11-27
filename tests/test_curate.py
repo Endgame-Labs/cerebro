@@ -842,10 +842,10 @@ def test_an_approved_proposal_the_curator_filed_is_made_at_its_path_and_name(tmp
     [asked] = proposals(store, "waiting")
     decide(store, YOU, accept=[asked.id], clock=lambda: NOW)
     done = curate(store, agent, [("admit", {"name": "Alder", "reason": "asked", "proposals": [asked.id]}),
-                                 ("admit", {"name": "Alder Works", "reason": "asked", "proposals": [asked.id]})],
+                                 ("admit", {"name": "things/alder-works", "reason": "asked", "proposals": [asked.id]})],
                   tmp_path)
     assert said(done)[0] == refusal(f"{asked.id} was approved as Alder Works at things/alder-works: admit it there")
-    assert [a.identity.id for a in store.query("things")] == ["things/alder-works"]
+    assert [(a.identity.id, a.identity.title) for a in store.query("things")] == [("things/alder-works", "Alder Works")]
     curate(store, agent, [("admit", {"name": "Ann", "reason": "a maker"}), ("admit", {"name": "Bob", "reason": "a maker"})],
            tmp_path)
     ann, bob = proposals(store, "waiting")
