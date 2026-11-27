@@ -16,7 +16,7 @@ five of that collection's most notable articles, each a bullet that links the
 article, such as [Halcyon Mills](../accounts/halcyon-mills.md), then a dash and a few
 plain words on what it is. Keep the citation the article gives the words you
 take, such as [^fact_01m7p4qga4pxpjkgvf]. Leave out the heading of a collection that has
-no articles yet: a line that says so cites nothing, so it would not land.
+no articles yet.
 
 # Output
 
