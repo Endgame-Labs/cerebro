@@ -475,7 +475,7 @@ def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) 
     withdrew: list[str] = []
     record = store.record(id)
     if not was_retracted(record, retracted_records(store)):  # type: ignore[arg-type]
-        propose(store, proposal)  # filed before its facts are read, so a pass that saves them later withdraws them
+        propose(store, proposal)  # filed before its facts are read: a pass that saves them later sees it as it checks
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
         if was_retracted(replace(record, at=fact.at), {id: at}):  # type: ignore[type-var]  # a fact has its revision's time

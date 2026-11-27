@@ -896,7 +896,10 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
 
 
-def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_no_section_brain_or_page() -> None:
+def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_no_section_brain_or_page(
+        tmp_path: Path) -> None:
+    from test_runner import kept_notes
+
     from cerebro.article import Property
     from cerebro.connector import Record
     from cerebro.fakes import FakeExtraction
@@ -918,7 +921,18 @@ def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_
         store.create(Identity(id, "things", id[-1].upper()))
     store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
     said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
-    assert len(said) == 10 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+
+    class Racing(FakeExtraction):  # a retract lands as a pass reads the note
+        def extract(self, record: Record) -> Any:
+            if not raced:
+                raced.append(cerebro.retract(you, record.id, "wrong"))
+            return super().extract(record)
+
+    raced: list[Any] = []
+    cerebro = kept_notes(tmp_path, Racing())
+    cerebro.handle.keep(you, "note", "The gate opens at six.", {"collection": "notes"})
+    said += [line for line in cerebro.run_once().notices if "retracted" in line]
+    assert len(said) == 11 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:

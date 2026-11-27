@@ -1713,7 +1713,8 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
     """Extract each record an app kept or revised since the last pass, and each that failed before, as a source's
     records are: held to the extraction cap, and tried again next pass when it fails. A revised record is handed over
     whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded. A revision a
-    retract took back is never extracted, and what it gave while a retract landed is withdrawn."""
+    retract took back is never extracted, and what it gave while a retract landed, or what a pass that stopped
+    before it checked left, is withdrawn."""
     landed: list[tuple[Fact, Record]] = []
     kinds = {kind for app in workspace.apps for kind in app.kinds}
     if not kinds or workspace.extraction is None:
@@ -1726,7 +1727,10 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
     for id in dict.fromkeys([*result.tried[KEPT_FAILED], *fresh]):
         handled.add(id)
         record = workspace.store.record(id)
-        if record is None or record.source not in kinds or was_retracted(record, taken):
+        if record is None or record.source not in kinds:
+            continue
+        if was_retracted(record, taken):
+            _withdraw_retracted(workspace, record, result)
             continue
         if record.extract not in ("records", "none") and "extraction" in result.stopped:  # it checks the ledger
             _waits(result, KEPT_FAILED, id)
@@ -1740,17 +1744,30 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
             else:
                 result.failed[f"{record.source}/{id}"] = f"{type(error).__name__}: {error}"
             waiting.append(id)
-    late = retracted_records(workspace.store) if landed else {}  # a retract that landed while its record was read
-    gone = [f for f, r in landed if was_retracted(r, late)]
-    for fact in gone:
-        workspace.extraction.retract(fact.id)
-    result.extracted -= len(gone)
-    landed = [(f, r) for f, r in landed if not was_retracted(r, late)]
-    with workspace.store.exclusive():  # only what this pass handled leaves the lists, and the cursor only moves on
+    with workspace.store.exclusive():  # waits for a tell's or a decide's write, so a retract filed in it is read here
+        late = retracted_records(workspace.store) if landed else {}
+        overtaken = {r.id: r for _, r in landed if was_retracted(r, late)}  # a retract landed while it was read
+        for record in overtaken.values():
+            _withdraw_retracted(workspace, record, result)
+        # only what this pass handled leaves the lists, and the cursor only moves on
         update_state(workspace.store, KEPT_CURSOR, lambda now: max(now or 0, later))
         update_state(workspace.store, KEPT_FAILED, lambda now: list(dict.fromkeys(
             [*(id for id in now or [] if id not in handled), *waiting])))
-    return landed
+    result.read -= len(overtaken)
+    result.extracted -= sum(r.id in overtaken for _, r in landed)
+    return [(f, r) for f, r in landed if r.id not in overtaken]
+
+
+def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) -> None:
+    """Withdraw every fact a record a retract took back still has standing, as the retract's own sweep does, and say
+    so: those a pass read as the retract landed, and those a pass that stopped before it checked left behind."""
+    standing = workspace.extraction.facts(record=record.id, latest=False)  # type: ignore[union-attr]
+    for fact in standing:
+        workspace.extraction.retract(fact.id)  # type: ignore[union-attr]
+    if standing:
+        result.retracted += len(standing)
+        result.notices.append(f"{record.source}/{record.id}: record {record.id} was retracted, so the facts read from "
+                              "it are withdrawn")
 
 
 def _retry_told(workspace: Cerebro, result: PassResult) -> None:
