@@ -874,6 +874,21 @@ def test_a_later_revision_of_a_retracted_kept_record_is_read_unless_a_caller_ret
     assert [f.text for f in extraction.facts(record=kept.id)] == ["The east gate opens at noon."]
 
 
+def test_a_callers_retract_after_an_apps_own_is_filed_and_holds_back_the_apps_later_saves(tmp_path: Path) -> None:
+    from cerebro.caller import Caller
+
+    you, app, hands = Caller("you", "person"), Caller("notes", "app"), Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
+    cerebro = kept_notes(tmp_path, FakeExtraction(), hands)
+    kept = cerebro.handle.keep(app, "note", "The gate opens at nine.", {"collection": "notes"})
+    cerebro.run_once()
+    cerebro.retract(app, kept.id, "its own")
+    hands.move(seconds=5)
+    assert kept.id in cerebro.retract(you, kept.id, "gone for good").withdrew
+    hands.move(seconds=5)
+    cerebro.handle.keep(app, "note", "The gate opens at ten.", {"collection": "notes"}, id=kept.id)
+    assert cerebro.run_once().read == 0
+
+
 def test_a_retract_that_lands_while_a_pass_reads_its_kept_record_leaves_nothing_of_the_read(tmp_path: Path) -> None:
     from cerebro.caller import Caller
 

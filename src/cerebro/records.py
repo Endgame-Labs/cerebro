@@ -486,7 +486,9 @@ def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) 
             if id in claims and not _lives(claims[id], datetime.fromisoformat(at)):  # its facts are retracted below
                 store.set_state(CLAIMED, {k: v for k, v in claims.items() if k != id})
     withdrew: list[str] = []
-    if not was_retracted(store.record(id), retracted_records(store)):  # type: ignore[arg-type]
+    taken = retracted_records(store)
+    first_by_caller = decided_by_caller(proposal) and not taken.get(id, ("", ""))[1]  # it holds back later saves
+    if first_by_caller or not was_retracted(store.record(id), taken):  # type: ignore[arg-type]
         propose(store, proposal)  # filed before its facts are read: a pass that saves them later sees it as it checks
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
