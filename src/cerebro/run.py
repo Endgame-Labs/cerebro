@@ -1467,6 +1467,9 @@ class PydanticRun(AgentRun):
             result.usage.requests += asked.asking
             result.usage.input_tokens += room.held
         if result.status not in ("done", WROTE_NOTHING, "budget spent") and takes.held is not None:
+            if result.status in ("failed", "refused"):  # the library's words go to the debug log, never the note
+                logging.getLogger(__name__).debug("%s failed after its first hand-in: %s", agent.id, result.note)
+                result.note = "it failed after its first hand-in"
             result.note += takes.kept(result)  # a hand-in is never lost, however the run ends after it
             result.status = "done"
         result.transcript = _entries(kept)

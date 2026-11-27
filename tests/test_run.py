@@ -195,6 +195,21 @@ def test_a_reply_in_text_and_a_broken_hand_in_are_each_asked_again_before_and_af
     assert early.status == "done" and early.result is not None and early.result.text == "Cited [^f_1]."
 
 
+def test_a_held_hand_in_that_lands_after_the_run_failed_says_in_plain_words_that_the_run_failed() -> None:
+    from suites.agent_run import citing_nothing
+
+    from cerebro.run import REVIEW
+
+    uncited, broken = [("write_article", {"text": "Uncited."})], [("write_article", {"words": "Cited [^f_1]."})]
+    reviewing = REVIEW.set(citing_nothing)
+    try:
+        run = PydanticRun(_talker([uncited, broken, broken], [])).run(AGENT, EVIDENCE, [], Budget())
+    finally:
+        REVIEW.reset(reviewing)
+    assert run.status == "done" and run.result is not None and run.result.text == "Uncited."
+    assert run.note == "it failed after its first hand-in, so the text it handed in lands"  # not the library's words
+
+
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote_nothing_never_done() -> None:
     """A normal end with nothing to take ran and wrote nothing: no failure. Its last reply holds
     no text to take. It is asked once, though an editor reads its hand-ins: the editor's retry is its own."""
