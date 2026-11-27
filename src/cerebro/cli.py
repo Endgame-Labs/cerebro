@@ -3685,7 +3685,7 @@ def _print_first_run(out: Any, workspace: Cerebro | None = None, failures: dict[
                      screen: Any = None) -> None:
     """What a first run did: each refusal of a decision, then the pass that built what was approved with the late
     lists' lines among its warnings, or the line that says the list waits, which exits 2. `failures` are what failed
-    in its rounds: one that still fails, as a curator whose last run failed or what the pass failed again, counts
+    in it: one that still fails, as a curator whose last run failed or what the pass failed again, counts
     with the pass's own, and one that ran since without failing is a warning. It exits 1 as `_pass_fails` says, the
     articles its approval admitted counting as work that landed. On a terminal's `screen`, the run ends as
     `_print_end` ends it, with the pass that built."""

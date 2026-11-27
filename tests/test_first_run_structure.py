@@ -114,6 +114,23 @@ def test_a_curator_proposing_the_parent_of_what_it_found_files_a_row_of_that_col
         assert script.ran.count("things/curator") == 1  # one round: the row aimed at it is the person's to tick
 
 
+def test_an_admit_one_curator_filed_into_another_collection_and_the_person_left_stays_theirs_after_the_build(
+        tmp_path: Path) -> None:
+    script = Seen({"parts/curator": [by_record("P1"), parent_of("T1")], "things/curator": [by_record("T2")]})
+
+    def own_only(pile: Any) -> Choices:  # the person takes what each collection's own curator proposed
+        rows = [row for row in pile.rows() if not row.left_out]
+        return Choices(accept=[[row.id] for row in rows if row.agent.split("/")[0] == row.collection],
+                       leave=[row.id for row in rows if row.agent.split("/")[0] != row.collection])
+
+    with open_it(lay_out_workspace(tmp_path), script) as workspace:
+        run(workspace, choose=own_only)
+        [left] = [p for p in proposals(workspace.store, "waiting") if p.by.name == "parts/curator"]
+        assert left.id in [item.proposal.id for item in workspace.review()]  # still the person's to decide
+        workspace.curate(next(agent for agent in workspace.agents if agent.id == "things/curator"))
+        assert left.id not in script.read["things/curator"][-1]  # its keeper does not take it up
+
+
 def test_the_same_curator_does_not_file_one_parent_twice_and_a_record_not_held_there_is_refused(tmp_path: Path) -> None:
     script = Script({"parts/curator": [], "things/curator": []})
     with open_it(lay_out_workspace(tmp_path), script) as workspace:
@@ -210,18 +227,24 @@ class Seen(Script):
         return super().run(agent, evidence, tools, budget)
 
 
-def test_the_first_run_lists_the_held_records_of_the_last_two_weeks_and_a_later_run_lists_the_older(
+def test_the_first_run_and_its_build_list_the_held_records_of_the_last_two_weeks_and_a_later_run_the_older(
         tmp_path: Path) -> None:
+    from cerebro.first_run import OLDER
+
     old = Record(id="T9", source="src", revision="1", at="2026-10-01T09:00:00Z",
                  keys={"code": ["t-oak"], "name": ["Old Oak"]}, fields={"name": "Old Oak"}, body="Old Oak.",
                  into="things")
     script = Seen({"things/curator": [by_record("T1")], "parts/curator": []})
+    piles: list[Any] = []
     with open_it(lay_out_workspace(tmp_path), script, [*RECORDS, old]) as workspace:
-        run(workspace, choose=Choices.starter)
+        run(workspace, choose=lambda pile: piles.append(pile) or Choices.starter(pile))
         first, build = script.read["things/curator"]  # discovery, then the run that makes what was approved
-        assert "Birch Hall" in first and "Old Oak" not in first
+        assert "Birch Hall" in first and "Old Oak" not in first and "Old Oak" not in build
         assert "2026-11-04" in first  # the older one is counted, from the day the window opens
-        assert "Old Oak" in build
+        things = next(listed for listed in piles[0].lists if listed.collection == "things")
+        assert ("Old Oak", OLDER) in [(row.name, row.reason) for row in things.left()]
+        workspace.curate(next(agent for agent in workspace.agents if agent.id == "things/curator"))
+        assert "Old Oak" in script.read["things/curator"][-1]  # a later run lists it
 
 
 # -- every curator reads the queue as discovery began -----------------------------------------------------------

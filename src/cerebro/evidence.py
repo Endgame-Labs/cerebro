@@ -44,6 +44,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
@@ -199,21 +200,27 @@ def gather(agent: Agent, lookup: Lookup, functions: dict[str, Callable[..., Any]
 
 
 RECENT_DAYS = 14  # while the workspace's first run is open, a held list lists the records of these last days
+IN_FIRST_BUILD: ContextVar[bool] = ContextVar("in_first_build", default=False)  # while a first run's build runs curators
+
+
+def recent_since(now: datetime) -> str:
+    """The first day a first run's held list lists, as of `now`: `RECENT_DAYS` days before it."""
+    return (now - timedelta(days=RECENT_DAYS)).date().isoformat()
 
 
 def _held(agent: Agent, lookup: Lookup, sources: Mapping[str, Connector], n: int, line: EvidenceLine,
           root: Path | None, now: datetime | None) -> Evidence:
     """A held line's entry, with who is on the workspace's own side as the workspace at `root` says, or no one. While
-    the workspace's first run is open, it lists the records of the last `RECENT_DAYS` days before `now`, and counts
-    the older ones, which the runs after it list."""
+    the workspace's first run is open, and while its build runs curators, it lists the records of the last
+    `RECENT_DAYS` days before `now`, and counts the older ones, which the runs after it list."""
     from .held import entry, first_run_open  # held imports this module, so it loads at the call
     from .project import read_ours
     ours = read_ours(root) if root is not None else NOBODY
     store = getattr(lookup, "store", None)
     out = entry(agent, store, list(sources), n, line, ours)
-    if now is None or not first_run_open(store):
+    if now is None or not (first_run_open(store) or IN_FIRST_BUILD.get()):
         return out
-    since = (now - timedelta(days=RECENT_DAYS)).date().isoformat()
+    since = recent_since(now)
     kept = [item for item in out.items if not item.at or item.at[:10] >= since]
     if older := len(out.items) - len(kept):
         out.items = kept

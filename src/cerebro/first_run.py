@@ -62,6 +62,7 @@ from .curate import (
     yes_left,
 )
 from .errors import CerebroError
+from .evidence import IN_FIRST_BUILD, RECENT_DAYS, recent_since
 from .held import Held, _name, held_for, own_held, own_names, own_side, passed_first_run, same_name
 from .identity import redirects, working
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
@@ -102,6 +103,7 @@ __all__ = [
 
 KEY = FIRST_RUN_KEY
 NOT_WEIGHED = "not weighed"  # the reason of a held record its curator neither proposed nor left out
+OLDER = f"not weighed yet: older than {RECENT_DAYS} days"  # the reason of one the first run's held list did not show
 DECLINED = "declined"  # a session whose list a person declined whole: the next run begins a new one
 CLOSED_OVER = 10  # a group of more rows than this starts closed, and the plain list shows its first rows
 SHOWN_ROWS = 5  # rows the plain list shows of a closed group
@@ -392,7 +394,7 @@ class LocalApproval(Approval):
     def _unweighed(self, agent: Agent, rows: list[Row], declined: list[Admit]) -> list[Row]:
         """The records held for the curator's collection that it neither proposed nor left out, each a left-out row,
         so no record it holds is on no list: under the reason an earlier run of the curator gave
-        it, else `not weighed`. A row or a declined admit that names a record speaks for that record; one by name alone
+        it, else `not weighed`, or `OLDER` when the first run's held list did not show it. A row or a declined admit that names a record speaks for that record; one by name alone
         speaks for one held record of that name: the one a value of its keys names, or an address at a domain it gives,
         and none when its keys name none, or with no keys the first nothing spoke for yet. Every held record is a row of its own, none folded or
         hidden, since the engine cannot tell one thing's records from another's. A row is named by its record's name,
@@ -433,9 +435,11 @@ class LocalApproval(Approval):
         for d in theirs:
             if not d.record:
                 pick(d.name, d.keys)
+        began = str((_state(self.workspace) or {}).get("at") or "")
+        since = recent_since(datetime.fromisoformat(began)) if began else ""
         return [Row(f"not-weighed:{h.source}:{h.id}", agent.id, agent.target,
                     h.name or (base := h.id.rpartition("/")[2]).rpartition(".")[0] or base,
-                    prior.get((h.source, h.id), NOT_WEIGHED), True, dict(h.keys),
+                    prior.get((h.source, h.id), OLDER if h.at and h.at[:10] < since else NOT_WEIGHED), True, dict(h.keys),
                     record={"source": h.source, "id": h.id}, unweighed=(h.source, h.id) not in prior)
                 for h in held if (h.source, h.id) not in taken]
 
@@ -1314,10 +1318,14 @@ def build(workspace: Cerebro, *, say: Callable[[str], None] | None = None, only:
     told = None if say is None else (lambda line: say(workspace.mask_every()(line)))
     made = PassResult(say=told, on=_heard(workspace))
     left = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in _curators(workspace)}
-    while due := [agent for agent in _curators(workspace) if left.get(agent.id)]:
-        run_curators(workspace, due, made)
-        now = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in due}
-        left = {id: n for id, n in now.items() if n < left[id]}  # a curator that carried out nothing more stops
+    building = IN_FIRST_BUILD.set(True)  # its curators read held lists as discovery did, so no record a person never
+    try:  # saw is admitted under a curator's own authority before a later pass
+        while due := [agent for agent in _curators(workspace) if left.get(agent.id)]:
+            run_curators(workspace, due, made)
+            now = {agent.id: len(yes_left(workspace.store, agent.target)) for agent in due}
+            left = {id: n for id, n in now.items() if n < left[id]}  # a curator that carried out nothing more stops
+    finally:
+        IN_FIRST_BUILD.reset(building)
     made_by = None if only is None else {str(p.applied["article"]) for p in proposals(workspace.store, "accepted")
                                          if p.id in only and p.applied.get("article")}
     result = run_pass(workspace, say=told, curators=False, on=_heard(workspace), articles=made_by)

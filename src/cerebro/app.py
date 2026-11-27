@@ -48,6 +48,7 @@ from .curate import (
     Curated,
     cited,
     decided,
+    for_a_person,
     may_answer,
     nothing_to_weigh,
     run_curator,
@@ -61,7 +62,6 @@ from .facts import STATE as FACTS_STATE
 from .facts import Extraction, FactoidExtraction, Revisions, kind_notices, revisions_kept
 from .gateway import NO_KEY, Gateway, read_providers
 from .ground import RewriteFailed, Rewriter
-from .held import first_run_open
 from .lookup import (
     DecideResult,
     Decision,
@@ -1094,11 +1094,9 @@ class Cerebro:
 
     def with_curators(self, waiting: list[Proposal] | None = None) -> list[Proposal]:
         """The waiting proposals, of `waiting` when given, that another curator filed and their collection's curator
-        may answer: none while the workspace's first run is open, since its list shows every admit a curator filed."""
-        if first_run_open(self.store):
-            return []
+        may answer: never one a person decides, as `for_a_person` gives them."""
         waiting = proposals(self.store, "waiting") if waiting is None else waiting
-        named = cited(waiting)
+        named = cited(waiting) | for_a_person(self.store, waiting)
         curators = [a for a in self.agents if a.role == "curator"]
         return [p for p in waiting if any(may_answer(a, p, named) for a in curators)]
 
