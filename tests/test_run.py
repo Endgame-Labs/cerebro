@@ -161,6 +161,8 @@ def test_the_first_hand_in_is_held_while_the_run_is_told_once_what_the_editor_sa
         held = PydanticRun(_talker(turns[:1], [])).run(AGENT, EVIDENCE, [], Budget())  # talks after: the held lands
         twice = PydanticRun(_talker([turns[0], turns[0]], [])).run(AGENT, EVIDENCE, [], Budget())  # told once only
         clean = PydanticRun(_talker(turns[1:], [])).run(AGENT, EVIDENCE, [], Budget())  # nothing to say: lands at once
+        declined = PydanticRun(_talker([turns[0], [("nothing_to_write", {"reason": "nothing backs more"})]], [])).run(
+            AGENT, EVIDENCE, [], Budget())  # it declines once told: the held lands
     finally:
         REVIEW.reset(reviewing)
     told = [e.text for e in run.transcript if e.role == "tool" and e.tool == "write_article"]
@@ -170,7 +172,8 @@ def test_the_first_hand_in_is_held_while_the_run_is_told_once_what_the_editor_sa
     assert held.status == "done" and held.result is not None and held.result.text == "Brightwater Logistics"
     assert twice.status == "done" and twice.result is not None and twice.result.text == "Brightwater Logistics"
     assert clean.result is not None and clean.result.text == turns[1][0][1]["text"]
-    assert said == [turns[0][0][1]["text"]] * 3 + [turns[1][0][1]["text"]]  # each run's first hand-in, once
+    assert declined.result is not None and declined.result.text == "Brightwater Logistics"
+    assert said == [turns[0][0][1]["text"]] * 3 + [turns[1][0][1]["text"], turns[0][0][1]["text"]]  # each first, once
 
 
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote_nothing_never_done() -> None:

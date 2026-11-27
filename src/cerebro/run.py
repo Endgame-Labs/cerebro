@@ -493,8 +493,8 @@ class _Candidates:
 
     A candidate is a hand-in, or a reply with no hand-in that carries the mark: text under a heading the agent was
     given, as `_marked` reads it. A run lands its latest candidate with the mark. The first hand-in is held while the
-    model is told what `review` says of it, when it says anything, and lands only when no candidate carries the
-    mark."""
+    model is told what `review` says of it, when it says anything, and lands when no candidate carries the mark, or
+    the model then declines: a hand-in is never lost."""
 
     def __init__(self, agent: Agent, review: Callable[[str], str] | None = None):
         self.agent, self.review = agent, review
@@ -547,7 +547,7 @@ class _Candidates:
             else:
                 run.result = output
         elif isinstance(output, _Nothing):  # a decline is never the article, nor replaces one
-            last = self.returned[-1] if self.returned else None
+            last = self.returned[-1] if self.returned else self.held
             if (got := (last, True) if last and (self.carries(last.text) or self.latest() is None)
                     else self.latest()) is not None:
                 self.land(run, got)
