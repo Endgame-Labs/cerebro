@@ -888,7 +888,8 @@ def test_a_busy_stores_line_and_the_search_behind_note_say_no_section_brain_or_p
     assert not [line for line in lines if words.search(line) or WORDS.search(line)], lines
 
 
-def test_what_a_find_or_a_query_that_matched_nothing_or_a_retracted_record_says_has_no_section_brain_or_page() -> None:
+def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_no_section_brain_or_page() -> None:
+    from cerebro.article import Property
     from cerebro.connector import Record
     from cerebro.fakes import FakeExtraction
     from cerebro.lookup import StoreLookup
@@ -905,7 +906,11 @@ def test_what_a_find_or_a_query_that_matched_nothing_or_a_retracted_record_says_
     for source, filters in (("facts", {"kind": "decision"}), ("proposals", {"kind": "merge"}), ("merges", {}),
                             ("things", {}), ("things", {"status": "waiting"}), ("things", {"id": "things/a"})):
         said += lookup.query(you, source, filters).warnings
-    assert len(said) == 9 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+    for id in ("things/b", "things/c"):
+        store.create(Identity(id, "things", id[-1].upper()))
+    store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
+    said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
+    assert len(said) == 10 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_no_line_a_presumed_mark_shows_names_a_section_or_a_hand_in() -> None:
