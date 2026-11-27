@@ -135,16 +135,19 @@ def test_a_fact_that_mentions_its_records_own_name_ties_to_no_article_the_record
     assert ties(store, said, replace(other, carried=["name"])) == [("things/ann-lee", "mentions")]  # not its own
 
 
-@pytest.mark.parametrize("body, names", [("Ann Lee moved to Birch.", ["Ann Lee"]),
-                                         ("Birch thanked Ann Lee.", ["Birch", "Ann Lee"])], ids=["subject", "mention"])
+@pytest.mark.parametrize("body, names, title", [("Ann Lee moved to Birch.", ["Ann Lee"], "Ann Lee"),
+                                                ("Birch thanked Ann Lee.", ["Birch", "Ann Lee"], "Ann Lee"),
+                                                ("Ann Lee moved to Birch.", ["Ann Lee"], "Ann Lee Hall")],
+                         ids=["subject", "mention", "near match"])
 def test_a_fact_tied_by_its_records_own_name_comes_off_an_article_once_a_key_tells_the_two_apart(
-        tmp_path: Path, body: str, names: list[str]) -> None:
+        tmp_path: Path, body: str, names: list[str], title: str) -> None:
     (tmp_path / "settings.yaml").write_text("{}\n")
     other = Record(id="2", source="src", revision="1", at="2026-11-10", body=body,
                    keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]})
     workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=names),
                         connectors=[FakeConnector("src", [other])])
-    workspace.store.create(Identity("things/ann-lee", "things", "Ann Lee", {"name": ["Ann Lee"]}, "active"))
+    workspace.decider = FakeDecider()  # a judge that says yes to every near match it is asked about
+    workspace.store.create(Identity("things/ann-lee", "things", title, {"name": ["Ann Lee"]}, "active"))
     workspace.run_once(agents=False)  # nothing tells the two apart yet: the record binds it by its name
     facts = [f.id for f in workspace.extraction.facts(record="2")]
     assert facts and workspace.store.facts_of("things/ann-lee") == facts
@@ -157,20 +160,21 @@ def test_a_fact_tied_by_its_records_own_name_comes_off_an_article_once_a_key_tel
 
 def test_a_judges_tie_by_a_subject_that_is_not_its_records_own_name_outlives_a_key_change(tmp_path: Path) -> None:
     (tmp_path / "settings.yaml").write_text("{}\n")
-    unit = Record(id="7", source="src", revision="1", at="2026-11-10", body="Rack North holds Unit 7.",
-                  keys={"name": ["Unit 7"], "email": ["desk@birch.example"]})
-    workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=["Rack North", "Unit 7"]),
-                        connectors=[FakeConnector("src", [unit])])
+    north = Record(id="7", source="src", revision="1", at="2026-11-10", body="Rack holds what Rack North sent.",
+                   keys={"name": ["Rack North"], "email": ["desk@birch.example"]})
+    workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=["Rack", "Rack North"]),
+                        connectors=[FakeConnector("src", [north])])
     workspace.decider = FakeDecider()  # a judge that says yes to every near match it is asked about
-    workspace.store.create(Identity("things/rack", "things", "Rack", {"email": ["desk@alder.example"]}, "active"))
+    workspace.store.create(Identity("things/rack-north", "things", "Rack North", {"email": ["desk@alder.example"]},
+                                    "active"))
     workspace.run_once(agents=False)
     fact = workspace.extraction.facts(record="7")[0]
-    assert workspace.store.ties_of(fact.id).get("things/rack") == ["subject"]
-    rack = workspace.store.article("things/rack").identity
-    rack.keys = {**rack.keys, "alias": ["Rack N"]}
+    assert workspace.store.ties_of(fact.id).get("things/rack-north") == ["subject"]  # by "Rack", not its mention
+    rack = workspace.store.article("things/rack-north").identity
+    rack.keys = {**rack.keys, "alias": ["North"]}
     workspace.store.set_identity(rack)
     workspace.run_once(agents=False)  # linked again with no judge: what landing tied stays
-    assert workspace.store.ties_of(fact.id).get("things/rack") == ["subject"]
+    assert workspace.store.ties_of(fact.id).get("things/rack-north") == ["subject"]
 
 
 def test_a_fact_named_as_its_record_is_by_a_field_ties_to_no_article_it_is_told_apart_from_when_linked_again(

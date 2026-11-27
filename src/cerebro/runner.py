@@ -1925,9 +1925,9 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
             for id in changed - set(reached(store, record)):
                 if RECORD in store.ties_of(fact.id).get(id, []):
                     store.unlink(fact.id, [id], RECORD)
-            for id in sorted(changed & set(kept_off(store, fact, record, among)) & set(store.ties_of(fact.id))):
-                store.unlink(fact.id, [id], SUBJECT)  # `link` below ties it again by what still holds, such as a key
-                store.unlink(fact.id, [id], MENTIONS)
+            for id, how in kept_off(store, fact, record, among):
+                if id in changed:  # `link` below ties it again by what still holds, such as a key
+                    store.unlink(fact.id, [id], how)
             carried = {(k, v.lower()) for m in fact.mentions for k, vs in m.keys.items() for v in vs}
             for id in [id for id in changed if taken_off[id] & carried]:  # a judge's tie to it goes too: one row
                 if id not in {tied for tied, _ in ties(store, fact, record)}:

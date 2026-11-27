@@ -253,22 +253,24 @@ def link_ties(store: Store, fact_id: str, made: list[tuple[str, str]], at: str =
 
 def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | None = None, *,
          among: list[tuple[Identity, list[str]]] | None = None,
-         kept_off: list[str] | None = None) -> list[tuple[str, str]]:
+         dropped: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
     """The articles a fact is tied to as the store stands, each with how, without linking. A judge, if given, is asked
     about a near match of the subject among `near_pool`, or `among` read from it before. A tie by a name, the
     subject's, a mention's or a judge's near match of the subject, is not made to an article `_apart` tells the
     record from when that name is one of the record's own, as `_record_names` gives them: the fact speaks of the
-    record's thing. A mention's key that names one thing still ties. `kept_off`, when given, gathers each article
-    that rule keeps the fact off."""
+    record's thing. A mention's key that names one thing still ties. `dropped`, when given, gathers each tie that
+    rule does not make."""
+    from .curate import weights_of  # curate reads this module
+
     made: list[tuple[str, str]] = []
-    mine = _record_names(record)
+    mine, weights = _record_names(record), weights_of(store)
 
     def tie(ids: list[str], how: str, name: str = "") -> None:
         own = record if record is not None and name and _tokens(name) in mine else None
         for id in ids:
             if own is not None and _apart(store, own, id):
-                if kept_off is not None and id not in kept_off:
-                    kept_off.append(id)
+                if dropped is not None and (id, how) not in dropped:
+                    dropped.append((id, how))
             elif (id, how) not in made:
                 made.append((id, how))
 
@@ -277,8 +279,8 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
         tie(admitted_from(store, record), RECORD)
     for mention in fact.mentions:
         how = SUBJECT if mention.role == SUBJECT else MENTIONS
-        if record is not None:  # a key that names one thing ties it, as `_keyed` reads keys
-            tie(_keyed(store, record, mention.keys), how)
+        strong = {k: vs for k, vs in mention.keys.items() if weights.get(k, 0) > 0}
+        tie(_by_keys(store, strong), how)  # a key that names one thing ties it
         tie(_by_keys(store, mention.keys), how, mention.text)
     exact = False
     for name, how in _names(fact):
@@ -300,13 +302,14 @@ def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | 
     return made
 
 
-def kept_off(store: Store, fact: Fact, record: Record, among: list[tuple[Identity, list[str]]]) -> list[str]:
-    """The articles the rule in `ties` keeps a fact off as the store stands: each that one of its record's own names
-    finds, by a title, a mention's keys or a near match of the subject among `among`, that `_apart` tells the record
-    from. No judge is asked: a near match is read as found."""
-    found: list[str] = []
+def kept_off(store: Store, fact: Fact, record: Record,
+             among: list[tuple[Identity, list[str]]]) -> list[tuple[str, str]]:
+    """The ties the rule in `ties` does not make for a fact as the store stands, each an article and how: each that one
+    of its record's own names finds, by a title, a mention's keys or a near match of the subject among `among`, to an
+    article `_apart` tells the record from. No judge is asked: a near match is read as found."""
+    found: list[tuple[str, str]] = []
     near = _Found() if _tokens(fact.subject) in _record_names(record) else None  # only its own name keeps it off
-    ties(store, fact, record, near, among=among, kept_off=found)
+    ties(store, fact, record, near, among=among, dropped=found)
     return found
 
 
