@@ -1250,12 +1250,13 @@ def _guarded(room: _Room, takes: _Candidates, asked: _Asked, masks: Masks | None
 
     @hooks.on.before_model_request
     async def hold_room(ctx: Any, request: Any) -> Any:
-        """End the run in place of a request past its budget, one its meter's cap refuses, or a second ask to hand
-        in when the editor never spoke, tell a curator ahead of its turn, once, that its room is short while it
-        still has its tools, offer only the hand-in once no tool may run, and mask what the request holds, as it
-        leaves for the model."""
+        """End the run in place of a request past its budget, one its meter's cap refuses, or, when the editor never
+        spoke, a second ask to hand in: after a second reply in text, or a second reply that calls only the hand-in,
+        each counted on its own. Tell a curator ahead of its turn, once, that its room is short while it still has
+        its tools, offer only the hand-in once no tool may run, and mask what the request holds, as it leaves for the
+        model."""
         called = [{p.tool_name for p in m.parts if isinstance(p, ToolCallPart)} for m in request.messages
-                  if isinstance(m, ModelResponse)]  # a reply in text and a broken hand-in are each asked again once
+                  if isinstance(m, ModelResponse)]
         again = max(called.count(set()), sum(bool(names) and names <= own for names in called))
         if takes.writes and takes.held is None and again > 1:  # the editor's retry is its own, taken when it spoke
             ctx.messages.pop()  # never sent: the run ends on the reply before it, as at the loop's own limit

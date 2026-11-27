@@ -186,13 +186,15 @@ def test_a_reply_in_text_and_a_broken_hand_in_are_each_asked_again_before_and_af
     broken = [("write_article", {"words": "Cited [^f_1]."})]
     reviewing = REVIEW.set(citing_nothing)
     try:
-        talked, mended, early = (PydanticRun(_talker(turns, [])).run(AGENT, EVIDENCE, [], Budget()) for turns in (
-            [uncited, "I will cite it.", cited], [uncited, broken, cited], ["I will write it.", broken, cited]))
+        talked, mended, early, again = (PydanticRun(_talker(turns, [])).run(AGENT, EVIDENCE, [], Budget())
+                                        for turns in ([uncited, "I will cite it.", cited], [uncited, broken, cited],
+                                                      ["I will write it.", broken, cited], [broken, broken, cited]))
     finally:
         REVIEW.reset(reviewing)
     assert talked.result is not None and talked.result.text == "Cited [^f_1]."
     assert mended.result is not None and mended.result.text == "Cited [^f_1]."
     assert early.status == "done" and early.result is not None and early.result.text == "Cited [^f_1]."
+    assert again.status == "failed" and again.result is None  # a broken hand-in is asked again once, as text is
 
 
 def test_a_held_hand_in_that_lands_after_the_run_failed_says_in_plain_words_that_it_failed_and_why() -> None:
