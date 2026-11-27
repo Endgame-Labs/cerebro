@@ -241,7 +241,7 @@ def test_the_plain_list_shows_each_article_with_its_reason_and_the_left_out_last
     script = Script({"things/curator": [("admit", {"name": "Unit 7", "keys": {"code": [id]}, "reason": f"Coded {id}."})
                                         for id in ("A1", "A2")]})
     with Cerebro(lay_out_workspace(tmp_path / "own"), agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
-                 connectors=[Coded("crm", RECORDS)]) as workspace:
+                 connectors=[Coded("src", [replace(r, source="src") for r in RECORDS])]) as workspace:
         script.store = workspace.store
         run(workspace, choose=None)
         shown = lines(LocalApproval(workspace).pile())

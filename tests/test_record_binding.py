@@ -101,7 +101,7 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
 def test_a_fact_whose_subject_is_its_records_own_name_ties_to_no_article_the_record_is_told_apart_from(
         tmp_path: Path, names: list[str] | None, title: str) -> None:
     (tmp_path / "settings.yaml").write_text("{}\n")
-    other = Record(id="2", source="src", revision="1", at="2026-11-10", body="Ann Lee joined Birch as CFO.",
+    other = Record(id="2", source="src", revision="1", at="2026-11-10", body="Ann Lee moved to Birch.",
                    keys={"name": ["Ann Lee"], "email": ["ann@birch.example"]}, fields={"subject": "Ann Lee"})
     workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(names=names),
                         connectors=[FakeConnector("src", [other])])  # no curator: every record is read

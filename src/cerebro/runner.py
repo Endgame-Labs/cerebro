@@ -1903,7 +1903,7 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
     moved = redirects(workspace.store)
     keys: dict[str, dict[str, dict[str, list[str]]]] = {}
     ours: dict[str, dict[str, list[str]]] = {}  # who each record marks as the workspace's own, which binds no namesake
-    only: dict[str, dict[str, list[str]]] = {}  # the keys each record only carries: none, in a store without them
+    only: dict[str, dict[str, list[str]]] = {}  # the keys each record only carries
     named: dict[str, dict[str, str]] = {}  # the name a field of each record gives
     learned = stamp(workspace.clock())
     for fact in workspace.extraction.facts():
