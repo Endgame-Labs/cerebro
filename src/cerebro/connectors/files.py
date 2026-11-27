@@ -571,7 +571,9 @@ def _row_revision(row: _Row) -> str:
 
 
 def _row_text(row: _Row) -> str:
-    return "".join(f"{column}: {_scalar(row.values[column])}\n" for column in row.order())
+    """A row as text, one column a line. A column with no value is left out, since the facts layer joins a passage's
+    lines and would read the next column's name as its value."""
+    return "".join(f"{column}: {value}\n" for column in row.order() if (value := _scalar(row.values[column])))
 
 
 def _not_utf8(row: _Row) -> str:
