@@ -141,6 +141,7 @@ gives a clear winner, say so in your last line instead of guessing.
 - **Every curator** can add an article with `admit`, change its keys or links with `link`, give its writers a note with `instruct`, take one out with `archive`, join two with `merge`, and undo a merge with `split`. It asks a source a question with `fetch` where one answers. Each act can name another collection: it waits there as a proposal, for that collection's curator or for you. `cerebro review` counts these in one line instead of listing them, and you can still decide one by its id.
 - **`authority`** says what it may do on its own: `admit`, `archive`, `merge`, and `split`, which turns one article into two. Anything set to `false` waits for you in `cerebro review`.
 - A file with no `authority:` line does none of the four on its own, and a kind the line leaves out is `false`.
+- A curator's first list always waits for you, even with `authority: { admit: true }`. Once you decide one of its admits, `authority` applies.
 - A curator never undoes your decision, yes or no, until a new fact or record about it arrives, whatever `authority` says.
 - A curator on `change` is not woken by its own acts, or by a decision you make on what it alone proposed: only by what else changes in what it reads. A record from a source, a tell, another agent's write, or a decision that covers other curators' proposals too, such as approving a first run's list, still wakes it, even while it runs.
 
