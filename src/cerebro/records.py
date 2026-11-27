@@ -391,7 +391,7 @@ def _apply(store: Store, extraction: Extraction | None, proposal: Proposal, at: 
     if kind in APPLIES:
         return apply(store, proposal, at)
     if kind in RETRACTS:
-        withdrew, _ = _take_back(store, extraction, target, at, proposal.id)
+        withdrew, _ = _take_back(store, extraction, proposal)
         return {"at": at, "withdrew": withdrew}, f"Withdrew {', '.join(withdrew)}."
     if kind == "article.instruct":
         if proposal.by.kind == "person":
@@ -450,11 +450,12 @@ def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str,
     return "", None
 
 
-def _take_back(store: Store, extraction: Extraction | None, id: str, at: str,
-               filed: str = "") -> tuple[list[str], list[str]]:
-    """Withdraw a record or a fact, and give what was withdrawn and a line for each applied row that stands. A
-    record's facts, and its unapplied rows that cite it, go with it. Raises `NothingStands` when nothing is left."""
-    what, _ = _said_by(store, extraction, id)
+def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) -> tuple[list[str], list[str]]:
+    """Withdraw the record or the fact an accepted retract names, and give what was withdrawn and a line for each
+    applied row that stands. A record's facts, and its unapplied rows that cite it, go with it. Raises `NothingStands`
+    when nothing is left."""
+    id, at = proposal.target, proposal.decided_at
+    what, by = _said_by(store, extraction, id)
     if what == "fact":
         fact = extraction.facts(ids=[id])[0] if extraction is not None else None
         if fact is None or fact.status not in ("current", "superseded"):
@@ -471,16 +472,16 @@ def _take_back(store: Store, extraction: Extraction | None, id: str, at: str,
             if id in claims and not _lives(claims[id], datetime.fromisoformat(at)):  # its facts are retracted below
                 store.set_state(CLAIMED, {k: v for k, v in claims.items() if k != id})
     withdrew: list[str] = []
-    rows = proposals(store)
-    if not any(p.kind == "record.retract" and p.target == id and p.status == ACCEPTED and p.id != filed
-               for p in rows):
+    if not was_retracted(store.record(id), retracted_records(store)):  # type: ignore[arg-type]
+        propose(store, proposal)  # filed before its facts are read, so a pass that saves them later withdraws them
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
-        extraction.retract(fact.id)  # type: ignore[union-attr]
-        withdrew.append(fact.id)
+        if by is None or fact.at <= at:  # a first-party record is dated when kept: a later fact is its maker's new word
+            extraction.retract(fact.id)  # type: ignore[union-attr]
+            withdrew.append(fact.id)
     stands: list[str] = []
-    for row in rows:
-        if id not in row.cites or row.id == filed or row.status in (REJECTED, WITHDRAWN) or row.kind in RETRACTS:
+    for row in proposals(store):
+        if id not in row.cites or row.status in (REJECTED, WITHDRAWN) or row.kind in RETRACTS:
             continue
         if row.applied and row.kind in APPLIES:
             stands.append(f"{row.id} {row.kind.partition('.')[2]} of {row.target} was applied and stands: "
@@ -512,10 +513,8 @@ def retract(store: Store, extraction: Extraction | None, caller: Caller, id: str
     row = Proposal(_new_id("p"), "record.retract" if what == "record" else "fact.retract", id, caller, at,
                    cites=[id] if what == "record" else [], reason=reason, status=ACCEPTED, decided_by=caller,
                    decided_at=at, decision_reason=reason)
-    withdrew, stands = _take_back(store, extraction, id, at, row.id)
+    withdrew, stands = _take_back(store, extraction, row)
     propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
-    if what == "record" and extraction is not None:  # facts a pass saved after the take-back read them, before the row
-        _withdraw(extraction, id, [])
     return RetractResult(id, withdrew, row.kind, row.id, stands)
 
 

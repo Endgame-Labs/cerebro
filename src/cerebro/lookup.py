@@ -1215,6 +1215,8 @@ class StoreLookup(Lookup):
             facts = self._facts_named(id.strip())
             if (record := self.store.record(id.strip())) is not None and self._facts_only(caller, record.source):
                 result.warnings.append(_facts_of(record))
+            if record is not None and was_retracted(record, retracted_records(self.store)):
+                result.warnings.append(f"record {record.id} was retracted")
             if facts:
                 kept = narrow(facts, terms)
                 if terms and not kept:

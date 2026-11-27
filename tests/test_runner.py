@@ -862,39 +862,83 @@ def test_a_kept_record_a_caller_retracted_gives_no_facts_until_its_maker_keeps_a
     assert cerebro.run_once().extracted == 0 and extraction.facts(record=kept.id, latest=False) == []
     hands.move(minutes=5)
     cerebro.handle.keep(you, "note", "The east gate opens at ten.", {"collection": "notes"}, id=kept.id)
+    assert kept.id in cerebro.retract(you, kept.id, "reworded again").withdrew  # before a pass reads that revision
+    assert cerebro.run_once().extracted == 0
+    hands.move(minutes=5)
+    cerebro.handle.keep(you, "note", "The east gate opens at noon.", {"collection": "notes"}, id=kept.id)
     assert cerebro.run_once().extracted == 1
-    assert [f.text for f in extraction.facts(record=kept.id)] == ["The east gate opens at ten."]
+    assert [f.text for f in extraction.facts(record=kept.id)] == ["The east gate opens at noon."]
 
 
-@pytest.mark.parametrize("lands", ["while its text is read", "after the pass reads it, before the retract is filed"])
-def test_a_retract_that_lands_while_a_pass_reads_its_kept_record_withdraws_what_the_read_gave(
-        tmp_path: Path, lands: str) -> None:
+def test_a_retract_that_lands_while_a_pass_reads_its_kept_record_leaves_nothing_of_the_read(tmp_path: Path) -> None:
     from cerebro.caller import Caller
 
     you, held = Caller("you", "person"), {}
 
     class Racing(FakeExtraction):
         def extract(self, record: Record) -> Any:
-            if lands == "while its text is read" and not held:
+            if not held:
                 held["retract"] = cerebro.retract(you, record.id, "wrong")
             return super().extract(record)
 
+    extraction = Racing(names=["Alder"])
+    cerebro = kept_notes(tmp_path, extraction)
+    cerebro.store.create(Identity("things/alder", "things", "Alder"))
+    kept = cerebro.handle.keep(you, "note", "Alder opens at eight.", {"collection": "notes"})
+    passed = cerebro.run_once()
+    assert (passed.extracted, passed.linked) == (0, 0) and extraction.facts(record=kept.id) == []
+
+
+@pytest.mark.parametrize("path", ["retract", "tell", "decide"])
+def test_a_retract_on_any_path_is_seen_by_a_pass_before_its_take_back_reads_the_records_facts(
+        tmp_path: Path, path: str) -> None:
+    from cerebro.caller import Caller
+    from cerebro.records import retracted_records, was_retracted
+
+    you, app, held = Caller("you", "person"), Caller("notes", "app"), {}
+
+    class Racing(FakeExtraction):
         def facts(self, **filters: Any) -> list[Any]:
-            found = super().facts(**filters)
-            if lands != "while its text is read" and held.pop("retracting", False):
-                held["passed"] = cerebro.run_once()  # the take-back read the record's facts: a pass reads it now
-            return found
+            if filters.get("record") == held.get("id"):  # what a pass that reads the record now finds of a retract
+                record = cerebro.store.record(held["id"])
+                held.setdefault("seen", was_retracted(record, retracted_records(cerebro.store)))  # type: ignore[arg-type]
+            return super().facts(**filters)
+
+    cerebro = kept_notes(tmp_path, Racing())
+    kept = cerebro.handle.keep(app if path == "decide" else you, "note", "The west gate opens at eight.",
+                               {"collection": "notes"})
+    if path == "decide":
+        asked = cerebro.tell(app, "take it back", target=kept.id, as_="proposal", kind="record.retract")
+    held["id"] = kept.id
+    if path == "retract":
+        cerebro.retract(you, kept.id, "wrong")
+    elif path == "tell":
+        cerebro.tell(you, "take it back", target=kept.id, as_="proposal", kind="record.retract")
+    else:
+        cerebro.decide(you, accept=asked.proposals)
+    assert held["seen"] is True
+
+
+def test_a_revision_its_maker_keeps_while_a_retract_takes_back_the_last_one_keeps_its_facts(tmp_path: Path) -> None:
+    from cerebro.caller import Caller
+
+    you, held, hands = Caller("you", "person"), {}, Hands(datetime(2026, 11, 20, 9, tzinfo=UTC))
+
+    class Racing(FakeExtraction):
+        def facts(self, **filters: Any) -> list[Any]:
+            if filters.get("record") == held.get("id") and held.pop("retracting", False):
+                hands.move(seconds=2)  # the take-back is slow: the maker keeps a new revision, and a pass reads it
+                cerebro.handle.keep(you, "note", "The north gate opens at ten.", {"collection": "notes"}, id=held["id"])
+                cerebro.run_once()
+            return super().facts(**filters)
 
     extraction = Racing()
-    cerebro = kept_notes(tmp_path, extraction)
-    kept = cerebro.handle.keep(you, "note", "The west gate opens at eight.", {"collection": "notes"})
-    if lands == "while its text is read":
-        cerebro.run_once()
-    else:
-        held["retracting"] = True
-        cerebro.retract(you, kept.id, "wrong")
-        assert held["passed"].extracted == 1
-    assert extraction.facts(record=kept.id) == [] and cerebro.run_once().extracted == 0
+    cerebro = kept_notes(tmp_path, extraction, hands)
+    kept = cerebro.handle.keep(you, "note", "The north gate opens at nine.", {"collection": "notes"})
+    cerebro.run_once()
+    held.update(id=kept.id, retracting=True)
+    cerebro.retract(you, kept.id, "wrong")
+    assert [f.text for f in extraction.facts(record=kept.id)] == ["The north gate opens at ten."]
 
 
 def test_status_gives_todays_spend_alone_and_counts_what_waits(tmp_path: Path) -> None:

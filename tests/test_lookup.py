@@ -90,20 +90,23 @@ def test_a_query_of_an_app_kind_gives_its_records_and_agent_runs_come_newest_fir
     assert [r["run"] for r in lookup.query(YOU, "agent-runs").items] == ["c", "a", "b"]
 
 
-def test_a_query_of_an_app_kind_says_which_records_it_shows_a_retract_took_back_and_no_other() -> None:
+def test_a_query_or_read_of_an_app_kind_says_which_records_it_shows_a_retract_took_back_and_no_other() -> None:
     from dataclasses import replace
 
     from cerebro.records import retract
 
     store = MemoryStore()
     lookup = StoreLookup(store, None, ["note"], clock=lambda: NOW)
-    for id, owner in (("n1", "west"), ("n2", "west"), ("n3", "east")):
-        store.keep(Record(id=id, source="note", revision="1", at="2026-11-16T09:00:00Z", fields={"owner": owner},
-                          body=id, by=YOU))
+    for id, owner, under in (("n1", "west", "c"), ("n2", "west", "c"), ("n3", "east", "c/d")):
+        store.keep(Record(id=id, source="note", revision="1", at="2026-11-16T09:00:00Z",
+                          fields={"owner": owner, "collection": under}, body=id, by=YOU))
         retract(store, None, YOU, id, clock=lambda: NOW)
     store.keep(replace(store.record("n2"), revision="2", at="2026-11-17T13:00:00Z"))  # its maker's word after it
     shown = lookup.query(YOU, "note", {"owner": "west"})
     assert [r.id for r in shown.items] == ["n2", "n1"] and shown.warnings == ["record n1 was retracted"]
+    listed = lookup.query(YOU, "note", {"collection": "c"})  # n3 is under c, so among the newest alone
+    assert listed.warnings == ["record n1 was retracted", "record n3 was retracted"]
+    assert lookup.read(YOU, ["n3", "n2"]).warnings == ["record n3 was retracted"]
 
 
 def test_speaker_side_reads_the_side_each_quote_records(make_lookup: Callable[..., tuple[Lookup, Store]]) -> None:

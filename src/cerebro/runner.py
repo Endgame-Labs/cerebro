@@ -1741,10 +1741,11 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
                 result.failed[f"{record.source}/{id}"] = f"{type(error).__name__}: {error}"
             waiting.append(id)
     late = retracted_records(workspace.store) if landed else {}  # a retract that landed while its record was read
-    for fact, record in landed:
-        if was_retracted(record, late):
-            workspace.extraction.retract(fact.id)
-    landed =[(f, r) for f, r in landed if not was_retracted(r, late)]
+    gone = [f for f, r in landed if was_retracted(r, late)]
+    for fact in gone:
+        workspace.extraction.retract(fact.id)
+    result.extracted -= len(gone)
+    landed = [(f, r) for f, r in landed if not was_retracted(r, late)]
     with workspace.store.exclusive():  # only what this pass handled leaves the lists, and the cursor only moves on
         update_state(workspace.store, KEPT_CURSOR, lambda now: max(now or 0, later))
         update_state(workspace.store, KEPT_FAILED, lambda now: list(dict.fromkeys(
