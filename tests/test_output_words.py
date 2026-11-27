@@ -301,8 +301,9 @@ def test_the_admit_lines_the_review_and_connect_waits_the_cooldown_and_the_compi
 
 
 def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_page() -> None:
-    """The lines a run gives the model or a person about its hand-in and its room: the note on a reply taken as text,
-    on a run that handed in nothing at each ending, the step of a run that ran and wrote nothing, the line to decide
+    """The lines a run gives the model or a person about its hand-in and its room: the line that names the article
+    it writes, the note on a reply taken as text, on a run that handed in nothing at each ending, the step and a
+    pass's line, its cost split into writing and checks, of a run that ran and wrote nothing, the line to decide
     now, the note before a curator's turn, and what a curator out of room or calls is told, which never asks it to
     hand in text, since it hands in none."""
     from types import SimpleNamespace
@@ -318,20 +319,22 @@ def test_a_runs_own_lines_on_its_hand_in_and_its_room_say_no_section_brain_or_pa
         SPENT_NOTHING,
         STANDS,
         TOOK_REPLY,
+        WRITES,
         WROTE_NOTHING,
         _Room,
     )
-    from cerebro.runner import _compiled_step
+    from cerebro.runner import _compiled_line, _compiled_step
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     floor = _Room(100_000, "", 40, deciding=True, decisions=["admit", "leave_out"]).floor_line()
-    ran = SimpleNamespace(skipped=False, article=None, runs=[],
+    ran = SimpleNamespace(skipped=False, article=None, runs=[], checks=0.01,
                           run=SimpleNamespace(status=WROTE_NOTHING, note=HANDED_NOTHING))
     step = _compiled_step(SimpleNamespace(id="things/article"), ran)["text"]
-    lines = [TOOK_REPLY, HANDED_NOTHING, SPENT_NOTHING, CUT_NOTHING, STANDS, step, DECIDE_NOTE, floor, NO_ROOM,
-             NO_CALLS, NO_ROOM_DECIDING, NO_CALLS_DECIDING]
+    told = _compiled_line(SimpleNamespace(), "things/article", ran)
+    lines = [WRITES, TOOK_REPLY, HANDED_NOTHING, SPENT_NOTHING, CUT_NOTHING, STANDS, step, told, DECIDE_NOTE, floor,
+             NO_ROOM, NO_CALLS, NO_ROOM_DECIDING, NO_CALLS_DECIDING]
     assert not [line for line in lines if words.search(line) or WORDS.search(line)]
-    assert "admit or leave_out" in floor
+    assert "admit or leave_out" in floor and "(writing $" in told
     assert not [line for line in (DECIDE_NOTE, floor, NO_ROOM_DECIDING, NO_CALLS_DECIDING) if "hand in" in line.lower()]
 
 
