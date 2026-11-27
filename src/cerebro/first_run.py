@@ -1276,8 +1276,8 @@ def _run(workspace: Cerebro, choose: Callable[[Pile], Choices | None] | None, sa
         rest += [row.id for row in out.late.rows() if not row.left_out and row.id not in rest]  # it waits too
     if (older := len(out.result.older)) and out.result.compiled:
         out.result.notices.append(f"The wiki starts from the last {RECENT_DAYS} days. cerebro serve reads "
-                                  f"{_n(older, 'older record')} over the next hours and rewrites the articles "
-                                  f"{'it changes' if older == 1 else 'they change'}.")
+                                  f"{_n(older, 'older record')} on its next {'pass' if older == 1 else 'passes'} "
+                                  f"and rewrites the articles {'it changes' if older == 1 else 'they change'}.")
     out.lines += held_lines(workspace)
     out.after = rest_lines(workspace, rest)
     return out

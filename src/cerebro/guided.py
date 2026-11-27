@@ -525,8 +525,8 @@ def manual_lines(app: str, steps: Sequence[tuple[str, str]], printer: Printer | 
 
 READY = (f"This step proposes the initial set of articles for you to approve, reads the last {RECENT_DAYS} days of "
          "your sources for them, and asks once more about what those records name. Then it writes what you approve, "
-         "first from recent facts, then kept current: cerebro serve reads the older records over the next hours. What "
-         "you leave unticked waits for cerebro review. It can take half an hour on a busy workspace.")
+         "first from recent facts, then kept current: cerebro serve reads the older records on its next passes. What "
+         "you leave unticked waits for cerebro review.")
 
 
 # -- the walk

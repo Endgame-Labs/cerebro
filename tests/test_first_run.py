@@ -586,7 +586,7 @@ def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_howe
         held = {key.split(":")[2] for key in script.shown["things/curator"] if key.startswith("held:")}
         assert held == {"001A", "001B", "001C", "001E"}  # what its curator is shown: the same 14 days
         assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 2 older "
-                                          "records over the next hours and rewrites the articles they change.")
+                                          "records on its next passes and rewrites the articles they change.")
         clock[0] += timedelta(hours=5)
         workspace.run_once(scheduled=True)  # a pass of serve once the source is due
         assert {"001O", "001P"} <= {f.record for f in extraction.facts()}
