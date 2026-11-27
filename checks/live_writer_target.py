@@ -68,7 +68,7 @@ def trial(folder: Path) -> tuple[int, int, float]:
         for id, (name, _) in THINGS.items():
             workspace.store.create(Identity(path(id), "things", name))
         result = workspace.run_once()
-        print(f"compiled {sorted(result.compiled)}, failed {result.failed}")
+        print(f"compiled {sorted(result.compiled)}, failed {result.failed}, ran and wrote nothing {result.ran}")
         record_of = {f.id: f.record for f in workspace.extraction.facts()}
         right = 0
         for id, (name, _) in THINGS.items():
