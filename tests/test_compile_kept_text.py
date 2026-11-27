@@ -208,14 +208,13 @@ def test_a_writers_only_cited_fact_taken_back_leaves_the_article(tmp_path: Path,
 
 
 @pytest.mark.parametrize("how", ["retracted", "removed"])
-def test_a_composers_verdict_that_cites_a_fact_taken_back_stands_while_the_composer_does_not_run_again(
-        tmp_path: Path, how: str) -> None:
+def test_a_composers_verdict_that_cites_a_fact_taken_back_goes(tmp_path: Path, how: str) -> None:
     files = {"briefs/article.md": BRIEF.replace("[risks, people]", "[risks]"), "briefs/subagents/risks.md": RISKS}
     space = Facts(tmp_path, files, "briefs/alder")
     assert "Verdict:" in space.text()
     space.take_back(how)
     result = space.workspace.run_once()
-    assert f"Verdict: {PUMP[:-1]}" in space.text(), result.warnings  # only its own run landing nothing takes it out
+    assert PUMP[:-1] not in space.text(), result.warnings
 
 
 VALVE = "The valve in hall three leaked on Tuesday."

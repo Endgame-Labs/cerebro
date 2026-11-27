@@ -203,8 +203,10 @@ def _inbox(store: Store, agent: Agent, article: str) -> list[Evidence]:
         what = f"the curator's {what}, context and never a source," if p.by.kind == "agent" and \
             p.kind == "article.instruct" else what
         record = p.cites[0] if p.kind == "article.instruct" and p.by.kind == "person" and p.cites else ""
-        text = f"- {f'[^{record}]' if record else f'[{p.id}]'} {what} from {p.by.name} ({p.by.kind}), {p.at[:10]}: {said}"
-        items.append(Item(f"proposal:{p.id}:{p.status}", text, [Citation("record", record, record, said)] if record else []))
+        shown = f"[^{record}]" if record else f"[{p.id}]"
+        text = f"- {shown} {what} from {p.by.name} ({p.by.kind}), {p.at[:10]}: {said}"
+        cites = [Citation("record", record, record, said)] if record else []
+        items.append(Item(f"proposal:{p.id}:{p.status}", text, cites))
     return [Evidence(INBOX, [item.text for item in items], [c for item in items for c in item.citations], items=items,
                      spelled="inbox")]
 
@@ -502,9 +504,9 @@ NONE_LEFT = "nothing of the run landed, and each line of its earlier text cited 
 
 
 def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[str]) -> list[str]:
-    """After the writers' own run landed nothing, take out of each part `writers` wrote on `article` each line whose
-    every citation names what was taken back since, as `_Grounding.withdrawn` reads it, and nothing else: the article
-    stays as it was, but a claim whose fact was taken back does not stay for good. A part left with no text, only headings
+    """Take out of each part `writers` wrote on `article`, each standing from before as none of them rewrote it in
+    this run, each line whose every citation names what was taken back since, as `_Grounding.withdrawn` reads it, and
+    nothing else: the article stays as it was, but a claim whose fact was taken back does not stay for good. A part left with no text, only headings
     or nothing, goes. Gives a line for each line taken out. The text cites a fact by the label the store wrote, so
     each label is read back as its citation's id."""
     current = store.article(article)
@@ -1602,6 +1604,8 @@ class _Composing:
             self.read()
             if self.leave and not compiled.runs:  # no run, and nothing it reads moved: the article stands, unwritten
                 return Compiled(None, current, skipped=True)
+            if self.leave:  # no text of this run lands: what stood, less each line whose every cited fact was withdrawn
+                compiled.dropped += _withdrawn(c.grounding, store, article, self.writers)
             return compiled if not self.leave else _finish(store, article, c.root, compiled, c.grounding)
         if fixed(self.composer) and plan:
             birth(store, self.composer, article, min((p.started for p in plan if p.started), default=stamp(c.clock())))
