@@ -189,7 +189,9 @@ def _bound(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str
 def _apart(store: Store, record: Record, article: str | Mapping[str, Iterable[object]]) -> bool:
     """Whether `record` and `article`, an id or the keys of one, are two things whatever name they share, as
     `curate.same_thing` reads the keys that name the record against the article's by the workspace's weights. A key
-    the record only carries, or one no source declares, tells nothing apart."""
+    the record only carries, or one no source declares, tells nothing apart. Keys of each side that they do not share
+    do not either, though `one_thing` reads them as two asks: a name binds a record that contradicts no key the
+    article holds, and two asks are kept two unless a key shows them one, so neither is folded into the other."""
     from .curate import same_thing, weights_of  # curate reads this module
 
     return _may_be_apart(store, record) and \
