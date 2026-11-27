@@ -48,6 +48,7 @@ __all__ = ["CONTRACT", "FLOOR", "MARK", "SCALE", "UNSUPPORTED", "Editor", "Judge
 FLOOR = 0.6  # `min_grounding` when neither the agent file nor settings.yaml sets one
 MARK_LINE = re.compile(rf"[ \t>]*{re.escape(MARK)}(?::.*)?[ \t]*\r?\n?")  # a block's mark, or a copy of its definition
 SPAN_OR_MARK = re.compile(r"(`+).*?(?<!`)\1(?!`)|" + re.escape(MARK))
+NUMBERED = re.compile(r"(?<![\w\]\\!])\[(\d+)\](?![(\[])")  # a numbered reference, as [1], that no link or index holds
 # The judge's levels, lowest first, each with its value and what it means.
 SCALE = ((0.0, "made up: no cited fact holds what it says"),
          (0.2, "it misrepresents what its facts say of a person, a date, a number or a direction"),
@@ -689,13 +690,19 @@ class Editor:
 
     def review(self, text: str) -> str:
         """What the writer is told of `text` while it can revise: each sentence under the floor, with its score and
-        why, or "" when none is."""
+        why, and each numbered reference outside code that no line of the text leads, or "" for neither."""
         weak = [v for v in self.judged(text) if v.weak]
-        if not weak:
-            return ""
+        plain, at, refs = unmarked(text), 0, []
+        code = _code(plain)
+        for line in plain.splitlines(keepends=True):
+            refs += [] if _in_code(code, at) else NUMBERED.findall(SPAN_OR_MARK.sub("", line))
+            at += len(line)
+        stray = [f"[{n}]" for n in dict.fromkeys(refs)  # one a line leads, as `[1]: url` or `- [1] a.md`, is defined
+                 if not re.search(rf"^[ >]*(?:(?:[-+*]|\d+[.)])[ \t]+)?\[{n}\]", plain, re.MULTILINE)]
         lines = [f'- "{v.sentence}": ' + (f"{v.score:.2f}, " if v.score is not None else "") + v.reason
                  for v in weak]
-        return REVISE.format(floor=f"{self.floor:g}", sentences="\n".join(lines))
+        told = [REVISE.format(floor=f"{self.floor:g}", sentences="\n".join(lines))] if weak else []
+        return "\n\n".join(told + ([CITE_BY_ID.format(refs=", ".join(stray))] if stray else []))
 
 
 REVISE = """\
@@ -707,3 +714,6 @@ These sentences score under {floor}:
 For each, cite the evidence that backs it, say only what its facts say, or leave it as it stands when it is a fair \
 reading. Then hand in your whole text again. That hand-in lands as it is, and a sentence still under {floor} is \
 marked as not fully backed by the facts it cites."""
+CITE_BY_ID = """\
+These numbers in brackets cite nothing, since no evidence has them as its id: {refs}. Cite evidence by the id it \
+gives, copied exactly, as [^fact_01m7p4qga4pxpjkgvf], or take the number out. Then hand in your whole text again."""
