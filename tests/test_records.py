@@ -564,6 +564,25 @@ def test_a_retracted_record_is_kept_as_it_was_told(store: Store) -> None:
     assert store.record(told.record).body == "The review moved to Friday."  # inputs are append-only
 
 
+def test_a_retract_whose_take_back_stops_says_the_record_is_retracted_and_a_second_withdraws_the_rest() -> None:
+    from cerebro.errors import CerebroError
+
+    class Failing(FakeExtraction):
+        def retract(self, fact_id: str) -> None:
+            if not failed:
+                failed.append(fact_id)
+                raise OSError("the disk is full")
+            super().retract(fact_id)
+
+    store, facts, failed = MemoryStore(), Failing(), []
+    told = tell(store, facts, YOU, "The review moved to Friday.", as_="fact")
+    with pytest.raises(CerebroError, match=rf"^retract: {told.record} is retracted, but withdrawing what it gave "
+                                           rf"stopped partway: the disk is full\. Retract {told.record} again to "
+                                           r"withdraw the rest\.$"):
+        retract(store, facts, YOU, told.record)
+    assert retract(store, facts, YOU, told.record).withdrew == told.facts and facts.facts(record=told.record) == []
+
+
 def test_an_accepted_instruction_leaves_the_article_as_its_run_wrote_it(store: Store) -> None:
     from cerebro.article import Compilation
 
