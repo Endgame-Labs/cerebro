@@ -149,7 +149,7 @@ def notes(workspace: Workspace, caller: Caller, collection: str = ROOT) -> list[
         if not _within(str(record.fields.get("collection", ROOT)), under):
             continue
         for fact in workspace.query(caller, "facts", {"record": record.id}).items:
-            quote = fact.quotes[0].text if fact.quotes else ""
+            quote = next((q.text for q in fact.quotes if q.record in ("", record.id)), "")  # this note's own words
             items.append({"id": fact.id, "text": fact.text, "source": record.id, "quote": quote})
     return items
 

@@ -107,7 +107,7 @@ FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
 class Citation:
     """What a line of an article rests on: a fact, a record, a row of a query, or another article.
 
-    `source` names the record a quote came from, and `quote` is the words it rests on.
+    `source` names the record a quote came from, and `quote` is the words it rests on, another record's after its name.
     """
 
     kind: str

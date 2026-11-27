@@ -99,14 +99,16 @@ __all__ = [
 class Quote:
     """Words a fact rests on, as its record gives them, with who said them, when, and on which side of the
     conversation: `yours`, `theirs`, or empty when the record does not say. `passage` is the number of its passage
-    in the record, counted from 1, so two quotes whose numbers follow each other stand next to each other: 0 when
-    not known."""
+    in its record, counted from 1, so two quotes of one record whose numbers follow each other stand next to each
+    other: 0 when not known. `record` is that record, the fact's own or one that stated it again: empty when not
+    known."""
 
     text: str
     speaker: str = ""
     at: str = ""
     side: str = ""
     passage: int = 0
+    record: str = ""
 
 
 @dataclass
@@ -1219,8 +1221,7 @@ class FactoidExtraction(Extraction):
         else:
             with _active(self.app) as app:
                 live = [f for status in LIVE for f in app.list_facts(status=status)]
-                origins = {id: self._origin(id) for id in {f.document_id for f in live}}
-                found = [_fact(f, origins[f.document_id], self._kind(app, f)) for f in live]
+                found = [_fact(f, self._origin, self._kind(app, f)) for f in live]
         found = [f for f in found if _meets(f, source, record, since, kinds)]
         found.sort(key=lambda f: f.at, reverse=True)
         return found if limit is None else found[:limit]
@@ -1262,7 +1263,7 @@ class FactoidExtraction(Extraction):
         """The facts with these ids, whatever their status, in that order. An id Factoid does not hold is left out."""
         with _active(self.app) as app:
             loaded = [f for f in (app.load_fact(id) for id in ids) if f is not None]
-            return [_fact(f, self._origin(f.document_id), self._kind(app, f)) for f in loaded]
+            return [_fact(f, self._origin, self._kind(app, f)) for f in loaded]
 
     def _kind(self, app: Any, fact: Any) -> str:
         """A fact's kind, from its class. A field's fact, or one of a kind the workspace no longer defines, comes back as
@@ -1325,14 +1326,17 @@ class FactoidExtraction(Extraction):
             _write_whole(path, kept)
 
 
-def _fact(fact: Any, origin: tuple[str, str], kind: str) -> Fact:
-    """A Factoid fact as Cerebro's `Fact`, of the kind given. Its time is its record's, or when the
-    record gives none, when it was extracted. A quote has no side, since Factoid does not give one."""
+def _fact(fact: Any, origin: Callable[[str], tuple[str, str]], kind: str) -> Fact:
+    """A Factoid fact as Cerebro's `Fact`, of the kind given. `origin` gives the source and record of a document: the
+    fact's own, and each quote's. Its time is its record's, or when the record gives none, when it was extracted. A
+    quote has no side, since Factoid does not give one."""
     mentions = [Mention(m.text, m.role or "about") for m in fact.mentions]
     subject = next((m.text for m in mentions if m.role == "subject"), mentions[0].text if mentions else "")
+    source, record = origin(fact.document_id)
     return Fact(id=fact.id, text=fact.text, subject=subject, kind=kind,
-                at=_utc(fact.source_datetime or fact.extracted_at), source=origin[0], record=origin[1],
-                quotes=[Quote(q.text, q.speaker or "", _utc(q.said_at), passage=q.passage_n) for q in fact.quotes],
+                at=_utc(fact.source_datetime or fact.extracted_at), source=source, record=record,
+                quotes=[Quote(q.text, q.speaker or "", _utc(q.said_at), passage=q.passage_n,
+                              record=origin(q.document_id)[1]) for q in fact.quotes],
                 mentions=mentions, status="current" if fact.status in LIVE else "retracted",
                 field=str(((getattr(fact, "scores", None) or {}).get("cell") or {}).get("key") or "")
                 if kind == FIELD_KIND else "")
