@@ -18,8 +18,8 @@ The file follows the parts of a run:
   in nothing is asked once to hand in. With nothing to land, a normal end wrote nothing, which is no
   failure, and a run whose room or calls were spent, or whose reply was cut at its output limit, fails, so it runs
   again. A curator decides with its tools and hands in nothing. A composer that adds nothing leaves its subagents'
-  content standing. An error on any request fails the run, once its tries are spent, unless it holds a hand-in,
-  which then lands: a request to a provider is
+  content standing. An error on any request fails the run, once its tries are spent: a held hand-in lands however
+  the run ends after it. A request to a provider is
   streamed, so it fails only when its reply has not started in `FIRST_BYTE` seconds or then goes `STALL` seconds with
   nothing new, and a timeout, a rate limit or a server error is tried again up to the model's `retries`, each try
   again checked first against the cap of the run's meter, and each failed try counted in what the run spent.
@@ -585,14 +585,18 @@ class _Candidates:
             run.status, run.note = "failed", last
 
     def spent(self, run: Run, why: str) -> None:
-        """End the run as `budget spent`, landing a writer's latest candidate with the mark, else its held hand-in."""
+        """End the run as `budget spent`, landing what `kept` lands."""
         run.status, run.note = "budget spent", why
         if self.writes:
-            got = self.latest()
-            run.result = got[0] if got else self.held
-            run.note += (", so the text it handed in lands" if got and got[1] or not got and self.held is not None
-                         else ", so the text it wrote under its headings lands" if got
-                         else ", and it handed in nothing before then, so nothing lands")
+            run.note += self.kept(run)
+
+    def kept(self, run: Run) -> str:
+        """Land a writer's latest candidate with the mark, else its held hand-in, as `ended` does, and say which."""
+        got = self.latest()
+        run.result = got[0] if got else self.held
+        return (", so the text it handed in lands" if got and got[1] or not got and self.held is not None
+                else ", so the text it wrote under its headings lands" if got
+                else ", and it handed in nothing before then, so nothing lands")
 
 
 # -- the room: what a run holds against its budget, and the tool replies cut to fit it
@@ -1223,17 +1227,25 @@ def _guarded(room: _Room, takes: _Candidates, asked: _Asked, masks: Masks | None
     budget are checked, and the request masked; after it, what the reply cost and holds is counted, and a reply that
     handed in nothing is kept by `takes`."""
     from pydantic_ai.capabilities import Hooks
-    from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+    from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 
     hooks = Hooks()
     metered = METER.get()  # the run's turn of a meter, as a first-run round holds its curators to one cap
     provider, _, wire = name.partition(":")
+    own = {hand_in(takes.agent), NOTHING}
 
     @hooks.on.before_model_request
     async def hold_room(ctx: Any, request: Any) -> Any:
-        """End the run in place of a request past its budget, or one its meter's cap refuses, tell a curator
-        ahead of its turn, once, that its room is short while it still has its tools, offer only the hand-in once
-        no tool may run, and mask what the request holds, as it leaves for the model."""
+        """End the run in place of a request past its budget, one its meter's cap refuses, or a second ask to hand
+        in when the editor never spoke, tell a curator ahead of its turn, once, that its room is short while it
+        still has its tools, offer only the hand-in once no tool may run, and mask what the request holds, as it
+        leaves for the model."""
+        again = sum(isinstance(m, ModelResponse) and all(p.tool_name in own for p in m.parts
+                                                         if isinstance(p, ToolCallPart)) for m in request.messages)
+        if takes.writes and takes.held is None and again > 1:  # the editor's retry is its own, taken when it spoke
+            ctx.messages.pop()  # never sent: the run ends on the reply before it, as at the loop's own limit
+            raise UnexpectedModelBehavior("Exceeded maximum output retries (1)")
         if metered is not None:
             metered.before()  # past the cap the round set: the run stops here, and keeps what its turns spent
         if any(isinstance(m, ModelResponse) for m in request.messages) and room.spent():
@@ -1390,7 +1402,7 @@ class PydanticRun(AgentRun):
             raise ModelRetry(unwritten(agent, self.root))
 
         said = _told(agent)
-        again = 1 + (takes.review is not None)  # the editor's word on a hand-in takes one retry of its own
+        again = 1 + (takes.review is not None)  # the editor's word takes a retry: `_guarded` holds the rest to one
         outputs: list[Any] = [ToolOutput(takes.handed, name=hand_in(agent), description=said[hand_in(agent)],
                                          max_retries=again),
                               ToolOutput(nothing, name=NOTHING, description=said[NOTHING]), TextOutput(spoke)]
@@ -1448,13 +1460,14 @@ class PydanticRun(AgentRun):
                 result.ended_at = stamp(self.clock())
                 error.partial_run = result  # type: ignore[attr-defined]
                 raise
-        if result.status == "failed" and takes.held is not None:  # a hand-in is never lost
-            result.status, result.result, result.note = "done", takes.held, f"{result.note}, so its first hand-in lands"
         kept = history if history is not None and len(history) >= len(messages) else messages
         result.usage = _spent(result.usage.model, kept, tries.failed)
         if result.status == STOPPED and asked.asking > 0:  # no count came back: what it read is held as spent
             result.usage.requests += asked.asking
             result.usage.input_tokens += room.held
+        if result.status not in ("done", WROTE_NOTHING, "budget spent") and takes.held is not None:
+            result.note += takes.kept(result)  # a hand-in is never lost, however the run ends after it
+            result.status = "done"
         result.transcript = _entries(kept)
         result.refused = _in_call_order(room.refused, kept)
         result.ended_at = stamp(self.clock())

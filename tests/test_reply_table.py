@@ -8,7 +8,7 @@ list; `S` `done`; `R` "I could not find anything new about this in the evidence.
 `E` an empty reply; `C` a reply cut for length, its text under Summary; `CU` cut, under no heading; `CE` cut and
 empty; `T` a tool call; `RT` an unknown tool beside text; `HI` a hand-in that cites; `HG` a hand-in that cites nothing,
 under no heading, of which the stand-in editor has something to say; `HGH` one that cites nothing, under Summary; `N`
-nothing to write; an error by its name. The last
+nothing to write; an error by its name, `Refused` one that refuses the key. The last
 form repeats on every turn after. Limits: `calls` one tool call, spent by the first `T`; `room@1` the opening alone
 closes the room for tools; `room@2` the first reply's tokens close it; `budget@2` the first reply's tokens spend the
 whole budget."""
@@ -30,6 +30,7 @@ from pydantic_ai.usage import RequestUsage
 from suites.agent_run import AGENT, EVIDENCE, citing_nothing
 
 from cerebro.agent import Agent, Budget
+from cerebro.budget import RoundCut
 from cerebro.run import REVIEW, WROTE_NOTHING, PydanticRun, hand_in, instructions, opening, tokens
 
 SUB = replace(AGENT, id="things/subagents/risks", path=Path("agents/things/subagents/risks.md"), role="subagent",
@@ -48,6 +49,10 @@ CUT = "## Summary\n\nThe review moved to March [^f_1]. The te"
 HG = "The review moved to March."
 HGH = "## Summary\n\nHanded in above."
 NOW = datetime(2026, 11, 17, 9, tzinfo=UTC)
+
+
+class Refused(Exception):
+    status_code = 401  # a provider's answer that refuses the key
 
 
 def lookup(id: str) -> str:
@@ -74,7 +79,8 @@ def _parts(form: str, agent: Agent) -> tuple[list[Any], str]:
         return given[form]
     raise {"UnexpectedModelBehavior": UnexpectedModelBehavior("Invalid response from the provider"),
            "ContentFilterError": ContentFilterError("filtered", body="{}"),
-           "ConnectError": httpx.ConnectError("connection reset")}[form]
+           "ConnectError": httpx.ConnectError("connection reset"), "RoundCut": RoundCut("the round's cap was reached"),
+           "Refused": Refused("the provider refused the key")}[form]
 
 
 def run(role: str, replies: str, limit: str = "none") -> Any:
@@ -158,6 +164,9 @@ ROWS = [
     Row("writer", "HG,UnexpectedModelBehavior", "none", "done", HG),
     Row("writer", "HG,ConnectError", "none", "done", HG),
     Row("writer", "HG,ContentFilterError", "none", "done", HG),
+    Row("writer", "HG,RoundCut", "none", "done", HG),
+    Row("writer", "HG,Refused", "none", "done", HG),
+    Row("writer", "HG,H,ConnectError", "none", "done", ART),
     Row("writer", "ContentFilterError", "none", "failed", None),
     # an agent whose file names no heading: a whole-body agent
     Row("whole", "U", "none", WROTE_NOTHING, None),

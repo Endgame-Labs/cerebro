@@ -196,9 +196,17 @@ def test_once_the_editor_spoke_a_reply_in_text_or_a_broken_hand_in_is_still_aske
 
 def test_a_run_that_hands_in_nothing_even_after_the_turn_that_asks_ran_and_wrote_nothing_never_done() -> None:
     """A normal end with nothing to take ran and wrote nothing: no failure. Its last reply holds
-    no text to take."""
-    run = PydanticRun(_talker([], [], then="")).run(AGENT, EVIDENCE, [], Budget())
+    no text to take. It is asked once, though an editor reads its hand-ins: the editor's retry is its own."""
+    from cerebro.run import REVIEW
+
+    seen: list[int] = []
+    reviewing = REVIEW.set(lambda text: "")
+    try:
+        run = PydanticRun(_talker([], seen, then="")).run(AGENT, EVIDENCE, [], Budget())
+    finally:
+        REVIEW.reset(reviewing)
     assert run.status == "wrote nothing" and run.result is None and "handed in nothing" in run.note
+    assert len(seen) == 2
 
 
 def test_a_run_that_says_it_has_nothing_to_write_ends_as_wrote_nothing_with_its_reason_in_one_call() -> None:
