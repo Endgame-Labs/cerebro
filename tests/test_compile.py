@@ -326,6 +326,20 @@ def test_an_agent_with_instructions_of_its_own_runs_after_its_subagents_with_the
                                                              "## People\n\nPeople returned [^r0].")
 
 
+def test_a_writer_of_many_articles_a_composer_and_its_subagents_are_told_the_article_they_write(
+        tmp_path: Path) -> None:
+    agents, store, _items, common = briefs(tmp_path)
+    agents |= workspace(tmp_path, {"things/article.md": part("About")})
+    store.create(Identity("things/elm", "things", "Elm"))
+    seen: dict[str, str] = {}
+    run = ByAgent({id: ScriptedRun(lambda p, id=id: seen.update({id: p}) or "Text [^r0].") for id in (
+        "things/article", "briefs/article", "briefs/subagents/risks", "briefs/subagents/people")})
+    compile_article(agents["things/article"], agent_run=run, this="things/elm", **common)
+    compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
+    assert {id: ("things/elm" if id == "things/article" else "briefs/alder") in told for id, told in seen.items()} == {
+        "things/article": True, "briefs/article": True, "briefs/subagents/risks": True, "briefs/subagents/people": True}
+
+
 def drafts_prompt(run: ByAgent, agents: dict[str, Any], common: dict[str, Any]) -> str:
     """The prompt the risks subagent reads inside its composer's run."""
     seen: list[str] = []

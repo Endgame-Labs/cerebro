@@ -637,7 +637,7 @@ class ScriptedRun(AgentRun):
             if (name := getattr(tool, "__name__", "")) in HAND_INS:
                 raise ToolError(f"a tool is named {name}, which is how a run hands in what it wrote: rename that tool")
         clock = self.clock or system_clock
-        text = opening(evidence, clock(), self.root)
+        text = opening(agent, evidence, clock(), self.root)
         run = Run(id="run_scripted", agent=agent.id, target=agent.target, status="done",
                   transcript=[Entry("user", text)], usage=Usage(model="scripted", requests=1),
                   started_at=stamp(clock()))
