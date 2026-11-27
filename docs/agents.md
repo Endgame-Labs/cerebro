@@ -75,12 +75,37 @@ Each line under `evidence:` gathers one thing, in order. The agent cites what it
 | `- script: { run: scripts/usage.py }` | What a script in the workspace prints, in at most 60 seconds. Give it a `#!` first line and run `chmod +x` on it. |
 | `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text |
 
-A record a source sends `into:` a collection waits for an article there before Cerebro reads it. Its curator sees it only through a `held` line, so a curator of `things` fed by `into: things` reads:
+A record a source sends `into:` a collection waits, unread, until an article there takes it. Its curator is shown such records only through a `held` line, as `cerebro agents new` writes it:
 
 ```yaml
 evidence:
   - held: {}
 ```
+
+An `articles` line takes three options, each on a line under it:
+
+| Option | What it does |
+|---|---|
+| `text_only: true` | Loads each article's front matter and text, without its facts |
+| `keep: "..."` | Loads only the passages of each article that hold what you ask for, as the decision model judges them. It needs `text_only: true`. |
+| `top: 80` | Loads at most this many of the passages `keep` chose. It needs `keep`. |
+
+```yaml
+evidence:
+  - articles: [projects, teams]
+    text_only: true
+    keep: "What each article is: its name and the line that says what it is."
+    top: 80
+```
+
+`rendered:`, beside `evidence:`, has Cerebro write a part of the article itself, with no model call. It lists every collection that has articles, each linked, so under `Contents` the article reads `- [Projects](../projects/) (12 articles)`:
+
+```yaml
+rendered:
+  Contents: { kind: collections, show: [count] }
+```
+
+`style: headings` gives each collection a heading of its own, `show: [count, description]` adds the line `settings.yaml` gives a collection, and `place: after` puts the part after the agent's own text. It goes on a file that writes its article alone, not on one built from subagents.
 
 In a value, `this` means the article being written. So `articles: this` keeps the facts linked to it. `this.<field>` means the articles a field of it names, such as `this.linked`.
 

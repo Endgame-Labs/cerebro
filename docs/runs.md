@@ -61,7 +61,7 @@ skipped   projects/atlas: nothing it reads has moved since its last write: cereb
 
 ## The first run
 
-The first pass on a new workspace with curators writes nothing until you agree. Each curator runs once, starts from what your sources hold of the last 14 days, and proposes what clearly matters to its collection. Later passes fill in the rest. You see the proposals as one tree:
+The first pass on a new workspace with curators writes nothing until you agree. Each curator starts from what your sources hold of the last 14 days, and proposes what clearly matters to its collection. Later passes fill in the rest. You see the proposals as one tree:
 
 ```text
 $ cerebro serve --once
@@ -90,7 +90,7 @@ Each line is one article. What an article links to sits under it, by collection.
 
 One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
 
-If a curator fails, the run ends with a line that says so, and that curator runs again on a later pass.
+If a curator fails, the run ends with a line that says so, and that curator runs again on a later pass. A curator with nothing to read yet, such as one that reads only facts, proposes nothing at first. It runs once more once the sources are read, and you decide what it proposes then as a late list, the same way.
 
 Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. A line you tick again on its own lands on its own, even when what it sits under stays unticked. Tick one under "Left out" to admit what a curator left out.
 
