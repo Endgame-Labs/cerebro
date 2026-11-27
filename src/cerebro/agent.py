@@ -44,7 +44,7 @@ __all__ = [
 ]
 
 KEYS = ("evidence", "heartbeat", "tools", "budget", "model", "subagents", "authority", "rendered", "target",
-        "heading")
+        "heading", "min_grounding")
 KEEP_ACTED_ON = ("articles",)  # the lines keep and top act on; on any other they are read and not acted on
 HEARTBEAT_WORDS = ("change", "manual", "hourly", "daily", "weekly")
 SCHEDULES = {"hourly": "1h", "daily": "1d", "weekly": "7d"}
@@ -238,6 +238,7 @@ class Agent:
     composers: list[str] = field(default_factory=list)
     authority: Authority | None = None
     rendered: dict[str, Render] = field(default_factory=dict)
+    min_grounding: float | None = None
     hash: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -601,6 +602,18 @@ def _budget(file: _File, value: Any) -> Budget:
     return Budget(**value)
 
 
+def is_floor(value: Any) -> bool:
+    """Whether `value` can stand as `min_grounding`, in an agent file or in settings.yaml: a number from 0 to 1."""
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and 0 <= value <= 1
+
+
+def _floor(file: _File, value: Any) -> float | None:
+    if value is not None and not is_floor(value):
+        raise file.fail(f"min_grounding is {value!r}: write a number from 0 to 1, such as min_grounding: 0.6",
+                        "min_grounding")
+    return None if value is None else float(value)
+
+
 def _model(file: _File, value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -795,6 +808,9 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
     if curates and target_query is not None:
         raise file.fail("a curator keeps the articles of its folder, so it writes no query: delete the target: line",
                         "target")
+    if curates and front.get("min_grounding") is not None:
+        raise file.fail("a curator decides which articles exist and writes none, so nothing reads min_grounding: "
+                        "delete it", "min_grounding")
     file.at = ("authority",)
     authority = _authority(file, front.get("authority"))
     if authority is not None and not curates:
@@ -832,7 +848,7 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
                 raise file.fail(f"it lists subagents, so its run wakes when theirs would and takes the ordinary read "
                                 f"tools after them: leave out {key}, which belongs in a subagent")
         if not own:
-            for key in ("evidence", "model", "budget"):
+            for key in ("evidence", "model", "budget", "min_grounding"):
                 if front.get(key) is not None:
                     raise file.fail(f"it joins its subagents' content with no model, so nothing reads {key}: move it "
                                     "to the subagent that needs it, or write its own instructions after a level-one "
@@ -894,7 +910,8 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
         instructions=instructions, headings=by_heading, heading=heading or "", context=context if composes else "",
         own=own,
         subagent_ids=[f"{collection}/subagents/{name}" for name in names], authority=authority,
-        rendered=rendered, hash=hashlib.sha256(data).hexdigest()[:8], warnings=warnings,
+        rendered=rendered, min_grounding=_floor(file, front.get("min_grounding")),
+        hash=hashlib.sha256(data).hexdigest()[:8], warnings=warnings,
     )
 
 

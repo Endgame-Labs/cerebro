@@ -182,7 +182,9 @@ def test_a_run_by_hand_on_one_named_article_writes_that_one_alone(tmp_path: Path
     w = Workspace(tmp_path, monkeypatch, note("n1", "The launch moved to March 3."))
     w.model = Records(w.hands, tmp_path)
     ran = w.run("agents", "run", "things/article", "beta")
-    assert ran.exit_code == 0 and ran.output.splitlines() == ["wrote    things/beta  articles/things/beta.md"], ran.output
+    assert ran.exit_code == 0 and ran.output.splitlines() == [
+        "wrote    things/beta  articles/things/beta.md",
+        "grounding things/article on things/beta: left 1 sentence unscored"], ran.output  # it has no decision model
     curator = w.run("agents", "run", "things/curator", "beta")
     assert curator.exit_code == 1 and "give no article" in curator.output, curator.output
 
@@ -1309,7 +1311,7 @@ def test_a_run_with_nothing_to_cite_or_that_wrote_nothing_is_not_counted_failed(
     w.model = Counts(w.hands, tmp_path)
     empty = w.run("compile", "--article", "things")
     assert len(w.model.asked) == 2 and empty.exit_code == 0, empty.output
-    assert empty.output.splitlines()[-1] == "0 written, 2 ran and wrote nothing, 0 fresh, 0 failed.", empty.output
+    assert empty.output.splitlines()[-1] == "2 written, 0 fresh, 0 failed.", empty.output
     full = Workspace(tmp_path / "full", monkeypatch, note("n1", "The launch moved to March 3."))
     full.model = Empty(full.hands, tmp_path / "full")
     real = full.run("compile", "--article", "things")

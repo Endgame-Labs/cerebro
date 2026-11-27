@@ -227,6 +227,7 @@ def test_a_level_one_heading_is_seen_after_a_tab_and_one_with_nothing_under_it_i
                                          "its own instructions after a level-one heading")),
     ("model: { provider: fireworks, model: glm-5p3 }\n", "", "so nothing reads model"),
     ("budget: { tool_calls: 4 }\n", "", "so nothing reads budget"),
+    ("min_grounding: 0.5\n", "", "so nothing reads min_grounding"),
     ("", "\n# Output\n\n## Lead\n", ("# Output says what a model writes, and this file joins its subagents' content "
                                      "with no model: delete # Output, or write its own instructions after a level-one "
                                      "heading")),

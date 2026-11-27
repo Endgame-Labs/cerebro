@@ -259,7 +259,7 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         _echo("agents    none: write one with cerebro agents new <collection>/<name>")
     for article in result.compiled:
         _echo(f"wrote     {article}  articles/{article}.md")
-    if result.grounding:  # what grounding did on each article, as counts: each line of it is kept on its run's line
+    if result.grounding:  # what grounding did on each article, as counts: each score is kept on its run's line
         from .ground import counted
 
         for key, tally in result.grounding.items():
@@ -271,9 +271,8 @@ def _print(result: PassResult, said: set[str] | None = None, agents: bool = True
         _echo(f"skipped   {agent}: {why}")
     for agent, why in result.held.items():
         _echo(f"held      {agent}: {why}")
-    for line in result.warnings:  # what grounding repaired or dropped is kept on its run's line
-        if line not in result.grounded:
-            _echo(f"warning   {line}")
+    for line in result.warnings:
+        _echo(f"warning   {line}")
     for agent, why in result.ran.items():  # no failure: it runs again once what it reads moves
         _echo(f"ran       {agent}: wrote nothing: {why}")
     for agent, why in result.failed.items():
@@ -319,7 +318,7 @@ def _passes(workspace: Cerebro) -> Callable[[PassResult], None]:
 
 
 def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool = True, workspace: Any = None) -> str:
-    """One agent's run by hand, and what grounding dropped and its notes, as a pass prints them. A run that ran and
+    """One agent's run by hand, and what did not land and its notes, as a pass prints them. A run that ran and
     wrote nothing says why and is no failure, also when its article holds its
     earlier text. Gives why a run failed, or "": for a composed article, a subagent's failure fails the article's
     run. A run by hand runs even when nothing moved, and when its evidence holds nothing to cite, so it skips only
@@ -328,6 +327,7 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
     and one a person took out while its run was under way says what of it landed: nothing, with what it cost when
     `workspace` is given."""
     from .budget import spent_by_runs
+    from .ground import counted
 
     key = agent if article_id == agent else f"{agent} on {article_id}"
     runs = compiled.runs or ([compiled.run] if compiled.run is not None else [])
@@ -357,6 +357,8 @@ def _print_compiled(agent: str, article_id: str, compiled: Compiled, alone: bool
         _echo(f"wrote    {article}  articles/{article}.md")
     for line in [*compiled.dropped, *compiled.notes]:
         _echo(f"warning  {key}: {line}")
+    if did := counted(compiled.grounding):  # each score is kept on its run's line, as a pass keeps it
+        _echo(f"grounding {key}: {did}")
     if compiled.cleaned:  # each line of it is kept on its run's line, as a pass keeps it
         _echo(f"cleaned  {key}: {made_safe(len(compiled.cleaned))}")
     if compiled.warning:
@@ -3540,7 +3542,7 @@ def _connect(source: str | None, root: Path | None, from_stdin: bool, from_env: 
 @_root_option
 @click.option("--group", default="", help="Run only the cases of this group.")
 @click.option("--workers", type=int, default=4, show_default=True, help="How many cases run at once.")
-@click.option("--no-model", "no_model", is_flag=True, help="Judge by rules and words alone, with no model call.")
+@click.option("--no-model", "no_model", is_flag=True, help="Judge by rules alone, with no model call.")
 @click.option("--cap", type=float, default=None,
               help="The evaluation layer's dollars for today, in place of settings.yaml's evaluation_daily_usd.")
 @_json_option
@@ -3938,9 +3940,9 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
     if screen.broken:  # the live display stopped: the run ends as it does off a terminal
         _print(result)
         return
-    # what grounding repaired or dropped is said under its article's row as counts, and
-    # each line of it is kept on its run's line in the agent-runs log: none is said again here, nor is it to check
-    warnings = [line for line in result.warnings if line not in result.grounded]
+    # what grounding scored is said under its article's row as counts, and each score is kept on its run's line in
+    # the agent-runs log: none is said again here
+    warnings = result.warnings
     threaded = screen.close([*warnings, *(f"{k}: {v}" for k, v in result.ran.items()),
                              *(f"{k}: {v}" for k, v in result.failed.items())])
     if screen.broken:  # it stopped as the run ended
@@ -3965,11 +3967,6 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
         if line not in threaded and line not in said:
             p.err_line("cerebro: warning: " + _wrap(line, 18, width))
         p.check(line)
-    from .ground import counted
-
-    for key, tally in result.grounding.items():  # under its row already, and to check when it needs a person's eye:
-        if key in result.ran or tally.get("citations"):  # an article grounding left with nothing, a citation unread
-            p.check(f"{key}: {counted(tally)}")
     for key, why in result.failed.items():
         line = f"{key}: {why}"
         if line not in threaded and key not in shown:

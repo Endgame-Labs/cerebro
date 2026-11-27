@@ -17,7 +17,7 @@ from click.testing import CliRunner
 from conftest import GTM
 from mcp import Client
 from test_archive_command import carry
-from test_workspace_words import commands, presumed_lines
+from test_workspace_words import commands
 
 from cerebro import Caller, Cerebro, prompts
 from cerebro.article import Compilation, Identity
@@ -380,8 +380,8 @@ def test_agents_run_on_many_articles_and_a_run_by_hand_over_earlier_text_say_no_
 def test_a_composed_articles_failed_and_dropped_lines_and_agents_runs_skipped_lines_say_no_section_brain_or_page(
         tmp_path: Path, monkeypatch: Any) -> None:
     """The `failed` line of a composed article a subagent's failure failed, in a pass, by hand and in `status`; the
-    notes of one whose content grounding dropped whole; and `agents run`'s `skipped` line and its line when every
-    article skipped."""
+    notes of one whose content was all withdrawn; and `agents run`'s `skipped` line and its line when every article
+    skipped."""
     from test_handin_composed import CURATOR, Workspace, cited, composed
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
@@ -396,9 +396,9 @@ def test_a_composed_articles_failed_and_dropped_lines_and_agents_runs_skipped_li
     dropped.run.how["things/subagents/overview"] = lambda prompt: said.append(cited(prompt)) or said[-1]
     dropped.cli("agents", "run", "things/article")
     dropped.move()
-    dropped.run.how["things/subagents/overview"] = lambda prompt: said[0]
+    dropped.run.how["things/subagents/overview"] = ""
     lines += dropped.cli("agents", "run", "things/article").output.splitlines()
-    assert any("nothing it wrote grounds now" in line for line in lines), lines  # grounded again, as keep_part
+    assert any("withdrawn since" in line for line in lines), lines
     kept = composed(tmp_path / "d", monkeypatch)
     kept.run.how["things/subagents/overview"] = cited
     kept.cli("agents", "run", "things/article")
@@ -915,12 +915,6 @@ def test_what_a_find_or_a_query_that_matched_nothing_or_left_some_out_says_has_n
     store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
     said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
     assert len(said) == 9 and not [line for line in said if words.search(line) or WORDS.search(line)], said
-
-
-def test_no_line_a_presumed_mark_shows_names_a_section_or_a_hand_in() -> None:
-    for line in presumed_lines():
-        shown = line.split('": ', 1)[-1] if line.startswith("Part: dropped \"") else line
-        assert not WORDS.search(shown), shown
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:

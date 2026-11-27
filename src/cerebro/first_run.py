@@ -1384,7 +1384,6 @@ def _masked(workspace: Cerebro, result: PassResult) -> PassResult:
     result.refused = [workspace.mask_every()(line) for line in result.refused]
     result.notices = [workspace.mask_every()(line) for line in result.notices]
     result.warnings = [workspace.mask_every()(line) for line in result.warnings]
-    result.grounded = {workspace.mask_every()(line) for line in result.grounded}
     return result
 
 
@@ -1424,7 +1423,6 @@ def _merge(into: PassResult, more: PassResult) -> None:
     into.tried = more.tried | into.tried  # each retry list as it stood when the first pass began
     into.paused |= more.paused
     into.grounding |= more.grounding
-    into.grounded |= more.grounded
     into.cleaned |= more.cleaned
 
 

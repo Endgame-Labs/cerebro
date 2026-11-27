@@ -95,6 +95,9 @@ LOOKALIKES = str.maketrans({
 NOTE_LEAD = "_No agent writes this article yet._"
 NOTE_RAN_LEAD = "_Its agents have run and found nothing to write yet._"
 CITED = re.compile(r"\[\^([^\]\s]+)\]")
+MARK = "[^unsupported]"  # what grounding writes after a sentence its facts do not fully back
+UNSUPPORTED = f"{MARK}: Not fully backed by the facts it cites."  # its one definition, at the end of an article
+NOT_FOUND = "not found"  # the footnote of a citation that names nothing the article's runs read
 ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
 CLOSING = re.compile(r"(?:^|[ \t]+)#+$")
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
@@ -266,8 +269,10 @@ def part_text(compilation: Compilation) -> str:
 
 
 def body(article: Article) -> str:
-    """The article's text: each part as `part_text` shows it, in order."""
-    return "\n\n".join(text for compilation in article.compilations if (text := part_text(compilation)))
+    """The article's text: each part as `part_text` shows it, in order, and `UNSUPPORTED` once at the end when a part
+    holds `MARK`."""
+    text = "\n\n".join(text for compilation in article.compilations if (text := part_text(compilation)))
+    return f"{text}\n\n{UNSUPPORTED}" if MARK in text else text
 
 
 def passages(article: Article) -> list[Compilation]:
@@ -438,8 +443,9 @@ def front_matter(front: dict[str, Any]) -> str:
 
 def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = UTC) -> str:
     """The article as a person reads it: front matter, the empty-article note while there is nothing else to read,
-    each compilation under its heading, then a footnote per citation with its source and quote. `facts` are the facts
-    linked to the article, which the note counts."""
+    each compilation under its heading, then a footnote per citation with its source and quote, one that says
+    `NOT_FOUND` for a citation its parts hold no source of, and `UNSUPPORTED` once when a part holds `MARK`. `facts`
+    are the facts linked to the article, which the note counts."""
     who = article.identity
     front: dict[str, Any] = {"id": who.id, "title": who.title}
     if who.status != "active":
@@ -468,6 +474,11 @@ def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = U
         lines += [f"[^{label(citation.id)}]: {inert(citation.source) or inert(citation.kind) or "source"}{quote}", ""]  # never cleaned
         # each its own block: a renderer without footnotes reads lines together as one paragraph, where a backtick or
         # a bracket of one quote would pair with the next line's
+    written = "\n".join(c.text for c in article.compilations)
+    named = {label(c.id) for c in notes.values()} | {MARK[2:-1]}
+    lines += [line for found in dict.fromkeys(CITED.findall(written)) if found not in named
+              for line in (f"[^{found}]: {NOT_FOUND}", "")]
+    lines += [UNSUPPORTED, ""] if MARK in written else []
     return "\n".join(lines).rstrip() + "\n"
 
 

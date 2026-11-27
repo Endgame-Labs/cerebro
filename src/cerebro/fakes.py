@@ -26,9 +26,8 @@ from .caller import Caller
 from .connector import Connector, CursorError, Listing, Record, RecordNotFound, gone
 from .evidence import Evidence
 from .facts import Extracted, Extraction, Fact, FactNotFound, Mention, NoBody, Quote
-from .ground import Rewriter
 from .models import Answer, Choice, Decider, Decision, DecisionError, Question, Score, TokenCount, YesNo
-from .run import AgentRun, Entry, Run, Usage
+from .run import AgentRun, Entry, Rewriter, Run, Usage
 from .search import Hit, Index
 from .secrets import Secrets, _check_value, _not_found, changed, check_name
 from .store import (
@@ -683,7 +682,7 @@ def notes_app() -> App:
 class FakeDecider(Decider):
     """Stands in for `models.Decider`, the decision model. It answers from `answers`, by question name: a number for a yes or no (the probability of
     yes) or a score, and an option's name for a choice, each with full confidence. A question it was not told
-    about gets yes, the first option, or the lowest level. It keeps each `(state, questions)` it was asked.
+    about gets yes, the first option, or the highest level. It keeps each `(state, questions)` it was asked.
 
     `strict` is for a test whose point is which questions were asked: a question it was not told about fails the
     call, and each call reports the tokens a real one would, an estimate of what it was sent, never zero."""
@@ -708,7 +707,7 @@ class FakeDecider(Decider):
                 out[name] = Answer(choice=pick, confidence=1.0,
                                    probabilities={k: float(k == pick) for k, _ in question.options})
             elif isinstance(question, Score):
-                level = 0.0 if given is None else float(given)
+                level = len(question.levels) - 1.0 if given is None else float(given)
                 out[name] = Answer(score=level, confidence=1.0, probabilities={
                     str(i): float(i == round(level)) for i in range(len(question.levels))})
         if self.strict:
@@ -719,8 +718,8 @@ class FakeDecider(Decider):
 
 
 class FakeRewriter(Rewriter):
-    """Stands in for `ground.Rewriter`, a repair's writing model. It answers each request, read as JSON, with what
-    `reply(request)` gives, as the model's text, and keeps every request it was asked."""
+    """Stands in for `run.Rewriter`, a writing model asked one request. It answers each request, read as JSON, with
+    what `reply(request)` gives, as the model's text, and keeps every request it was asked."""
 
     def __init__(self, reply: Callable[[dict[str, Any]], str]):
         self.reply = reply

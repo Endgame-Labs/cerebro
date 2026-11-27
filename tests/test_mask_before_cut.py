@@ -349,8 +349,8 @@ def test_the_keep_judge_a_rerank_the_request_log_and_the_runs_log_mask_before_th
             ran = Run(f"run_{start}", "projects/said", "projects/harbor", "failed", note="it failed",
                       started_at="2026-11-17T09:00:00Z")
             workspace.store.append("agent-runs", {"run": ran.id, "agent": ran.agent, "status": "failed"})
-            _wrote_nothing(workspace.store, ran, ["x" * (300 - len("it failed; grounding dropped everything it handed "
-                                                                 "in: ") + start - 300) + secret])
+            _wrote_nothing(workspace.store, ran, ["x" * (300 - len("it failed; nothing it handed in lands: ") + start - 300)
+                                                  + secret])
         seen = {log: json.dumps([r.data for r in workspace.store.rows(log)], ensure_ascii=False)
                 for log in ("mcp-requests", "agent-runs")}
     seen |= {where: json.dumps([state for state, _ in decider.asked], ensure_ascii=False)
@@ -1228,35 +1228,6 @@ def test_an_unreadable_store_opens_the_session_refuses_the_call_and_leaves_no_ca
 # -- every other place text is cut or printed: the mask comes first
 
 
-def test_what_grounding_drops_is_masked_before_it_is_cut_to_the_line_that_says_so(tmp_path: Path) -> None:
-    from cerebro.apps import App, evidence
-
-    secret = SECRETS["plain"]
-
-    @evidence("items")
-    def items() -> list[dict[str, str]]:
-        """Items: a stand-in app's evidence, one record to cite."""
-        return [{"id": "r1", "text": "The review moved to Friday."}]
-
-    shapes = {"comment": "<!-- " + "x" * 63 + secret + " -->",
-              "yaml item": "```yaml\n- " + "y" * 148 + secret + " [^nope]\n```"}
-    for shape, text in shapes.items():
-        root = tmp_path / shape.replace(" ", "_")
-        (root / "agents" / "projects").mkdir(parents=True)
-        (root / "agents" / "projects" / "said.md").write_text(
-            "---\nevidence:\n  - items: {}\n---\n\n# Instructions\n\nWrite what was said.\n\n# Output\n\n## Said\n")
-        (root / "settings.yaml").write_text("timezone: UTC\n")
-        with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets(SECRETS),
-                     decider=FakeDecider(), apps=[App("probe", functions=[items])],
-                     agent_run=ScriptedRun(lambda prompt, t=text: t, clock=lambda: DAY), clock=lambda: DAY) as workspace:
-            workspace.store.create(Identity("projects/said", "projects", "Said"))
-            compiled = workspace.compile(workspace.agent("projects/said"))
-            runs = json.dumps(workspace.call(YOU, "query", {"from": "agent-runs"}), ensure_ascii=False, default=str)
-        out = "\n".join([*compiled.dropped, *(r.note for r in compiled.runs if r), runs])
-        assert MARK in "\n".join(compiled.dropped), shape
-        assert not leaks(secret, out), (shape, leaks(secret, out))
-
-
 def test_a_scripts_output_cut_at_its_limit_keeps_no_head_of_a_secret(tmp_path: Path) -> None:
     from test_evidence import FakeStarter
 
@@ -1602,7 +1573,7 @@ def pieces(value: str, text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("style", [{"ensure_ascii": False}, {"ensure_ascii": False, "separators": (",", ":")}, {}])
-def test_a_value_json_wrote_with_escapes_reaches_no_repair_or_grouping_request(
+def test_a_value_json_wrote_with_escapes_reaches_no_writing_models_one_request(
         monkeypatch: pytest.MonkeyPatch, style: dict[str, Any]) -> None:
     import pydantic_ai.direct
     from pydantic_ai.messages import TextPart
@@ -1619,7 +1590,8 @@ def test_a_value_json_wrote_with_escapes_reaches_no_repair_or_grouping_request(
 
     monkeypatch.setattr(pydantic_ai.direct, "model_request_sync", request)
     mask = Scrubber.of([stored for stored, _ in WRAPPED.values()])
-    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, key=lambda _: "test", masks=lambda: mask)
+    rewriter = PydanticRewriter({"provider": "fireworks", "model": "glm-5p3"}, what="ask", key=lambda _: "test",
+                                masks=lambda: mask)
     held = {"claim": "Juniper moved.", "operating_context": "\n".join(f"Old {k}: {w}" for k, (_, w) in WRAPPED.items()),
             "facts": [{"id": "fact_1", "text": f"rack {WRAPPED['token wrapped'][1]}"}]}
     rewriter.rewrite("Repair the sentence.", json.dumps(held, **style))
