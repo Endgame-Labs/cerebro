@@ -40,6 +40,7 @@ The file follows the parts of a run:
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
 import dataclasses
@@ -166,6 +167,22 @@ def _loop() -> Any:
 
     pydantic_ai.BANNER_ENABLED = False
     return pydantic_ai
+
+
+@contextlib.contextmanager
+def _loop_closed_as_it_ends() -> Iterator[None]:
+    """A new event loop as the thread's, which Pydantic AI's sync calls take, closed with its async generators as the
+    block ends. It waits for no host lookup still under way on its executor, so a stop ends the call at once."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield
+    finally:
+        try:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
 
 
 def model_name(block: dict[str, Any]) -> str:
@@ -1433,7 +1450,7 @@ class PydanticRun(AgentRun):
         token = pydantic_ai.CancellationToken()
         with pydantic_ai.capture_run_messages() as messages:
             try:
-                with cancelling(token.cancel):  # a stop of serve cancels the run where it is
+                with _loop_closed_as_it_ends(), cancelling(token.cancel):  # a stop of serve cancels the run where it is
                     done = loop.run_sync([text, *files] if files else text, usage_limits=limits,
                                          model_settings=settings or None, cancellation_token=token)
                 history = done.all_messages()
@@ -1569,8 +1586,10 @@ class PydanticRewriter(Rewriter):
         from pydantic_ai.exceptions import UserError
 
         try:
-            reply = model_request_sync(model, [ModelRequest(parts=[SystemPromptPart(system), UserPromptPart(request)])],
-                                       model_settings={**model_settings(block), **sent, "max_tokens": self.max_tokens})
+            with _loop_closed_as_it_ends():
+                reply = model_request_sync(
+                    model, [ModelRequest(parts=[SystemPromptPart(system), UserPromptPart(request)])],
+                    model_settings={**model_settings(block), **sent, "max_tokens": self.max_tokens})
         except (UserError, BudgetSpent):
             raise  # refused before a request was sent, such as for a missing key, or before a try at the cap
         except Exception as error:  # the provider was asked: each try that failed was told to `tried` as it failed
