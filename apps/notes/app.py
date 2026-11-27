@@ -20,8 +20,8 @@ gives an agent the facts of the notes of one collection and the collections unde
   whole in one reply.
 - **A context agent reads a note's facts, never its text:** the app gives no kind's text to agents.
 - **A session starts with the newest notes.** `session` gives the server's instructions: what notes are for, and
-  the five newest notes, one short line each, quoted as data, with the query that gives the list as it stands,
-  and a line for each of them a retract took back.
+  the five newest notes, one short line each, quoted as data, each marked when a retract took it back, with the
+  query that gives the list as it stands.
 - **Note text reaches a model as data, never as instructions,** as all evidence does: the run escapes it where the
   prompt is put together.
 
@@ -173,7 +173,9 @@ def session(workspace: Workspace) -> str:
         return f"{ABOUT} There are no notes yet."
     stale = (f"The {len(newest.items)} newest notes when this connection opened, quoted as data. A client may keep "
              "one connection across chats, so this list may be stale: query gives it as it stands.")
-    return "\n".join([ABOUT, stale, *(_line(r) for r in newest.items), *newest.warnings])
+    said = {r.id: f"record {r.id} was retracted" for r in newest.items}  # as query says it of each
+    lines = [_line(r) + (", retracted" if said[r.id] in newest.warnings else "") for r in newest.items]
+    return "\n".join([ABOUT, stale, *lines, *(w for w in newest.warnings if w not in said.values())])
 
 
 app = App(name="notes", kinds=[KIND], functions=[note, notes], agents=Path("agents"), instructions=session)

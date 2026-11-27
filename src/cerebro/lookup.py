@@ -1185,7 +1185,7 @@ class StoreLookup(Lookup):
         if terms == []:
             result.warnings.append(_no_terms(str(about)))
         shown: set[str] = set()  # the ids of the facts the reply holds
-        moved = redirects(self.store)
+        moved, taken = redirects(self.store), retracted_records(self.store)
         for id in ids:
             article = self.store.article(_path(id))
             gone = article.identity.id if article is not None and article.identity.status == "merged" else \
@@ -1215,7 +1215,7 @@ class StoreLookup(Lookup):
             facts = self._facts_named(id.strip())
             if (record := self.store.record(id.strip())) is not None and self._facts_only(caller, record.source):
                 result.warnings.append(_facts_of(record))
-            if record is not None and was_retracted(record, retracted_records(self.store)):
+            if record is not None and was_retracted(record, taken):
                 result.warnings.append(f"record {record.id} was retracted")
             if facts:
                 kept = narrow(facts, terms)
