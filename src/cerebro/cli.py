@@ -1526,13 +1526,12 @@ def _review_screen(workspace: Any, printer: Any) -> bool:
 
 
 def _kept(workspace: Any, result: Any) -> list[str]:
-    """The facts a decide's accepted retracts withdrew in the store that the facts layer kept all the same."""
+    """What each retract a decide accepted names, of those it left unfinished since the facts layer kept a fact it
+    withdrew in the store. The next pass finishes them."""
     from .records import RETRACTS, proposals
 
-    extraction = getattr(workspace.lookup, "extraction", None)
-    withdrew = [str(f) for p in proposals(workspace.store) if p.kind in RETRACTS and p.status == "accepted"
-                and result.answers.get(p.id) == "decided" for f in p.applied.get("withdrew") or []]
-    return [f.id for f in extraction.facts(ids=withdrew) if f.status != "retracted"] if extraction and withdrew else []
+    return [p.target for p in proposals(workspace.store) if p.kind in RETRACTS and p.status == "accepted"
+            and result.answers.get(p.id) == "decided" and not p.applied]
 
 
 def _newer_than(workspace: Any, file: str, flag: str, until: str) -> list[str]:

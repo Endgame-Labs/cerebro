@@ -711,16 +711,17 @@ def test_the_facts_layer_withdraws_only_once_the_store_has_kept_the_whole_line(w
 
 def test_a_facts_layer_that_refuses_once_the_store_has_kept_the_line_is_named_with_what_it_kept(
         workspace: Workspace, monkeypatch: pytest.MonkeyPatch) -> None:
+    from cerebro.connector import Record as Kept
     from cerebro.facts import FactNotFound
 
     one, two = facts_of(workspace, "Lumen moved to the east wing.", "Harbor closed for a week.")
     (lumen,) = workspace.curate("Lumen")
     retract_by(workspace, "p_retract00001", one)
     retract_by(workspace, "p_retract00002", two)
-    retract = workspace.extraction.retract
+    retract, refused = workspace.extraction.retract, [two]
 
     def refuses_the_second(fact_id: str) -> None:
-        if fact_id == two:
+        if fact_id in refused:
             raise FactNotFound(f"the facts layer is read only: {fact_id} stays")
         retract(fact_id)
 
@@ -734,6 +735,14 @@ def test_a_facts_layer_that_refuses_once_the_store_has_kept_the_line_is_named_wi
          "still stands, though p_retract00002 is accepted: deciding p_retract00002 again changes nothing, and the "
          f"retract tool takes {two} back.")]
     assert dict(state(workspace)[2]) == {one: "retracted", two: "current"} and workspace.waiting() == []
+    note = Kept(id="r_note00000001", source="notes", revision="1", at="2026-11-18T09:00:00Z", body="Harbor reopened.",
+                by=Caller("you", "person"))
+    with Cerebro(workspace.root, extraction=workspace.extraction) as app:
+        app.store.keep(note)
+    refused += [f.id for f in workspace.extraction.extract(note).facts]
+    filed(workspace, Proposal("p_rr0000000001", "record.retract", note.id, Caller("projects/curator", "agent"),
+                              "2026-11-19T09:00:05Z", cites=[note.id], reason="wrong"))
+    assert workspace.run("review", "--accept", "p_rr0000000001").exit_code == 1  # a record's retract left unfinished
 
 
 def test_a_store_that_refuses_a_write_as_the_line_lands_keeps_nothing_of_it(

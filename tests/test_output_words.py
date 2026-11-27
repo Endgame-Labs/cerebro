@@ -938,15 +938,23 @@ def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_stat
     assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
 
 
-def test_what_a_find_or_a_query_that_matched_nothing_or_left_some_out_says_has_no_section_brain_or_page() -> None:
+def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_no_section_brain_or_page(
+        tmp_path: Path) -> None:
+    from test_runner import kept_notes
+
     from cerebro.article import Property
+    from cerebro.connector import Record
+    from cerebro.errors import CerebroError
     from cerebro.fakes import FakeExtraction
     from cerebro.lookup import StoreLookup
+    from cerebro.records import finish_retracts, retract
 
     words = re.compile(r"\bsections?\b|\bbrains?\b|\bpages?\b", re.IGNORECASE)
     you, store = Caller("you", "person"), MemoryStore()
-    lookup = StoreLookup(store, FakeExtraction())
-    said = lookup.find(you, "Orion").warnings + lookup.query(you, "facts").warnings
+    lookup = StoreLookup(store, FakeExtraction(), kinds=["note"])
+    store.keep(Record(id="note_1", source="note", revision="1", body="x", by=you))
+    retract(store, lookup.extraction, you, "note_1")
+    said = lookup.find(you, "Orion").warnings + lookup.query(you, "facts").warnings + lookup.query(you, "note").warnings
     store.create(Identity("things/a", "things", "A", status="archived"))
     store.append("proposals", {"id": "p_1", "kind": "admit"})
     for source, filters in (("facts", {"kind": "decision"}), ("proposals", {"kind": "merge"}), ("merges", {}),
@@ -956,7 +964,31 @@ def test_what_a_find_or_a_query_that_matched_nothing_or_left_some_out_says_has_n
         store.create(Identity(id, "things", id[-1].upper()))
     store.set_field("things/b", "stage", Property("open", you, "2026-11-01T09:00:00Z"))
     said += lookup.query(you, "things", {"stage": "open"}).warnings  # things/c has no stage
-    assert len(said) == 9 and not [line for line in said if words.search(line) or WORDS.search(line)], said
+
+    class Failing(FakeExtraction):  # a retract whose take-back stops partway
+        def retract(self, fact_id: str) -> None:
+            raise OSError("the disk is full")
+
+    failing = Failing()
+    store.keep(Record(id="note_2", source="note", revision="1", body="The gate opens at five.", by=you))
+    failing.extract(store.record("note_2"))  # type: ignore[arg-type]
+    try:
+        retract(store, failing, you, "note_2")
+    except CerebroError as error:
+        said.append(str(error))
+    said += [f"{k}: {v}" for k, v in finish_retracts(store, failing, "2026-11-20T09:00:00Z")[1].items()]  # it fails
+
+    class Racing(FakeExtraction):  # a retract lands as a pass reads the note
+        def extract(self, record: Record) -> Any:
+            if not raced:
+                raced.append(cerebro.retract(you, record.id, "wrong"))
+            return super().extract(record)
+
+    raced: list[Any] = []
+    cerebro = kept_notes(tmp_path, Racing())
+    cerebro.handle.keep(you, "note", "The gate opens at six.", {"collection": "notes"})
+    said += [line for line in cerebro.run_once().notices if "retracted" in line]
+    assert len(said) == 13 and not [line for line in said if words.search(line) or WORDS.search(line)], said
 
 
 def test_the_first_runs_nothing_to_propose_row_and_the_late_lists_line_say_no_section_brain_or_page() -> None:
