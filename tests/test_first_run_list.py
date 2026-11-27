@@ -3,6 +3,7 @@ Neutral collections only: `things` and `parts`. Fakes only."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from test_first_run import Script, carried, every_curator_weighs, review_rest  #
 from test_first_run_structure import RECORDS, by_record, lay_out_workspace, open_it
 
 from cerebro.connector import Record
-from cerebro.first_run import Choices, LocalApproval, run
+from cerebro.first_run import Choices, LocalApproval, lines, run
 
 
 def rec(id: str, name: str, into: str, **keys: list[str]) -> Record:
@@ -30,10 +31,11 @@ def _names(one: Any) -> list[str]:
 
 # -- which held records a row speaks for is read by record or by one name, never by a shared domain
 
-VALE = [rec("P7", "Kim Vale", "parts", email=["kim@vale.example"], domain=["vale.example"]),
-        rec("P8", "Lee Moss", "parts", email=["lee@vale.example"], domain=["vale.example"]),
-        rec("M1", "Vale kickoff", "things", email=["kim@vale.example"], domain=["vale.example"]),
-        rec("M2", "Vale renewal", "things", email=["lee@vale.example"], domain=["vale.example"])]
+VALE = [replace(r, carried=["domain"]) for r in (  # a party's domain, which a record carries and is not named by
+    rec("P7", "Kim Vale", "parts", email=["kim@vale.example"], domain=["vale.example"]),
+    rec("P8", "Lee Moss", "parts", email=["lee@vale.example"], domain=["vale.example"]),
+    rec("M1", "Vale kickoff", "things", email=["kim@vale.example"], domain=["vale.example"]),
+    rec("M2", "Vale renewal", "things", email=["lee@vale.example"], domain=["vale.example"]))]
 
 
 def test_a_held_record_sharing_only_a_domain_with_a_proposed_row_is_on_a_list(tmp_path: Path) -> None:
@@ -55,19 +57,31 @@ def test_a_held_record_sharing_only_a_domain_with_a_declined_row_is_on_the_next_
         assert "Kim Vale" not in _names(listed(workspace, "parts"))  # what a person declined stays decided
 
 
+# -- the held records an admit would bind are counted under its row, and none of them is left out
+
+@pytest.mark.parametrize("admit", [by_record("U1"), ("admit", {"name": "Unit 7", "keys": {"code": ["u-7"]},
+                                                              "reason": "Named in three readings."})])
+def test_the_held_records_an_admit_would_bind_are_counted_under_its_row_and_none_is_left_out(
+        tmp_path: Path, admit: tuple[str, dict[str, Any]]) -> None:
+    readings = [rec(f"U{n}", "Unit 7", "things", code=["u-7"]) for n in (1, 2, 3)]
+    script = Script({"things/curator": [admit], "parts/curator": []})
+    with open_it(lay_out_workspace(tmp_path), script, readings) as workspace:
+        run(workspace, choose=None, say=lambda line: None)
+        pile = LocalApproval(workspace).pile()
+        assert [row.name for row in pile.rows() if row.left_out] == []
+        assert "          Unit 7 · 3 rows" in lines(pile)
+
+
 # -- a row by name stands for one held record of that name
 
-def test_a_row_by_name_stands_for_one_namesake_and_the_other_is_on_the_list(tmp_path: Path) -> None:
+def test_a_left_out_row_by_name_stands_for_one_namesake_and_the_other_is_on_the_list(tmp_path: Path) -> None:
     records = [*RECORDS, rec("P7", "Kim Vale", "parts", email=["kim@vale.example"]),
                rec("P9", "Kim Vale", "parts", email=["kim@other.example"])]
-    for call in (("leave_out", {"name": "Kim Vale", "reason": "Named once."}),
-                 ("admit", {"name": "Kim Vale", "reason": "Named.", "group": "named"})):
-        script = Script({"things/curator": [], "parts/curator": [by_record("P1"), call]})
-        root = tmp_path / call[0]
-        root.mkdir()
-        with open_it(lay_out_workspace(root), script, records) as workspace:
-            run(workspace, choose=None, say=lambda line: None)
-            assert _names(listed(workspace, "parts")).count("Kim Vale") == 2, call[0]
+    script = Script({"things/curator": [], "parts/curator": [by_record("P1"), ("leave_out", {
+        "name": "Kim Vale", "reason": "Named once."})]})
+    with open_it(lay_out_workspace(tmp_path), script, records) as workspace:
+        run(workspace, choose=None, say=lambda line: None)
+        assert _names(listed(workspace, "parts")).count("Kim Vale") == 2
 
 
 @pytest.mark.parametrize("keys", [{"domain": ["other.example"]}, {"email": ["kim@other.example"]}])

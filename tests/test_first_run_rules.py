@@ -330,7 +330,7 @@ def test_a_held_record_sharing_a_header_value_with_a_proposed_one_is_still_on_a_
     def call(id: str, name: str) -> Record:
         return Record(id=id, source="src", revision="1", at="2026-11-10T09:00:00Z",
                       keys={"name": [name], "parent": ["Alder Works"]}, fields={"name": name}, body=f"{name}.",
-                      into="things")
+                      into="things", carried=["parent"])  # a header line, as a files source carries it
 
     records = [*RECORDS, call("C1", "Alder call one"), call("C2", "Alder call two")]
     script = Script({"things/curator": [by_record("C1")], "parts/curator": []})
@@ -384,7 +384,8 @@ def test_left_out_rows_show_each_with_its_reason_and_a_file_record_by_its_name_n
     from cerebro.first_run import LocalApproval, lines
 
     note = Record(id="local/calls/2026-11-10-cedar-check-in.md", source="src", revision="1",
-                  at="2026-11-10T09:00:00Z", keys={"parent": ["Alder Works"]}, body="A check-in.", into="things")
+                  at="2026-11-10T09:00:00Z", keys={"parent": ["Alder Works"]}, body="A check-in.", into="things",
+                  carried=["parent"])  # a header line, as a files source carries it
     script = Script({"things/curator": [by_record("T1"), ("leave_out", {"record": {"source": "src", "id": "T2"},
                                                                        "reason": "Named once."})],
                      "parts/curator": []})

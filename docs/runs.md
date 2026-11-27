@@ -86,7 +86,9 @@ by agents/projects/curator.md, agents/notes/curator.md
 3 of 5 selected
 ```
 
-Each line is one article. What an article links to sits under it, by collection. Proposals of the same thing under two names are one line. One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
+Each line is one article. What an article links to sits under it, by collection. When an article would take more than one record, it counts them under its name, as `Atlas · 4 rows`. Proposals of the same thing under two names are one line.
+
+One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
 
 If a curator fails, the run ends with a line that says so, and that curator runs again on a later pass.
 
