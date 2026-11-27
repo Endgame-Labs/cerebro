@@ -731,6 +731,22 @@ def test_a_curator_does_not_undo_what_a_caller_decided_until_something_new_arriv
         assert "things/curator" not in workspace.run_once().due
 
 
+def test_a_curator_does_not_undo_the_name_a_caller_gave_an_article(tmp_path: Path) -> None:
+    agent, store = things(tmp_path), MemoryStore()
+    store.create(Identity("things/week", "things", "Week", {"code": ["w-1"]}))
+    named = told(store, "article.admit", "things/Weekly briefing", "the weekly one", hour(0))
+    curate(store, agent, [("admit", {"name": "Week", "reason": "asked", "proposals": [named]})], tmp_path, at=hour(0))
+    assert store.article("things/week").identity.title == "Weekly briefing"  # over the name the curator gave
+    gone = told(store, "article.archive", "things/week", "not this month", hour(1))
+    curate(store, agent, [("archive", {"article": "things/week", "reason": "asked", "proposals": [gone]})], tmp_path,
+           at=hour(1))
+    back = told(store, "article.admit", "things/week", "bring it back", hour(2))  # an ask that names nothing
+    curate(store, agent, [("admit", {"name": "Week", "keys": {"code": ["w-1"]}, "reason": "asked", "proposals": [back]})],
+           tmp_path, at=hour(2))
+    found = store.article("things/week").identity
+    assert (found.status, found.title) == ("active", "Weekly briefing")
+
+
 def test_a_yes_on_any_proposal_is_carried_out_by_its_curator_not_the_engine(tmp_path: Path) -> None:
     store, agent = MemoryStore(), things(tmp_path)
     for id, name in (("things/alder", "Alder"), ("things/alder-works", "Alder Works"), ("things/cedar", "Cedar")):

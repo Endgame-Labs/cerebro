@@ -750,8 +750,8 @@ def _admit(store: Store, target: str, payload: dict[str, Any], by: Caller, at: s
 def _landed(store: Store, target: str, payload: dict[str, Any], by: Caller, at: str,
             reason: str) -> tuple[dict[str, Any], str]:
     """Make the article an admit names, or bring it back into the working set, with the keys no other article of its
-    collection holds; one a merge folded away is admitted as the article it was merged into. An article in the
-    working set already, as one an ask by name finds, changes in nothing but what the admit adds."""
+    collection holds; one a merge folded away is admitted as the article it was merged into. An article that exists
+    changes in nothing but what the admit adds, and takes a caller's name for it, its `title`."""
     found = store.article(target)
     keys, left = _held_elsewhere(store, target, address_form(dict(payload.get("keys") or {})))
     if found is None:
@@ -779,7 +779,7 @@ def _landed(store: Store, target: str, payload: dict[str, Any], by: Caller, at: 
     back = article.status != "active"
     if back:
         article.status, article.admitted_by, article.admitted_at, article.admitted_reason = "active", by, at, reason.strip()
-    article.title = article.title or str(payload.get("name") or payload.get("title") or "")
+    article.title = str(payload.get("title") or article.title or payload.get("name") or "")
     store.set_identity(article)
     if back:
         unmirrored(store, article.id, True)  # its copy no longer says archived as the pass ends
@@ -1319,6 +1319,9 @@ class _Curation:
         if not instructions and (words := next((p.payload["instructions"] for p in yes
                                                 if p.payload.get("instructions")), "")):
             payload["instructions"] = words  # approving the proposal that carried them writes them
+        if existing is not None and (given := next((p.payload["title"] for p in reversed(yes)
+                                                    if p.payload.get("title")), "")):
+            payload["title"] = given  # the name an accepted ask gives the thing renames the article it has
         if own := [p for p in yes if p.by == self.caller]:  # this curator's own proposals, approved: made as asked
             moved = redirects(self.store)
             path = follow(own[0].target, moved)

@@ -199,6 +199,18 @@ def test_an_article_out_of_the_working_set_is_admitted_again_by_its_id_or_path_w
     assert w.article("projects/weekly").identity.status == "active"
 
 
+def test_a_name_whose_thing_has_an_article_already_renames_that_article(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    w = Workspace(tmp_path / "w", monkeypatch, "reports")
+    with w.open() as workspace:
+        workspace.store.create(Identity("reports/week", "reports", "Week"))
+    done = w.run("reports/Weekly briefing")
+    assert done.exit_code == 0, done.output
+    w.carry("reports/curator", name="reports/week", proposals=[asked_as(done)])  # its curator finds it is that one
+    assert w.article("reports/week").identity.title == "Weekly briefing"
+    assert w.article("reports/weekly-briefing") is None
+
+
 def test_a_curators_admit_awaiting_review_stays_waiting_beside_the_callers_own_ask(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     w = Workspace(tmp_path / "w", monkeypatch, "projects")

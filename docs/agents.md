@@ -185,6 +185,8 @@ $ cerebro admit projects/Atlas
 accepted  projects/Atlas as p_3da9e1c04b7f: its curator carries it out on its next run. cerebro serve --once runs one pass now.
 ```
 
+If its curator finds that what you named already has an article, that article takes your name, so `cerebro admit "projects/Atlas launch"` can rename `projects/atlas`.
+
 `cerebro archive projects/atlas` works the same way.
 
 ## Build an article from parts
