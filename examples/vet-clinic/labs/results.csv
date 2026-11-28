@@ -1,0 +1,13 @@
+accession,date,patient,test,result,units,reference,flag,lab
+HV-26-0914-01,2026-09-14,Biscuit Alvarez,Fructosamine,612,umol/L,200-374,High,Pacific Reference Lab
+HV-26-0928-02,2026-09-28,Biscuit Alvarez,Urine ketones,Negative,,Negative,Normal,In house
+HV-26-1024-03,2026-10-24,Biscuit Alvarez,Fructosamine,528,umol/L,200-374,High,Pacific Reference Lab
+HV-26-1003-04,2026-10-03,Juniper Hale,Urine specific gravity,1.052,,1.035-1.060,Normal,In house
+HV-26-1003-05,2026-10-03,Juniper Hale,Urine blood,3+,,Negative,High,In house
+HV-26-1006-06,2026-10-06,Juniper Hale,Urine culture,No growth at 48 hours,,No growth,Normal,Pacific Reference Lab
+HV-26-1015-07,2026-10-15,Pepper Nakamura,PCV,33,%,37-55,Low,In house
+HV-26-1015-08,2026-10-15,Pepper Nakamura,Platelets,182,K/uL,148-484,Normal,In house
+HV-26-1015-09,2026-10-15,Pepper Nakamura,Creatinine,1.3,mg/dL,0.5-1.8,Normal,In house
+HV-26-1030-10,2026-10-30,Pepper Nakamura,PCV,34,%,37-55,Low,In house
+HV-26-1113-11,2026-11-13,Pepper Nakamura,PCV,35,%,37-55,Low,In house
+HV-26-1023-12,2026-10-23,Mochi Brennan,Total protein,6.1,g/dL,5.4-7.5,Normal,In house

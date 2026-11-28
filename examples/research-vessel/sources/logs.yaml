@@ -1,0 +1,7 @@
+# Daily watch-stander logs, instrument calibration notes, and weather routing advisories.
+kind: files
+window: { behind: all }
+notes: { each: instrument, with: station }
+select:
+  - glob: "logs/**/*.md"
+    extract: facts

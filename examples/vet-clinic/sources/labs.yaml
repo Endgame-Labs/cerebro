@@ -1,0 +1,11 @@
+# Lab results, one record per row of the CSV the lab system exports. The patient column ties each result to the
+# patient's article, and extract: facts turns the row into a fact, such as a PCV of 33 percent, flagged low.
+kind: files
+window: { behind: all }
+select:
+  - glob: "labs/*.csv"
+    rows: csv
+    id: "{row.accession}"
+    at: "{row.date}"
+    identity: { patient: "{row.patient}" }
+    extract: facts

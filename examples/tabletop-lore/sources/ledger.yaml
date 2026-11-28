@@ -1,0 +1,16 @@
+# Faction standing and treasury ledger, one record per faction row.
+kind: files
+window: { behind: 120d }
+select:
+  - glob: "data/faction-ledger.csv"
+    rows: csv
+    id: "{row.faction_id}"
+    at: "{row.recorded_on}"
+    into: factions
+    identity:
+      faction_id: "{row.faction_id}"
+    fields:
+      title: "{row.faction_name}"
+      standing: "{row.standing}"
+      treasury_gp: "{row.treasury_gp}"
+      lead_npc: "{row.lead_npc}"

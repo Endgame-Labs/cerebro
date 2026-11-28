@@ -1,0 +1,9 @@
+faction_id,faction_name,recorded_on,standing,treasury_gp,lead_npc
+salt-guild,The Salt Guild,2026-10-09,neutral,48200,Magistrate Vespera Corwin
+tidebreakers,The Tidebreakers,2026-10-09,wary,6400,Sera Thorne
+free-captains-compact,Free Captains' Compact,2026-10-09,friendly,18500,Alderman Bramwell Oakhart
+tidewatch-priory,Tidewatch Priory,2026-10-09,neutral,1450,Brother Aldric Fen
+salt-guild,The Salt Guild,2026-11-24,hostile,44950,Magistrate Vespera Corwin
+tidebreakers,The Tidebreakers,2026-11-24,allied,9150,Sera Thorne
+free-captains-compact,Free Captains' Compact,2026-11-24,friendly,12300,Alderman Bramwell Oakhart
+tidewatch-priory,Tidewatch Priory,2026-11-24,trusted,1600,Brother Aldric Fen

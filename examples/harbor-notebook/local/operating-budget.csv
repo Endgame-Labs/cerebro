@@ -1,0 +1,7 @@
+line_id,date,project,revision,item,amount_usd,basis
+B-1,2026-10-16,Eastbank night ferry,B,crew,48000,eight-week operating estimate
+B-2,2026-10-16,Eastbank night ferry,B,fuel,19200,eight-week operating estimate
+B-3,2026-10-16,Eastbank night ferry,B,insurance,7500,eight-week operating estimate
+B-4,2026-10-16,Eastbank night ferry,B,security,6000,eight-week operating estimate
+B-5,2026-10-16,Eastbank night ferry,B,landing maintenance,3000,eight-week operating estimate
+B-6,2026-10-16,Eastbank night ferry,B,dredging,,"excluded, no quote received"

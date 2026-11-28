@@ -1,0 +1,40 @@
+# Questions a new cook asks on their first shift. Run a pass first, then:
+#   cerebro eval evals/kitchen.yaml --no-model    # words alone, no model call
+#   cerebro eval evals/kitchen.yaml               # the decision model judges each answer too
+context: A restaurant kitchen's wiki, built from recipe cards, staff meetings, an inspection report and supplier invoices, read by a new line cook.
+questions:
+  - id: risotto-vegetarian
+    ask: Is the mushroom risotto vegetarian, and is the vegan version safe for a soy allergy?
+    find: Wild Mushroom Risotto
+    expect:
+      article: dishes/wild-mushroom-risotto
+      holds: [kombu, miso]
+      judge: The answer says the risotto is vegetarian since October 17, when it moved off chicken stock, and that the vegan version's miso holds soy.
+  - id: budino-shortbread
+    ask: Does the chocolate budino go out with the hazelnut shortbread?
+    find: Chocolate Budino
+    expect:
+      article: dishes/chocolate-budino
+      holds: [shortbread]
+      judge: The answer says the budino goes out without the shortbread since November 18, after a near miss with a hazelnut allergy.
+  - id: short-rib-price
+    ask: What does Cascade Meats charge for short rib now?
+    find: Cascade Meats
+    expect:
+      article: suppliers/cascade-meats
+      holds: ["10.90"]
+      lacks: ["11.40 a pound now"]
+      judge: The answer gives $10.90 a pound, the price the credit memo corrected the $11.40 invoice to.
+  - id: sesame-sub
+    ask: A guest has a sesame allergy. Can they have the charred carrots?
+    read: [kitchen/allergens]
+    expect:
+      holds: [pepita]
+      judge: The answer says yes, with the pepita dukkah from the blue-lid container in place of the hazelnut dukkah.
+  - id: short-rib-86
+    ask: Is the short rib on tonight?
+    find: Braised Short Rib
+    expect:
+      article: dishes/braised-short-rib
+      holds: ["86"]
+      judge: The answer says the short rib is 86'd because the braise ran out, with the next batch ready the next day.

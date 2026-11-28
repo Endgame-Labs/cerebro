@@ -1,0 +1,15 @@
+# The daily water test: one CSV row per tank per day. Each row is a record of its tank, and its readings are fields.
+kind: files
+window: { behind: all }
+select:
+  - glob: "water/*.csv"
+    rows: csv
+    id: "{row.date} {row.tank}"
+    at: "{row.date}"
+    into: tanks
+    identity: { tank: "{row.tank}" }
+    fields:
+      name: "{row.tank}"
+      temperature: "{row.temp_c} °C"
+      salinity: "{row.salinity_ppt} ppt"
+      ammonia: "{row.ammonia_ppm} ppm"

@@ -1,0 +1,8 @@
+# Staff memos from the shared inbox: husbandry decisions, and gift shop, facilities and volunteer notices.
+kind: files
+window: { behind: all }
+select:
+  - glob: "memos/*.md"
+    extract: facts
+  - glob: "husbandry/*.md"
+    extract: facts

@@ -1,0 +1,30 @@
+# Reagent lot ledger and assay plate manifest, one record per CSV row.
+kind: files
+window: { behind: all }
+select:
+  - glob: "data/reagent-lots.csv"
+    rows: csv
+    extract: records
+    id: "{row.lot_id}"
+    at: "{row.received_date}"
+    into: reagents
+    identity:
+      reagent_id: "{row.lot_id}"
+      lot_number: "{row.lot_number}"
+    fields:
+      name: "{row.reagent_name}"
+      lot_number: "{row.lot_number}"
+      vendor: "{row.vendor}"
+      storage_temp_c: "{row.storage_temp_c}"
+      lot_status: "{row.lot_status}"
+  - glob: "data/assay-plates.csv"
+    rows: csv
+    extract: facts
+    id: "{row.plate_id}"
+    at: "{row.run_date}"
+    fields:
+      protocol: "{row.protocol}"
+      protocol_version: "{row.protocol_version}"
+      reagent_lot: "{row.reagent_lot}"
+      strain: "{row.strain}"
+      outcome: "{row.outcome}"

@@ -1,0 +1,16 @@
+# Sampling station manifest, one record per station row.
+kind: files
+window: { behind: all }
+select:
+  - glob: "data/stations.csv"
+    rows: csv
+    id: "{row.station_id}"
+    at: "{row.updated_at}"
+    into: stations
+    identity:
+      station_id: "{row.station_id}"
+      name: "{row.name}"
+    fields:
+      depth_m: "{row.depth_m}"
+      sea_state: "{row.sea_state}"
+      cast_status: "{row.cast_status}"

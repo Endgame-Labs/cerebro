@@ -1,0 +1,3 @@
+# Read-only SQLite telemetry database: per-cast salinity drift, winch tension spikes, and glider battery voltage.
+kind: database
+url: sqlite:data/telemetry.sqlite

@@ -1,0 +1,6 @@
+lot_id,reagent_name,lot_number,vendor,storage_temp_c,received_date,lot_status
+RGT-BX-4B,Buffer X — Lot 4B,4B,BioCrest Scientific,4,2026-10-02,quarantined
+RGT-BX-5C,Buffer X — Lot 5C,5C,Meridian Reagents,20,2026-11-01,active
+RGT-CAS-20,LbCas12a Enzyme Stock — Lot E20,E20,HarborBio Enzymes,-20,2026-09-22,active
+RGT-GIB-11A,2x Gibson Master Mix — Lot G11A,G11A,Meridian Reagents,-20,2026-09-18,active
+RGT-KAN-09,Kanamycin 50 mg/mL Stock — Lot K09,K09,BioCrest Scientific,-20,2026-09-15,active

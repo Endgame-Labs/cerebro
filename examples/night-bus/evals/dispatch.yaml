@@ -1,0 +1,25 @@
+context: Fictional Bellwether evening dispatch, evidence from 16 to 20 November 2026.
+questions:
+  - id: volume
+    ask: How many arrivals were observed on each route, and which route is busiest?
+    read: [routes/route-8-evening-service, routes/route-4-evening-service, routes/route-12-evening-service]
+    expect:
+      holds: ['50', '30', '20']
+      judge: The cited articles give 50 observed arrivals on Route 8, 30 on Route 4, and 20 on Route 12 in the five-night sample. Route 8 has most vehicle observations, while Route 12 has the connection problem.
+  - id: connection
+    ask: Why does the last connection need attention?
+    read: [routes/route-12-evening-service]
+    expect:
+      judge: The cited evidence establishes four of five final transfers missed by timing at LS-E, the temporary signal or detour explanation, and no inference of four nights of counted stranded riders.
+  - id: detour
+    ask: When does Marsh Road reopen now?
+    find: Marsh Road detour
+    expect:
+      holds: ['24 November']
+      judge: The cited answer treats 24 November as planned reopening, replacing the cancelled 19 November date, with the diversion through 23 November.
+  - id: curbs
+    ask: Is the west Lantern Square curb the missed Route 12 connection?
+    find: Lantern Square west
+    expect:
+      holds: [LS-W]
+      judge: The cited article identifies LS-W as Route 8 only, with no timed R12 transfer there.

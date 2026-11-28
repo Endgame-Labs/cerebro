@@ -1,0 +1,17 @@
+context: A new developer reads the fictional Acorn compiler wiki at the 24 November 2026 snapshot.
+questions:
+  - id: signed-zero-reason
+    ask: Why does the parser preserve negative zero?
+    find: Parser
+    expect:
+      judge: The answer explains signed zero is needed by a boundary direction indicator, rather than a parser accident to normalize away.
+  - id: proposed-printer-fix
+    ask: Has the printer precision fix shipped, and when is review?
+    find: Number printer
+    expect:
+      judge: The answer says eight significant digits still ship in 0.3.2, PR-119 remains draft or unmerged, and review moved to 25 November, not a release date.
+  - id: corrected-root-cause
+    ask: What caused the negative-zero regression, and is it resolved?
+    find: Constant folding
+    expect:
+      judge: The answer blames the optimizer multiply-by-zero shortcut, not the parser, and says the fix shipped in 0.3.2.

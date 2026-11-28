@@ -1,0 +1,56 @@
+context: A molecular biology research lab's protocol, reagent, and strain wiki read by an onboarding graduate student.
+questions:
+  - id: buffer-x-quarantine
+    group: reagents
+    ask: Can I use Buffer X Lot 4B from the 4 C cold room for my Cas12a assay, and what happened to it?
+    find: Buffer X — Lot 4B
+    expect:
+      article: reagents/buffer-x-lot-4b
+      holds: [quarantined, precipitate]
+      judge: The answer warns not to use Buffer X Lot 4B because it is quarantined after forming white crystalline Tris-MgCl2 precipitate at 4 C.
+  - id: cas12a-current-protocol
+    group: protocols
+    ask: What is the approved version, incubation temperature, duration, and Buffer X lot for the CRISPR-Cas12a Lateral Flow Assay?
+    find: CRISPR-Cas12a Lateral Flow Assay
+    expect:
+      article: protocols/crispr-cas12a-lateral-flow-assay
+      holds: ["v2.3", "37", "5C"]
+      judge: The answer gives approved version v2.3 with 37 C incubation for 30 minutes using Buffer X Lot 5C stored at 20 C, noting that the 42 C v2.2 trial was reversed.
+  - id: enzyme-e20-cleared
+    group: reagents
+    ask: Is LbCas12a Enzyme Stock Lot E20 degraded or safe to use?
+    find: LbCas12a Enzyme Stock — Lot E20
+    expect:
+      article: reagents/lbcas12a-enzyme-stock-lot-e20
+      holds: [active]
+      judge: The article distinguishes the earlier enzyme-degradation hypothesis from the later buffer control that restored a positive band with the same enzyme lot, and identifies Lot E20 as active.
+  - id: delta-lon-limits
+    group: strains
+    ask: What heat-shock duration, recovery temperature, and kanamycin concentration should I use with E. coli K-12 Delta-Lon?
+    find: E. coli K-12 Delta-Lon
+    expect:
+      article: strains/e-coli-k-12-delta-lon
+      holds: ["45", "30"]
+      judge: The answer specifies a 45-second heat shock at 42 C (never 90 seconds), 30 C SOC recovery for 90 minutes, and 30 ug/mL kanamycin (lowered from 50 ug/mL).
+  - id: gibson-freeze-thaw
+    group: protocols
+    ask: What incubation time and master mix freeze-thaw limit apply to 4-Fragment Gibson Assembly?
+    find: 4-Fragment Gibson Assembly
+    expect:
+      article: protocols/4-fragment-gibson-assembly
+      holds: ["30", "5"]
+      judge: The answer states 50 C incubation for 30 minutes (v1.2, increased from 15 minutes) and a maximum of 5 freeze-thaw cycles for 2x Gibson Master Mix Lot G11A using single-use 10 uL aliquots.
+  - id: gibson-material-scope
+    group: relationships
+    ask: Which material warnings belong to the Gibson protocol itself?
+    read: [protocols/4-fragment-gibson-assembly]
+    expect:
+      lacks: [Buffer X]
+      judge: The article gives Gibson master mix handling and DH5alpha-T1R use without presenting the Cas12a buffer as an ingredient or its failures as Gibson pitfalls.
+  - id: delta-lon-material-scope
+    group: relationships
+    ask: Which material warnings belong to the Delta-Lon protocol itself?
+    read: [protocols/delta-lon-transformation-and-expression]
+    expect:
+      lacks: [Buffer X]
+      judge: The article gives Delta-Lon handling and kanamycin selection without presenting Cas12a buffer as an ingredient or its failures as Delta-Lon pitfalls.
