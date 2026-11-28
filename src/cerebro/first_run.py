@@ -81,7 +81,6 @@ from .held import (
 from .identity import naming_keys, redirects, working, would_bind
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
 from .records import _slug as record_slug
-from .reply import outside
 from .review import held_lines
 from .run import Run
 from .runner import PassResult, Progress, first_list, first_list_line, hold_sources, run_curators, run_pass
@@ -250,8 +249,10 @@ def arranged(workspace: Cerebro, pile: Pile) -> Pile:
 
 
 def _articles(workspace: Cerebro) -> dict[str, str]:
-    """The articles of the working set, id to title, that a group may sit under."""
-    return {i.id: i.title or i.id for i in working_set(workspace.store)}
+    """The articles of the working set, id to title, that a group may sit under: each title masked of every value
+    the secrets store holds, as the list's rows are."""
+    mask = workspace.mask_every()
+    return {i.id: mask(i.title) or i.id for i in working_set(workspace.store)}
 
 
 @dataclass(frozen=True)
@@ -300,20 +301,10 @@ class LocalApproval(Approval):
         self.agents_given = agents is not None
 
     def _query(self, args: dict[str, Any]) -> list[dict[str, Any]]:
-        """What `query` gives, as kept: `call` masks it for an outside agent, and a row filed from it must not be."""
-        return list((outside(self.workspace._call(self.caller, "query", args)) or {}).get("items") or [])
+        return list((self.workspace.call(self.caller, "query", args) or {}).get("items") or [])
 
     def pile(self) -> Pile:
-        """The list as a screen shows it, with its plain tree: `_listed`, masked of every value the secrets store
-        holds, a value saved after a row was kept too."""
-        pile = self.workspace.masked(self._listed())  # before its tree, whose groups hold its rows
-        pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
-                           _articles(self.workspace), redirects(self.workspace.store))
-        return pile
-
-    def _listed(self) -> Pile:
-        """The list as it stands, as kept, with no tree, which `apply` files from, so a value the mask hides is still
-        refused: every proposal that waits a row of the curator of its
+        """The list as it stands, with its plain tree: every proposal that waits a row of the curator of its
         collection, in the order filed, and each curator asked with the candidates it left out and the held records
         it never weighed, those of the workspace's own side last and at most `OWN_LISTED`, with a line that counts the
         rest. Each row of the workspace's own side says so."""
@@ -363,6 +354,9 @@ class LocalApproval(Approval):
                                      str(state.get("note") or ""), agent.id in cut, said,
                                      f"{len(unlisted)} more held for {agent.target} are of the workspace's own side "
                                      "and not listed" if unlisted else ""))
+        pile = self.workspace.masked(pile)  # before its tree, whose groups hold its rows
+        pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
+                           _articles(self.workspace), redirects(self.workspace.store))
         return pile
 
     def _waiting(self, session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -482,7 +476,7 @@ class LocalApproval(Approval):
         left alone is marked as offered, never rejected. Refused for an agent, an app or a source, none of which is a caller."""
         if self.caller.kind != "person":
             raise NotAllowed(f"the first run's list: {self.caller.name} is not a caller, and only a caller decides it")
-        rows = {row.id: row for row in self._listed().rows()}
+        rows = {row.id: row for row in self.pile().rows()}
         named = [id for ids in choices.accept for id in ids]
         stood = decided_meanwhile(self.workspace, [id for id in named if id not in rows], ACCEPTED)
         if unknown := [id for id in named if id not in rows and id not in stood]:
@@ -544,7 +538,7 @@ class LocalApproval(Approval):
         """File a ticked candidate left out as an admit of its curator's collection, for the accept that follows,
         its reason `left out: <reason>`, with its held record when it names one: no operation files an admit with its
         keys, so it is written here, through `records`, as a curator files one."""
-        _refuse_secret(self.workspace.store, f"{row.collection}/{_slug(row.name)}")
+        _refuse_secret(self.workspace.store, f"{row.collection}/{_slug(row.name)}", row.name, row.keys)
         proposal = Proposal(id=f"p_{uuid.uuid4().hex[:12]}", kind="article.admit", target=f"{row.collection}/{_slug(row.name)}",
                             by=Caller(row.agent, "agent"), at=stamp(self.workspace.clock()),
                             payload={"name": row.name, "keys": row.keys} | ({"record": dict(row.record)} if row.record else {}),

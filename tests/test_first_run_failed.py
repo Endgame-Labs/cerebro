@@ -92,12 +92,16 @@ def test_some_curators_failed_and_some_proposed_the_list_goes_on_and_each_failur
         assert "Discovery for parts collection did not finish: RuntimeError: the provider is down" in out.lines
 
 
-def test_a_failure_kept_before_its_value_was_saved_as_a_secret_is_masked_on_the_list_and_in_its_line(
+def test_a_failure_or_an_articles_title_kept_before_its_value_was_saved_as_a_secret_is_masked_on_the_list(
         tmp_path: Path) -> None:
+    from cerebro.article import Identity
+
     secrets = FakeSecrets()
-    script = Failing({"parts/curator"}, RuntimeError(f"the provider said {VALUE}"), {"things/curator": [by_record("T1")]})
+    linked = ("admit", by_record("T1")[1] | {"fields": {"linked": ["things/thing-x"]}})  # a row under that article
+    script = Failing({"parts/curator"}, RuntimeError(f"the provider said {VALUE}"), {"things/curator": [linked]})
     with open_it(lay_out_workspace(tmp_path), script, secrets=secrets) as workspace:
         run(workspace, choose=None, say=lambda line: None)  # the list waits, and the failure is kept with it
+        workspace.store.create(Identity("things/thing-x", "things", f"Thing {VALUE}"))
         secrets.set("vault", VALUE)  # never read here
         out = run(workspace, choose=Choices.starter, say=lambda line: None)
     assert out is not None and "Discovery for parts collection did not finish: RuntimeError: the provider said " \

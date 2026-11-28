@@ -978,35 +978,27 @@ def test_an_id_handed_back_over_mcp_or_a_call_is_the_id_itself_though_a_stored_v
 
 
 @pytest.mark.parametrize("name", ["plain", "spaced", "short"])
-def test_a_title_a_curators_model_writes_with_a_stored_value_in_it_makes_no_id_or_title_that_holds_it(
+def test_a_title_a_curators_model_writes_with_a_stored_value_in_it_is_refused_and_makes_no_article(
         tmp_path: Path, name: str) -> None:
-    import re
-
     from pydantic_ai.messages import TextPart
 
     secret = {**SECRETS, "short": "prodkey01"}[name]
     root = first_workspace(tmp_path / "ws")
     (root / "agents" / "things" / "curator.md").write_text(CURATES.replace("held: {}", "query: { from: facts }"))
-
-    named: list[str] = []  # the accepted proposals the curator's next run carries out
+    said: list[str] = []
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if not any(isinstance(m, ModelResponse) for m in messages):
-            return ModelResponse(parts=[ToolCallPart("admit", {"name": f"Juniper {secret}", "reason": "It moved.",
-                                                               "proposals": named})])
+            return ModelResponse(parts=[ToolCallPart("admit", {"name": f"Juniper {secret}", "reason": "It moved."})])
+        said.append(str(messages[-1]))
         return ModelResponse(parts=[TextPart("Done.")])
 
     with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets({"vault": secret}),
                  decider=FakeDecider(), agent_run=PydanticRun(FunctionModel(model)), clock=lambda: DAY) as workspace:
         workspace.curate(workspace.agent("things/curator"))
-        waiting = [p["id"] for p in workspace.call(YOU, "query", {"from": "proposals"})["items"]]
-        workspace.decide(YOU, accept=waiting)
-        named += waiting
-        workspace.curate(workspace.agent("things/curator"))
-        made = [(a.identity.id, a.identity.title) for a in workspace.store.query("things")]
-    slug = re.sub(r"[^a-z0-9]+", "-", secret.lower())
-    assert [title for _, title in made] == [f"Juniper {MARK}"]
-    assert not [id for id, _ in made if any(slug[i:i + 6] in id for i in range(len(slug) - 5))], made
+        rows = workspace.call(YOU, "query", {"from": "proposals"}).get("items", [])
+        made = workspace.store.query("things")
+    assert rows == [] and made == [] and "its name holds a value the secrets store keeps" in said[0], said
 
 
 HELD_IN_ID = [f"Juniper {SECRETS['spaced']}", "Juniper quarzite7_VELLUM9.drifted", f"Juniper {SECRETS['plain']}",
@@ -1037,7 +1029,12 @@ def test_an_admit_whose_id_would_hold_a_stored_value_however_slugged_is_refused_
     assert made == [] and rows == [] and "juniper" not in kept.lower()
 
 
-def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("tool", "asked", "refused"), [
+    ("admit", {"name": HELD_IN_ID[1]}, "its name holds"),
+    ("admit", {"name": "Juniper", "keys": {"code": [SECRETS["plain"]]}}, "its code key holds"),
+    ("link", {"article": "things/juniper", "keys": {"code": [SECRETS["plain"]]}}, "its code key holds")])
+def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_or_whose_key_holds_one_is_refused(
+        tmp_path: Path, tool: str, asked: dict[str, Any], refused: str) -> None:
     from pydantic_ai.messages import TextPart
 
     said: list[str] = []
@@ -1045,15 +1042,16 @@ def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_r
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if not any(isinstance(m, ModelResponse) for m in messages):
-            return ModelResponse(parts=[ToolCallPart("admit", {"name": HELD_IN_ID[1], "reason": "It moved."})])
+            return ModelResponse(parts=[ToolCallPart(tool, asked | {"reason": "It moved."})])
         said.append(str(messages[-1]))
         return ModelResponse(parts=[TextPart("Done.")])
 
     with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets(SECRETS),
                  decider=FakeDecider(), agent_run=PydanticRun(FunctionModel(model)), clock=lambda: DAY) as workspace:
+        workspace.store.create(Identity("things/juniper", "things", "Juniper", {"code": ["j-1"]}, "archived"))
         workspace.curate(workspace.agent("things/curator"))
         rows = workspace.call(YOU, "query", {"from": "proposals"}).get("items", [])
-    assert rows == [] and "its name holds a value the secrets store keeps" in said[0]
+    assert rows == [] and f"{refused} a value the secrets store keeps" in said[0], said
 
 
 # -- what an error says, with its causes, and replies of every shape
