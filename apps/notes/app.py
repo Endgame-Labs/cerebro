@@ -154,8 +154,8 @@ def delete_note(id: str, workspace: Workspace, caller: Caller) -> dict[str, Any]
     facts are taken back. A new note, even word for word the same, is a new note."""
     record = {name_of(r): r for r in workspace.records(KIND)}.get(id.strip())
     if record is None:
-        raise NoteError(f"delete_note: no note has the id {id}: give a note's id, such as 2026-11-17-export-plan, as "
-                        "browse_notes lists it")
+        raise NoteError(f"delete_note: no note has the id {id}: give a note's id, such as 2026-11-17-export-plan, from "
+                        "the id browse_notes gives each note")
     if id.strip() not in current(workspace):
         raise NoteError(f"delete_note: note {id} is deleted already, so nothing is left to delete")
     workspace.retract(caller, record.id, "deleted with delete_note")

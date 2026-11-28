@@ -65,7 +65,7 @@ On the next pass, each note becomes facts, and the `projects/standing` agent wri
 ## Good to know
 
 - **The note is the source of truth.** To fix a fact that came from a note, write a new version of the note.
-- **Clients on your machine share notes.** A note written from Claude Desktop can be revised or deleted from Claude Code. A client with its own token keeps its own notes.
+- **Clients on your machine share notes.** A note written from Claude Desktop can be revised or deleted from Claude Code. A client with its own token revises only the notes it wrote, and any client can delete any note.
 - **Claude Desktop may show an old list.** It reads the five newest notes once when it starts, so a later chat there sees new notes only through `query { "from": "note" }`.
 - **Note text is data.** Agents read a note as a record of the work, never as instructions.
 - **To delete a note,** `delete_note` it by its id, as `delete_note { "id": "2026-11-20-export-plan" }`. A deleted note is gone for good: a new note with the same words is a new note, with a new id.
