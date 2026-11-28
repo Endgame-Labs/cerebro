@@ -52,7 +52,7 @@ from .budget import Ledger
 from .caller import Caller
 from .clock import Clock, stamp, system_clock
 from .compile import agent_surface, drop_material, field_refused, keep_judge, run_agent, unmirrored
-from .connector import NOBODY, Connector, Ours, Record, registrable, same_event
+from .connector import NOBODY, Connector, Ours, Record, masking, registrable, same_event
 from .connectors import CONNECTORS
 from .errors import CerebroError
 from .evidence import Evidence, EvidenceError, Item, KeepJudge, Starter, _item, fingerprint, gather
@@ -2283,7 +2283,8 @@ class _Measure:
         if item.startswith("fact:"):
             if key not in before.view or key not in after.view or before.side[item][0] == after.side[item][0]:
                 return False
-            said = [_item(f).text for f in self.facts.facts(ids=[item.removeprefix("fact:")])] if self.facts else []
+            with masking(self.store.scrubbing() or (lambda text: text)):  # as `gather` holds it for the view's line
+                said = [_item(f).text for f in self.facts.facts(ids=[item.removeprefix("fact:")])] if self.facts else []
             return bool(said) and (before.side[item][1] + "\n").startswith((said[0] + "\n", said[0] + " ["))
         if item.startswith("unlinked:"):
             return key not in after.view and bool(set(self.store.named(item.removeprefix("unlinked:"))) & wrote)
