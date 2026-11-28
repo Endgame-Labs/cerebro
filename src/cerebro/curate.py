@@ -74,7 +74,7 @@ from .models import Decider, ModelSpec
 from .project import read_ours
 from .records import APPLIES, TOLD, Decision, Gone, Proposal, _proposal, _slug, named_alike, proposals, propose
 from .run import WROTE_NOTHING, AgentRun, Run
-from .store import Store, record_from, update_state
+from .store import Store, record_from, scrubbed, update_state
 from .workspace import Workspace
 
 if TYPE_CHECKING:
@@ -2093,7 +2093,8 @@ def _accepted(store: Store, agent: Agent) -> list[Evidence]:
     rows = [p for p in every if not carried_out(p) and may_answer(agent, p, named)]
     items = [Item(f"proposal:{p.id}", f"- {p.id} {_asks(p)}, filed by {p.by.name}, accepted by "
                   f"{p.decided_by.name if p.decided_by else 'a caller'}: "
-                  f"{' '.join(p.decision_reason.split())[:NOTE_CAP] or _why(store, p)}, {p.at[:10]}")
+                  f"{' '.join(scrubbed(p.decision_reason, store.scrubbing()).split())[:NOTE_CAP] or _why(store, p)}, "
+                  f"{p.at[:10]}")
              for p in rows[:MAX_WAITING]]
     if not items:
         return []
@@ -2106,9 +2107,10 @@ def _accepted(store: Store, agent: Agent) -> list[Evidence]:
 
 
 def _why(store: Store, p: Proposal) -> str:
-    """A proposal's reason, or the words of the tell it was filed from."""
+    """A proposal's reason, or the words of the tell it was filed from, masked as the store masks now before the cut:
+    a row kept before a secret was saved holds it in the clear."""
     told = next((r.body for id in p.cites if (r := store.record(id)) is not None), "")
-    return " ".join((p.reason or told).split())[:NOTE_CAP]
+    return " ".join(scrubbed(p.reason or told, store.scrubbing()).split())[:NOTE_CAP]
 
 
 def _decisions(store: Store, agent: Agent) -> tuple[list[Evidence], int]:
