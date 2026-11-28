@@ -787,8 +787,8 @@ def _landed(store: Store, target: str, payload: dict[str, Any], by: Caller, at: 
     keys, left = _held_elsewhere(store, target, address_form(dict(payload.get("keys") or {})))
     if found is None:
         collection, _, name = target.rpartition("/")
-        _refuse_secret(store, target, keys, CurateError)
         title = str(payload.get("name") or payload.get("title") or name.replace("-", " ").capitalize())
+        _refuse_secret(store, target, title, keys, CurateError)
         store.create(Identity(target, collection, title.strip(), keys, "active", by, at, reason.strip()))
         if target in redirects(store):  # a path a fold led elsewhere names this article from now on
             store.append("merges", {"at": at, "redirect": target, "path": target})
@@ -1132,7 +1132,7 @@ class _Curation:
         if not yes and (why := repeated(self.store, self.caller, kind, target, payload)):  # a yes is carried out
             raise CurateError(why)
         if kind == "article.admit" and self.store.article(target) is None:
-            _refuse_secret(self.store, target, payload.get("keys"), CurateError)
+            _refuse_secret(self.store, target, str(payload.get("name") or ""), payload.get("keys"), CurateError)
         at = self.now()
         proposal = Proposal(id=_proposal_id(), kind=kind, target=target, by=self.caller, at=at, payload=payload,
                             reason=reason, cites=list(self.answers))

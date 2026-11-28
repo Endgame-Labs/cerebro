@@ -544,7 +544,7 @@ class LocalApproval(Approval):
         """File a ticked candidate left out as an admit of its curator's collection, for the accept that follows,
         its reason `left out: <reason>`, with its held record when it names one: no operation files an admit with its
         keys, so it is written here, through `records`, as a curator files one."""
-        _refuse_secret(self.workspace.store, f"{row.collection}/{_slug(row.name)}", row.keys)
+        _refuse_secret(self.workspace.store, f"{row.collection}/{_slug(row.name)}", row.name, row.keys)
         proposal = Proposal(id=f"p_{uuid.uuid4().hex[:12]}", kind="article.admit", target=f"{row.collection}/{_slug(row.name)}",
                             by=Caller(row.agent, "agent"), at=stamp(self.workspace.clock()),
                             payload={"name": row.name, "keys": row.keys} | ({"record": dict(row.record)} if row.record else {}),
