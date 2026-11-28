@@ -1322,8 +1322,10 @@ class _Curation:
         existing = self._existing(name, keys, at_path, record)
         yes = self.yes()
         if existing is not None and existing.status == "active" and not yes:
-            raise CurateError(f"admit: {existing.id} is in the working set already: to change its keys or links, use "
-                              "link, and to change your note to its writers, use instruct")
+            held = next((f", and holds the key {key} {value}" for key, values in keys.items() for value in values
+                         if holder(self.store, self.collection, key, value) == existing.id), "")
+            raise CurateError(f"admit: {existing.id} is in the working set already{held}: to change its keys or links, "
+                              "use link, and to change your note to its writers, use instruct")
         if existing is None and read and _lower_path(_link_path(name)):
             raise CurateError(f"admit: {name.strip()} reads as an article's path, and {self.collection} holds no such "
                               "article: give a name, with a space on each side of a slash in it, or name its record")

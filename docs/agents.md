@@ -174,6 +174,7 @@ gives a clear winner, say so in your last line instead of guessing.
 ```
 
 - **Every curator** can add an article with `admit`, change its keys or links with `link`, give its writers a note with `instruct`, take one out with `archive`, join two with `merge`, and undo a merge with `split`. It asks a source a question with `fetch` where one answers. Each act can name another collection: it waits there as a proposal, for that collection's curator or for you. `cerebro review` counts these in one line instead of listing them, and you can still decide one by its id.
+- **A key names one article in its collection,** unless a source shares it, such as a Slack channel. To tie several articles to one, link them, as [Links between articles](#links-between-articles) shows.
 - **`authority`** says what it may do on its own: `admit`, `archive`, `merge`, and `split`, which turns one article into two. Anything set to `false` waits for you in `cerebro review`.
 - A file with no `authority:` line does none of the four on its own, and a kind the line leaves out is `false`.
 - A curator's first list waits for you, even with `authority: { admit: true }`. Once you decide one of its admits, `authority` applies.
