@@ -359,6 +359,53 @@ def test_the_keep_judge_a_rerank_the_request_log_and_the_runs_log_mask_before_th
     assert all(MARK in text for text in seen.values())
 
 
+@pytest.mark.parametrize("name", CUT_NAMES)
+def test_a_fact_kept_before_its_secret_was_saved_reaches_an_agent_masked_across_its_quote_and_label_cuts(
+        tmp_path: Path, name: str) -> None:
+    from cerebro.agent import load_agent
+    from cerebro.article import Property
+    from cerebro.evidence import TITLE_CAP, gather, render
+    from cerebro.fakes import MemoryStore
+    from cerebro.ground import QUOTE_BOUND
+    from cerebro.identity import RECORD
+    from cerebro.lookup import StoreLookup
+
+    secret, store, extraction = SECRETS[name], MemoryStore(), FakeExtraction()
+    things = []
+    for n, (quoted, titled) in enumerate(zip(offsets(QUOTE_BOUND, secret), offsets(TITLE_CAP, secret), strict=True)):
+        store.create(Identity(f"things/t{n}", "things", "x" * titled + secret + " and the rest of it"))
+        [fact] = extraction.extract(Record(id=f"r{n}.md", source="local", revision="1",
+                                           body="x" * quoted + secret + " and the rest of it")).facts
+        store.link(fact.id, [f"things/t{n}"], how=RECORD)
+        things.append(f"things/t{n}")
+    store.create(Identity("parts/one", "parts", "One"))
+    store.set_field("parts/one", "linked", Property(things, YOU, "2026-11-01T00:00:00Z"))
+    store.masks = lambda: scrubber(FakeSecrets(SECRETS))  # saved after each was kept
+    (tmp_path / "agents" / "parts").mkdir(parents=True)
+    (tmp_path / "agents" / "parts" / "article.md").write_text(
+        "---\nevidence:\n  - query: { from: facts, articles: this.linked }\n---\n\nWrite it.\n")
+    reader = load_agent(tmp_path / "agents" / "parts" / "article.md", tmp_path / "agents")
+    shown = render(gather(reader, StoreLookup(store, extraction), {}, this="parts/one"))
+    text = scrubber(FakeSecrets(SECRETS))(shown)  # as a run masks what it sends
+    assert MARK in text and not leaks(secret, text), leaks(secret, text)
+
+
+@pytest.mark.parametrize("name", CUT_NAMES)
+def test_an_agents_read_of_an_apps_record_kept_before_its_secret_was_saved_names_it_masked_across_the_cut(
+        name: str) -> None:
+    from cerebro.fakes import MemoryStore
+    from cerebro.lookup import StoreLookup
+
+    secret, store = SECRETS[name], MemoryStore()
+    ids = [store.keep(Record(id=f"r{n}", source="thing", revision="1", at="2026-11-10T09:00:00Z",
+                             fields={"name": "x" * start + secret + " and the rest of it"})).id
+           for n, start in enumerate(offsets(200, secret))]
+    store.masks = lambda: scrubber(FakeSecrets(SECRETS))  # saved after each was kept
+    read = StoreLookup(store, FakeExtraction(), kinds=["thing"]).read(Caller("parts/article", "agent"), ids)
+    text = scrubber(FakeSecrets(SECRETS))("\n".join(read.warnings))  # as the reply is masked
+    assert MARK in text and not leaks(secret, text), leaks(secret, text)
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_the_mask_finds_a_secret_a_source_already_escaped_or_folded_onto_one_line(name: str) -> None:
     secret = SECRETS[name]

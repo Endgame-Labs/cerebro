@@ -58,7 +58,7 @@ from .article import passages as passages_of
 from .budget import BudgetSpent, Held, Ledger
 from .caller import Caller
 from .clock import Clock, seconds, system_clock
-from .connector import NOBODY, Connector, Record, one_line
+from .connector import NOBODY, Connector, Record, masked_first, masking, one_line
 from .connectors.database import Rows, row_text
 from .errors import CerebroError
 from .facts import FIELD_KIND, Fact, superseded
@@ -170,32 +170,34 @@ def gather(agent: Agent, lookup: Lookup, functions: dict[str, Callable[..., Any]
     if this is None and (agent.role == "writer" or (agent.role == "composer" and "/" in agent.target)):
         this = agent.target
     gatherer = _Gatherer(agent, lookup, this, writers or [], root, now, last, starter, zone, fiscal_start, judge)
-    out = []
-    for n, line in enumerate(agent.evidence, 1):
-        if line.kind in functions:
-            out.append(gatherer.function(line.kind, bind(functions[line.kind], gatherer.caller, workspace), line))
-        elif line.kind == "query":
-            if not isinstance(line.args, dict) or not line.args.get("from"):
-                raise gatherer.fail(n, line, "it names no from: write - query: { from: notes }")
-            filters = {k: v for k, v in line.args.items() if k != "from"}
-            out.append(gatherer.query(n, line, line.args["from"], filters, left_key(line)))
-        elif line.kind == "facts":
-            out.append(gatherer.facts(n, line))
-        elif line.kind == "articles":
-            out.append(gatherer.articles(n, line))
-        elif line.kind == "files":
-            out.append(gatherer.files(n, line))
-        elif line.kind == "left":
-            out.append(gatherer.left(n, line, {item.key for entry in out for item in entry.items}))
-        elif line.kind == "script":
-            out.append(gatherer.script(n, line))
-        elif line.kind == "sql":
-            out.append(gatherer.sql(n, line, sources or {}))
-        elif line.kind == "held":  # the records held for a curator's collection
-            out.append(_held(agent, lookup, sources or {}, n, line, root))
-        else:
-            raise EvidenceError(f"{gatherer.name}: evidence kind {line.kind!r} is not one Cerebro or an app gives: "
-                                f"use one of {', '.join(BUILTIN)}, or an @evidence name")
+    store = getattr(lookup, "store", None)  # what it kept before a secret was saved is masked before a line is cut
+    with masking((store.scrubbing() if store is not None else None) or (lambda text: text)):
+        out = []
+        for n, line in enumerate(agent.evidence, 1):
+            if line.kind in functions:
+                out.append(gatherer.function(line.kind, bind(functions[line.kind], gatherer.caller, workspace), line))
+            elif line.kind == "query":
+                if not isinstance(line.args, dict) or not line.args.get("from"):
+                    raise gatherer.fail(n, line, "it names no from: write - query: { from: notes }")
+                filters = {k: v for k, v in line.args.items() if k != "from"}
+                out.append(gatherer.query(n, line, line.args["from"], filters, left_key(line)))
+            elif line.kind == "facts":
+                out.append(gatherer.facts(n, line))
+            elif line.kind == "articles":
+                out.append(gatherer.articles(n, line))
+            elif line.kind == "files":
+                out.append(gatherer.files(n, line))
+            elif line.kind == "left":
+                out.append(gatherer.left(n, line, {item.key for entry in out for item in entry.items}))
+            elif line.kind == "script":
+                out.append(gatherer.script(n, line))
+            elif line.kind == "sql":
+                out.append(gatherer.sql(n, line, sources or {}))
+            elif line.kind == "held":  # the records held for a curator's collection
+                out.append(_held(agent, lookup, sources or {}, n, line, root))
+            else:
+                raise EvidenceError(f"{gatherer.name}: evidence kind {line.kind!r} is not one Cerebro or an app "
+                                    f"gives: use one of {', '.join(BUILTIN)}, or an @evidence name")
     return preload(out, agent.budget)
 
 
@@ -436,7 +438,7 @@ def _cited(article: Article, compilations: list[Any]) -> list[Citation]:
 
 
 def _quoted(title: str) -> str:
-    return json.dumps(shown(title, TITLE_CAP), ensure_ascii=False)
+    return json.dumps(shown(masked_first(title), TITLE_CAP), ensure_ascii=False)  # masked before it is cut
 
 
 def _marked(item: Item, mark: str | None) -> Item:
