@@ -77,7 +77,7 @@ Each line under `evidence:` gathers one thing, in order. The agent cites what it
 | `- script: { run: scripts/usage.py }` | What a script in the workspace prints, in at most 60 seconds. Give it a `#!` first line and run `chmod +x` on it. |
 | `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text |
 
-A record a source sends `into:` a collection waits, unread, until an article there takes it. Its curator is shown such records only through a `held` line, as `cerebro agents new` writes it:
+A record a source sends `into:` a collection is read once it shares a key with an article in any collection that is not archived, even a key it only carries, such as a party's domain. It stays held for its own collection until an article there takes it. Its curator is shown such records only through a `held` line, as `cerebro agents new` writes it:
 
 ```yaml
 evidence:
