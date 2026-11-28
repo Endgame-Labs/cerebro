@@ -1,0 +1,64 @@
+# Questions Ines or her advisor would ask the wiki. Run after a pass:
+#   cerebro eval evals/review.yaml --no-model   # scored by holds and lacks alone
+#   cerebro eval evals/review.yaml              # the decision model judges each answer too
+context: A PhD student's literature review wiki on sleep and song learning in songbirds, built from her reading notes, advisor and committee meeting notes, and reading list, read by the student and her advisor.
+questions:
+  - id: replay-corrected-count
+    group: papers
+    ask: In how many birds did Halvorsen et al. 2023 find replay?
+    find: Halvorsen et al. 2023
+    expect:
+      article: papers/halvorsen-et-al-2023
+      holds: ["7 of the 9"]
+      judge: The answer says replay was found in 7 of 9 birds, the corrected count, not 8.
+  - id: brandt-contests
+    group: concepts
+    ask: Which paper is the strongest evidence against the sleep necessity hypothesis, and why does the advisor doubt it?
+    find: Sleep necessity hypothesis
+    expect:
+      holds: [Brandt]
+      judge: The answer names Brandt et al. 2025 and gives the advisor's doubt, that 5 nights is short or that recovery sleep could make up the loss.
+  - id: replay-support
+    group: concepts
+    ask: Which papers support sleep replay?
+    find: Sleep replay
+    expect:
+      article: concepts/sleep-replay
+      holds: [Halvorsen, Ferreira]
+      judge: The answer names Halvorsen et al. 2023 and Ferreira and Kowalczyk 2025 as support, and may add Dahl et al. 2026.
+  - id: chapter-two-experiment
+    group: decisions
+    ask: What is the chapter 2 experiment now, and what did it replace?
+    find: Ferreira and Kowalczyk 2025
+    expect:
+      holds: [closed-loop]
+      judge: The answer says the experiment is now closed-loop auditory cueing during sleep, decided on 10 November 2026, replacing the sleep deprivation study planned on 29 September.
+  - id: blind-scoring
+    group: papers
+    ask: Was the similarity scoring in Ferreira and Kowalczyk 2025 blind?
+    find: Ferreira and Kowalczyk 2025
+    expect:
+      article: papers/ferreira-and-kowalczyk-2025
+      judge: The answer says the scoring was not blind, as Ferreira confirmed by email, a point Priya Ramaswamy raised.
+  - id: melatonin-published
+    group: papers
+    ask: How big is the melatonin effect on song learning in Quill and Navarro 2024?
+    find: Quill and Navarro 2024
+    expect:
+      article: papers/quill-and-navarro-2024
+      holds: ["6 days", "12 birds"]
+      judge: The answer gives the published delay of about 6 days in 12 birds, and does not present the preprint's 10 days in 8 birds as current.
+  - id: naps-question
+    group: open-questions
+    ask: Why does it matter that replay happens in naps?
+    find: Night sleep versus naps
+    expect:
+      holds: [Dahl]
+      judge: The answer says Dahl et al. 2026 found replay in daytime naps, so a night-only deprivation study like Brandt et al. 2025 cannot test whether sleep is necessary.
+  - id: who-asked-cause
+    group: open-questions
+    ask: Who asked whether replay causes better copying, and can Halvorsen et al. 2023 answer it?
+    find: Cause versus correlation for replay
+    expect:
+      holds: [Priya]
+      judge: The answer says Priya Ramaswamy raised it at the committee meeting on 20 October 2026, and that Halvorsen et al. 2023 cannot tell cause from correlation.

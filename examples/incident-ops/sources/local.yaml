@@ -1,0 +1,7 @@
+# Postmortems, shift handoff notes, and runbook updates in local/.
+kind: files
+window: { behind: all }
+notes: { each: service, with: incident }
+select:
+  - glob: "local/**/*.md"
+    extract: facts

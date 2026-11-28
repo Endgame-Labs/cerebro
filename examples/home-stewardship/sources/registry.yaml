@@ -1,0 +1,32 @@
+# Appliance and warranty registry, plus monthly solar and utility meter readings.
+kind: files
+window: { behind: all }
+select:
+  - glob: "registry/appliances.csv"
+    rows: csv
+    id: "{row.system_id}"
+    at: "{row.updated_on}"
+    into: systems
+    identity:
+      system_id: "{row.system_id}"
+      name: "{row.name}"
+    fields:
+      name: "{row.name}"
+      model: "{row.model}"
+      serial_number: "{row.serial_number}"
+      installed_on: "{row.installed_on}"
+      warranty_until: "{row.warranty_until}"
+      location: "{row.location}"
+  - glob: "registry/meter-readings.csv"
+    rows: csv
+    id: "meter-{row.month}"
+    at: "{row.read_on}"
+    extract: records
+    identity:
+      system_id: "{row.system_id}"
+    fields:
+      name: "{row.reading_label}"
+      solar_generated_kwh: "{row.solar_generated_kwh}"
+      grid_exported_kwh: "{row.grid_exported_kwh}"
+      gas_used_therms: "{row.gas_used_therms}"
+      reading_note: "{row.reading_note}"

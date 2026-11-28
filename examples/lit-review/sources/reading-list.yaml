@@ -1,0 +1,12 @@
+# The reading list, one record per row. Its columns become fields of the paper the row names, such as its venue
+# and whether it has been read.
+kind: files
+window: { behind: all }
+select:
+  - glob: "lists/reading-list.csv"
+    rows: csv
+    id: "{row.paper}"
+    at: "{row.added}"
+    into: papers
+    identity: { paper: "{row.paper}" }
+    fields: { full_title: "{row.title}", venue: "{row.venue}", year: "{row.year}", reading_status: "{row.status}" }

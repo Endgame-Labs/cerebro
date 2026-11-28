@@ -1,0 +1,7 @@
+# Ines's reading notes, one file per paper read (or read again). The Paper: line names the paper, and the
+# Concepts: line names the ideas of the review it bears on.
+kind: files
+window: { behind: all }
+select:
+  - glob: "reading/*.md"
+    extract: facts

@@ -1,0 +1,7 @@
+# Contractor visit notes, inspection reports, paint and hardware logs, and seasonal garden notes.
+kind: files
+window: { behind: all }
+notes: { each: system, with: contractor }
+select:
+  - glob: "local/**/*.md"
+    extract: facts

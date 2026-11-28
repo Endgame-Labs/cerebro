@@ -1,0 +1,6 @@
+# Notes from meetings with the advisor and the committee, one file per meeting.
+kind: files
+window: { behind: all }
+select:
+  - glob: "meetings/*.md"
+    extract: facts

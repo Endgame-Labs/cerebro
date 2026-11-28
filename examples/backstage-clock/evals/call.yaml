@@ -1,0 +1,38 @@
+context: A substitute crew member reads the wiki before The Clockmaker's Picnic rehearsal.
+questions:
+  - id: silent-clock
+    ask: Why must the hero clock stay silent, and how is it kept silent?
+    find: Auntie
+    expect:
+      article: props/the-clock-that-must-never-ring
+      holds: [clapper]
+      judge: The clock's missing chime is the joke, and its clapper is removed. It is distinct from the rehearsal bell.
+  - id: timing
+    ask: When should the sandwich reveal happen, and which old plan is replaced?
+    read: [scenes/the-midnight-picnic]
+    expect:
+      holds: [six]
+      judge: The caller waits for the laugh to settle, then counts six seconds. This replaces the eight-second plan.
+  - id: renumber
+    ask: What is Q-L02 called now, and did its identity change?
+    read: [cues/q-l02]
+    expect:
+      holds: [LX 14, Q-L02]
+      judge: LX 12 became LX 14, but the immutable cue ID Q-L02 stays the same.
+  - id: cut
+    ask: Should the orchard light be called?
+    read: [scenes/the-orchard-wager]
+    expect:
+      judge: The orchard scene was cut on 2 October, and Q-L03 must not be called.
+  - id: next-call
+    ask: When is the next rehearsal, and what still needs testing?
+    read: [briefings/daily-call]
+    expect:
+      holds: ['28', '18:30']
+      judge: The next rehearsal is 28 November, replacing 26 November, and Q-L02 needs the LX 14 label and pause test.
+  - id: caller-and-operator
+    ask: Who calls Q-L02, and who executes it on lights?
+    read: [cues/q-l02]
+    expect:
+      holds: [Mara Finch, Tessa Moss]
+      judge: Mara Finch calls the cue, and Tessa Moss executes it on lights. The caller and the light operator have distinct jobs.
