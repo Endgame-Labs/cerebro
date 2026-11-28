@@ -145,10 +145,9 @@ def test_the_held_list_gives_each_record_as_data_with_no_body_newest_first(tmp_p
     items = listed(store, curator(agents, "opportunities"), sources=("crm", "sheet"))
     assert [(i["source"], i["id"]) for i in items] == [("crm", "006C"), ("crm", "006B"), ("sheet", "006D"),
                                                        ("crm", "006A")]  # newest first; one time apart, by source
-    assert all(set(i) == {"source", "id", "name", "keys", "at", "listed_at", "fields"} for i in items)  # no body
+    assert all(set(i) == {"source", "id", "name", "keys", "at", "listed_at"} for i in items)  # no body, no field unnamed
     assert items[0] == {"source": "crm", "id": "006C", "name": "Birch Yard pilot", "at": "2026-11-14T09:00:00Z",
-                        "keys": {"salesforce_id": ["006C"], "name": ["Birch Yard pilot"]}, "listed_at": "",
-                        "fields": {"stage": "Proposal"}}
+                        "keys": {"salesforce_id": ["006C"], "name": ["Birch Yard pilot"]}, "listed_at": ""}
     people = listed(store, curator(agents, "people"))
     assert [(i["id"], i["name"]) for i in people] == [("003P", "Pat Quill")]  # each collection its own records
 
@@ -156,17 +155,18 @@ def test_the_held_list_gives_each_record_as_data_with_no_body_newest_first(tmp_p
     assert "Birch Yard pilot" in prompts[0] and SECRET not in prompts[0]
 
 
-def test_a_held_line_names_its_record_first_and_gives_its_fields_last_without_ours_or_empty_ones(
-        tmp_path: Path) -> None:
+def test_a_held_line_names_its_record_first_and_gives_the_fields_it_names_last_with_a_value(tmp_path: Path) -> None:
     agents, store = write_workspace(tmp_path), MemoryStore()
+    (agents / "things" / "curator.md").write_text(CURATOR.format(authority=ALL, extra="", prompt="Keep things.").replace(
+        "held: {}", "held: { fields: [status, due, owner, parts, more, notes] }"))
     wide = Record(id="t1", source="files", revision="1", at="2026-11-12T09:00:00Z", into="things",
                   keys={"name": ["Thing one"], "email": [f"part{n:02d}@things.example" for n in range(80)]})
-    marked = Record(id="t2", source="files", revision="1", at="2026-11-11T09:00:00Z", keys={"name": ["Thing two"]},
-                    fields={"status": "deferred", "due": "", "owner": None, "parts": [], "more": {},
-                            "ours": ["Sam Okoye"]}, into="things")
+    named = Record(id="t2", source="files", revision="1", at="2026-11-11T09:00:00Z", keys={"name": ["Thing two"]},
+                    fields={"status": "deferred", "due": "", "owner": None, "parts": [], "more": {}, "stage": "open"},
+                    into="things")
     long = Record(id="t3", source="files", revision="1", at="2026-11-10T09:00:00Z", keys={"name": ["Thing three"]},
                   fields={"notes": "a word " * 400}, into="things")
-    hold(store, wide, marked, long, source="files")
+    hold(store, wide, named, long, source="files")
     entry = gather(curator(agents, "things"), StoreLookup(store, clock=lambda: NOW), {},
                    sources={"files": FakeConnector("files", [])}, now=NOW)
     cut, short, fields_cut = next(e for e in entry if e.spelled == "held for things").items
@@ -599,19 +599,22 @@ def test_the_opportunities_curator_admits_two_of_three_held_deals_and_the_third_
     assert [r["id"] for r in workspace.store.state("held:crm")] == ["006B", "006D"]
 
 
-def test_a_held_line_loads_on_a_curator_alone_and_takes_a_limit_alone(tmp_path: Path) -> None:
+def test_a_held_line_loads_on_a_curator_alone_and_takes_a_limit_and_fields_alone(tmp_path: Path) -> None:
     agents = write_workspace(tmp_path)
     assert curator(agents, "people").evidence[0].args == {}
     (agents / "people" / "curator.md").write_text("---\nevidence:\n  - held: { limit: 50 }\n---\nx\n")
     assert curator(agents, "people").evidence[0].args == {"limit": 50}
-    for line, loads in (("", {}), ("{ limit: 1 }", {"limit": 1}), (f"{{ limit: {LIST_MAX} }}", {"limit": LIST_MAX})):
+    for line, loads in (("", {}), ("{ limit: 1 }", {"limit": 1}), (f"{{ limit: {LIST_MAX} }}", {"limit": LIST_MAX}),
+                        ("{ fields: [status, due] }", {"fields": ["status", "due"]})):
         (agents / "people" / "curator.md").write_text(f"---\nevidence:\n  - held: {line}\n---\nx\n")
         assert curator(agents, "people").evidence[0].args == loads
     for line, problem in (("{ limit: 0 }", "limit 0 is not a whole number from 1 to 500"),
                           ("{ limit: 501 }", "limit 501 is not"), ("{ limit: true }", "limit True is not"),
                           ("{ limit: '20' }", "limit '20' is not"),
-                          ("{ from: crm }", "line 3: evidence 1, held: it takes limit alone, or nothing"),
-                          ("[crm]", "it takes limit alone, or nothing")):
+                          ("{ fields: status }", "fields 'status' is not a list of field names"),
+                          ("{ fields: [1] }", "fields \\[1\\] is not a list of field names"),
+                          ("{ from: crm }", "line 3: evidence 1, held: it takes limit and fields, or nothing"),
+                          ("[crm]", "it takes limit and fields, or nothing")):
         (agents / "people" / "curator.md").write_text(f"---\nevidence:\n  - held: {line}\n---\nx\n")
         said = problem if problem.startswith("line") else f"line 3: evidence 1, held: {problem}"
         with pytest.raises(AgentFileError, match=f"agents/people/curator.md: {said}"):

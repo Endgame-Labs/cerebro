@@ -8,9 +8,9 @@ collection: those whose `into` is that collection and that no article of it in t
 collection whose keys bind only articles of it
 that are out of the working set. Each is data, never the record's body: its
 source, its id, its name as its keys or fields give it, its keys, `at`, the record's own time as its listing gives
-it, `listed_at`, when a pass first held it, as the runner keeps it beside the listing, and last the fields its source
-gives it that hold a value. Its source, id and name come first, so a line cut at `MAX_LINE` keeps what names the
-record. The list is newest first
+it, `listed_at`, when a pass first held it, as the runner keeps it beside the listing, and last those of its fields
+the line names, as `- held: { fields: [status, due] }`, that its source gives a value. Its source, id and name come
+first, so a line cut at `MAX_LINE` keeps what names the record. The list is newest first
 by the record's own time, and at most `LIST_MAX` long, or the line's `limit`, with a count of the rest.
 
 A record leaves the list the moment it is bound to an article of its collection in the working set, as the curator's
@@ -107,7 +107,7 @@ class Held:
     ours: list[str] = field(default_factory=list)  # the names of the parties on it who are yours, as its source says
     carried: list[str] = field(default_factory=list)  # the keys it only carries, which an admit of it does not take
     own: bool = False  # whether the record itself is on the workspace's own side, as `own_record` says
-    fields: dict[str, Any] = field(default_factory=dict)  # the fields its source gives it, but `ours`, held above
+    fields: dict[str, Any] = field(default_factory=dict)  # those its held line names that its source gives a value
 
     def naming(self) -> dict[str, list[str]]:
         """The keys an article admitted from this record takes: those that name it, never one it only carries."""
@@ -492,12 +492,13 @@ def _first_run_marks(store: Store, record: Record, standing: list[StandIn], ours
 
 
 def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: int | None = LIST_MAX,
-             ours: Ours = NOBODY, only: Collection[tuple[str, str]] | None = None) -> HeldList:
+             ours: Ours = NOBODY, only: Collection[tuple[str, str]] | None = None,
+             fields: Collection[str] = ()) -> HeldList:
     """The records `sources` hold for `collection`, newest first, at most `limit`, or every one with None, read from each source's held
     state. A record a key binds to an article of the working set is in scope, so it is not listed, whatever the state
     still says before the next pass. A record on the workspace's own side, by `ours`, comes after the others. `only`,
     by source and id, weighs those records alone, each as the whole list would give it, so a call that names a few
-    records does not weigh every one held."""
+    records does not weigh every one held. Each carries those of `fields` its source gives a value."""
     found: list[Held] = []
     sources = list(sources)
     standing = stand_ins(store) if first_run_open(store) else None
@@ -516,7 +517,7 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
                           str(row.get("listed_at") or ""), links, itself, parties_outside(record, ours),
                           [str(n) for n in record.fields.get("ours") or [] if str(n).strip()],
                           [k for k in record.carried or () if k in keys], own_record(record, ours),
-                          {k: v for k, v in record.fields.items() if k != "ours" and v not in (None, "", [], {})}))
+                          {k: record.fields[k] for k in fields if record.fields.get(k) not in (None, "", [], {})}))
     found.sort(key=lambda held: (held.source, held.id))
     found.sort(key=lambda held: held.at, reverse=True)  # newest first; one time apart, by source and id
     found.sort(key=lambda held: held.own)
@@ -524,14 +525,18 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
 
 
 def check_line(args: Any, curator: bool, fail: Callable[[str], Exception]) -> dict[str, Any]:
-    """The arguments of a `held` line as an agent file writes it, checked: none, or a `limit` of 1 to `LIST_MAX`,
-    and only on a curator's file. Raises what `fail` makes of the problem."""
+    """The arguments of a `held` line as an agent file writes it, checked: none, a `limit` of 1 to `LIST_MAX`, the
+    names of the `fields` each record shows, or both, and only on a curator's file. Raises what `fail` makes of the
+    problem."""
     args = {} if args is None else args
-    if not isinstance(args, dict) or set(args) - {"limit"}:
-        raise fail("it takes limit alone, or nothing: write - held: {} or - held: { limit: 200 }")
+    if not isinstance(args, dict) or set(args) - {"limit", "fields"}:
+        raise fail("it takes limit and fields, or nothing: write - held: {} or - held: { limit: 200, fields: [status] }")
     limit = args.get("limit", LIST_MAX)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= LIST_MAX:
         raise fail(f"limit {limit!r} is not a whole number from 1 to {LIST_MAX}: write limit: 200")
+    names = args.get("fields", [])
+    if not isinstance(names, list) or not all(isinstance(name, str) and name.strip() for name in names):
+        raise fail(f"fields {names!r} is not a list of field names: write fields: [status, due]")
     if not curator:
         raise fail("it lists the records held for a curator's collection, and this file is no curator.md: move "
                    "the line to the collection's curator.md, or delete it")
@@ -596,7 +601,8 @@ def entry(agent: Agent, store: Store | None, sources: Iterable[str], n: int, lin
         raise EvidenceError(f"{name}: evidence {n}, held: the lookup it was gathered with holds no store, so no held "
                             "record can be read: gather it through the workspace's own lookup")
     args = line.args if isinstance(line.args, dict) else {}
-    found = held_for(store, agent.target, sources, limit=int(args.get("limit", LIST_MAX)), ours=ours)
+    found = held_for(store, agent.target, sources, limit=int(args.get("limit", LIST_MAX)), ours=ours,
+                     fields=args.get("fields", ()))
     left = {(row.data.get("source"), row.data.get("id")): str(row.data.get("reason", ""))
             for row in store.rows("left-out", {"collection": agent.target}) if row.data.get("id")}
     out = Evidence(f"Held for {agent.target}: records your sources hold that no article in the working set binds, "
