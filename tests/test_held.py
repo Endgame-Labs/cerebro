@@ -145,14 +145,25 @@ def test_the_held_list_gives_each_record_as_data_with_no_body_newest_first(tmp_p
     items = listed(store, curator(agents, "opportunities"), sources=("crm", "sheet"))
     assert [(i["source"], i["id"]) for i in items] == [("crm", "006C"), ("crm", "006B"), ("sheet", "006D"),
                                                        ("crm", "006A")]  # newest first; one time apart, by source
-    assert all(set(i) == {"source", "id", "name", "keys", "at", "listed_at"} for i in items)  # no body, as data
+    assert all(set(i) == {"source", "id", "name", "keys", "at", "listed_at", "fields"} for i in items)  # no body
     assert items[0] == {"source": "crm", "id": "006C", "name": "Birch Yard pilot", "at": "2026-11-14T09:00:00Z",
-                        "keys": {"salesforce_id": ["006C"], "name": ["Birch Yard pilot"]}, "listed_at": ""}
+                        "keys": {"salesforce_id": ["006C"], "name": ["Birch Yard pilot"]}, "listed_at": "",
+                        "fields": {"stage": "Proposal"}}
     people = listed(store, curator(agents, "people"))
     assert [(i["id"], i["name"]) for i in people] == [("003P", "Pat Quill")]  # each collection its own records
 
     _, prompts = curate(store, curator(agents, "opportunities"), [])
     assert "Birch Yard pilot" in prompts[0] and SECRET not in prompts[0]
+
+
+def test_a_held_records_long_fields_are_cut_before_what_names_it(tmp_path: Path) -> None:
+    agents, store = write_workspace(tmp_path), MemoryStore()
+    hold(store, Record(id="t1", source="files", revision="1", at="2026-11-12T09:00:00Z", keys={"name": ["Thing one"]},
+                       fields={"status": "deferred", "notes": "a word " * 400}, into="things"), source="files")
+    entry = gather(curator(agents, "things"), StoreLookup(store, clock=lambda: NOW), {},
+                   sources={"files": FakeConnector("files", [])}, now=NOW)
+    [item] = next(e for e in entry if e.spelled == "held for things").items
+    assert '"id": "t1"' in item.text and '"source": "files"' in item.text and item.text.endswith("characters)")
 
 
 def test_the_held_list_is_bounded_and_counts_the_rest(tmp_path: Path) -> None:
@@ -1140,7 +1151,7 @@ def test_someone_on_the_workspaces_own_side_is_held_after_the_others_with_the_ma
     (tmp_path / "workspace.md").write_text("---\nidentity: { domains: [ourco.example] }\n---\n\nWho we are.\n")
     colleague = Record(id="005U", source="crm", revision="1", at="2026-11-14T09:00:00Z",  # a CRM user: our own,
                        keys={"salesforce_id": ["005U"], "name": ["Sam Okoye"], "email": ["Sam@OurCo.example"]},
-                       into="people")  # and the newest
+                       fields={"ours": ["Sam Okoye"]}, into="people")  # and the newest
     namesake = replace(contact("003S", "Sam Okoye", "sam.okoye@home.example"), keys={"name": ["Sam Okoye"]})
     hold(store, colleague, namesake, contact("003P", "Pat Quill", "pat@alder.example"))
     shown = gather(curator(agents, "people"), StoreLookup(store, clock=lambda: NOW), {}, root=tmp_path, now=NOW,
@@ -1149,6 +1160,7 @@ def test_someone_on_the_workspaces_own_side_is_held_after_the_others_with_the_ma
     lines = [json.loads(i.text.removeprefix("- ")) for i in held.items]
     assert [line["id"] for line in lines] == ["003P", "003S", "005U"]  # the newest first, the own side last
     assert [line.get("of_this_workspaces_own_side") for line in lines] == [None, None, ["Sam Okoye"]]
+    assert "fields" not in lines[2]  # the names a record marks as ours are under the mark alone
 
 
 def test_only_a_record_about_one_of_our_people_lends_a_name_and_a_name_alone_marks_no_record(

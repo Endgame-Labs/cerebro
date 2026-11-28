@@ -6,9 +6,10 @@ collection's article reaches it, as its parent does, is kept there too while no 
 it. The `held` evidence line, `- held: {}` on a curator's file, gives the curator the records held for its
 collection: those whose `into` is that collection and that no article of it in the working set binds, and those of no
 collection whose keys bind only articles of it
-that are out of the working set. Each is data, never text of the record: its
+that are out of the working set. Each is data, never the record's body: its
 source, its id, its name as its keys or fields give it, its keys, `at`, the record's own time as its listing gives
-it, and `listed_at`, when a pass first held it, as the runner keeps it beside the listing. The list is newest first
+it, `listed_at`, when a pass first held it, as the runner keeps it beside the listing, and last the fields its source
+gives it, so a line cut at `MAX_LINE` keeps what names the record. The list is newest first
 by the record's own time, and at most `LIST_MAX` long, or the line's `limit`, with a count of the rest.
 
 A record leaves the list the moment it is bound to an article of its collection in the working set, as the curator's
@@ -105,6 +106,7 @@ class Held:
     ours: list[str] = field(default_factory=list)  # the names of the parties on it who are yours, as its source says
     carried: list[str] = field(default_factory=list)  # the keys it only carries, which an admit of it does not take
     own: bool = False  # whether the record itself is on the workspace's own side, as `own_record` says
+    fields: dict[str, Any] = field(default_factory=dict)  # the fields its source gives it, but `ours`, held above
 
     def naming(self) -> dict[str, list[str]]:
         """The keys an article admitted from this record takes: those that name it, never one it only carries."""
@@ -512,7 +514,8 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
         found.append(Held(record.source, record.id, name, keys, record.at, record.revision,
                           str(row.get("listed_at") or ""), links, itself, parties_outside(record, ours),
                           [str(n) for n in record.fields.get("ours") or [] if str(n).strip()],
-                          [k for k in record.carried or () if k in keys], own_record(record, ours)))
+                          [k for k in record.carried or () if k in keys], own_record(record, ours),
+                          {k: v for k, v in record.fields.items() if k != "ours"}))
     found.sort(key=lambda held: (held.source, held.id))
     found.sort(key=lambda held: held.at, reverse=True)  # newest first; one time apart, by source and id
     found.sort(key=lambda held: held.own)
@@ -535,7 +538,7 @@ def check_line(args: Any, curator: bool, fail: Callable[[str], Exception]) -> di
 
 
 MAX_REASON = 200  # characters of a left-out reason, as leave_out bounds it
-MAX_LINE = 2000  # characters one held record takes of the list, whatever its keys hold
+MAX_LINE = 2000  # characters one held record takes of the list, whatever its keys and fields hold
 
 
 def _capped(text: str, cap: int) -> str:
@@ -545,17 +548,21 @@ def _capped(text: str, cap: int) -> str:
 
 
 def _line(data: dict[str, Any]) -> str:
-    """One held record as the list shows it: its data as JSON, cut at `MAX_LINE` characters."""
-    return "- " + _capped(json.dumps(data, sort_keys=True), MAX_LINE)
+    """One held record as the list shows it: its data as JSON, cut at `MAX_LINE` characters, sorted but its fields
+    last, so a cut takes them before what names the record."""
+    data = json.loads(json.dumps(data, sort_keys=True))  # every level sorted, an order json.loads keeps
+    if "fields" in data:
+        data["fields"] = data.pop("fields")
+    return "- " + _capped(json.dumps(data), MAX_LINE)
 
 
 def _data(held: Held) -> dict[str, Any]:
     data = asdict(held)
     data.pop("revision")  # counted in the item's key, so the digest moves, and of no use to the run
     data.pop("carried")  # the source's own knowledge: an admit of the record leaves those keys off its article
-    for mark in ("links_to", "proposed", "outside"):
+    for mark in ("links_to", "proposed", "outside", "fields"):
         if not data[mark]:
-            data.pop(mark)  # proposed is set on a first run alone; links_to and outside when a record has them
+            data.pop(mark)  # proposed is set on a first run alone; the others when a record has them
     # named as a fact's label is: a bare "ours" beside a record's other names read as all of them
     own = [held.name] if data.pop("own") and held.name else []
     if own := list(dict.fromkeys(own + data.pop("ours"))):
