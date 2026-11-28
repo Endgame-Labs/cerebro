@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from cerebro import App, Caller, CerebroError, Record, Workspace, evidence, mcp_tool
+from cerebro.clock import pinned
 from cerebro.shown import shown_quoted
 
 __all__ = ["KIND", "ChoreError", "app", "due_tasks", "log_maintenance", "session"]
@@ -111,7 +112,7 @@ def due_tasks(
     (or is already overdue), soonest due first. Pass `system: this` on an article
     agent to keep only entries matching that system or garden area."""
     del caller  # read from the app's own maintenance_log records
-    today = workspace.now().date()
+    today = pinned(workspace.now()).date()
     horizon = today + timedelta(days=max(0, int(days)))
     upcoming: list[tuple[date, Record]] = []
     for record in workspace.records(KIND):

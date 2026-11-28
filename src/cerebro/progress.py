@@ -99,7 +99,7 @@ class LiveProgress:
         self.rows: list[_Row] = []  # in the order the work started
         self.order: list[_Row] = []  # the work that ended, in the order it ended
         self.checks: dict[str, float] = {}  # the sources being checked, and when each check started
-        self.totals: dict[str, int] = {}  # each stage's count, as its stage opened
+        self.totals: dict[str, tuple[int, int]] = {}  # each stage's count as it opened, and its work complete by then
         self.counting = ""  # the stage the footer counts: the one opened last
         self.said: list[str] = []  # the lines said to the person amid the progress
         self.fresh: dict[str, int] = {}  # by stage, the work done with nothing moved, which shows no line
@@ -125,7 +125,7 @@ class LiveProgress:
                         self.rows.append(row)
                         self.order.append(row)
             elif event.kind == "open":
-                self.totals[event.stage] = event.total
+                self.totals[event.stage] = (event.total, self._complete(event.stage))
                 self.counting = event.stage
             elif event.kind == "start":
                 self.rows.append(_Row(event.stage, event.key, now))
@@ -272,11 +272,14 @@ class LiveProgress:
         took = minutes((row.ended or row.started) - row.started)
         return cut(f"  {mark} {'    '.join(cells)}    {self.p.dim(took)}", width - 1)
 
+    def _complete(self, stage: str) -> int:
+        return sum(1 for row in self.order if row.stage == stage) + self.fresh.get(stage, 0)
+
     def _footer(self, now: float, final: bool, width: int) -> list[str]:
-        stage = self.counting
-        complete = sum(1 for row in self.order if row.stage == stage) + self.fresh.get(stage, 0)
+        total, before = self.totals[self.counting]
+        complete = self._complete(self.counting) - before  # what the stage did before it opened is not of its count
         flying = 0 if final else sum(1 for row in self.rows if row.ended is None) + len(self.checks)
-        parts = [f"{thousands(complete)} of {thousands(self.totals.get(stage, complete))} complete",
+        parts = [f"{thousands(complete)} of {thousands(total)} complete",
                  f"{flying} in flight", elapsed(now - self.start)]
         lines, line = [], ""
         for part in parts:  # the footer fits the width, or breaks between its parts and then at a word
@@ -395,30 +398,6 @@ def _words(line: str, width: int, cut_long: bool = False) -> list[str]:
 SHOWN_ON_STEPS = ("stage ", "listed ", "read ", "proposed ", "failed ", "stopped ", "ran ", "One more list: ")
 
 
-class _Rows:
-    """The stream the printer writes to, which counts the rows its cursor stands below where counting began: a newline
-    goes down one, each cursor-up sequence up as many, as the printer's live lines move it. The printer fits and
-    breaks every line it keeps, so no row wraps on its own."""
-
-    def __init__(self, out: Any) -> None:
-        self.out = out
-        self.rows = 0
-
-    def write(self, s: str) -> int:
-        import re
-
-        self.rows += s.count("\n")
-        for up in re.findall(r"\x1b\[(\d*)A", s):
-            self.rows -= int(up or 1)
-        return self.out.write(s)
-
-    def flush(self) -> None:
-        self.out.flush()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.out, name)
-
-
 def _and(names: list[str]) -> str:
     """names joined in prose: a, b and c."""
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
@@ -448,15 +427,8 @@ class FirstRunScreen:
 
     def __init__(self, printer: Printer, *, sources: list[str] | tuple[str, ...] = (), limit: int = 8,
                  now: Callable[[], float] | None = None, height: Callable[[], int] | None = None,
-                 ticking: bool = True, region: bool = False) -> None:
+                 ticking: bool = True) -> None:
         self.p = printer
-        # Inside init the run is a region of its own: the
-        # first approval takes the discovery round and its list off the screen, so what it approved comes first. The
-        # rows are counted as the printer leaves them; a list drawn and cleared by its own screen leaves none.
-        self.rows: _Rows | None = None
-        if region:
-            self.rows = _Rows(printer.out)
-            printer.out = self.rows  # type: ignore[assignment]
         self.sources = list(sources)
         self.limit = limit
         self._now, self._height, self._ticking = now, height, ticking
@@ -478,7 +450,6 @@ class FirstRunScreen:
         self.lines_said: set[str] = set()  # and each such failure as the run's lines say it
         self.broken = ""  # why the live display stopped, after a fault of its own: the rest prints plain
         self.handled: set[str] = set()  # the warnings a build's own region took, and those it showed
-        self.cue = 0  # the rows of the line that announced a late list, while it stands
         self.threaded: set[str] = set()
 
     # -- the first run's events
@@ -606,8 +577,7 @@ class FirstRunScreen:
     def _approve(self, event: Any) -> None:
         if event.kind == "start":
             self.settle()
-            if not self._drop():  # the run's lines stay: a blank line parts the approval from them, one, never two
-                self.p.line("")
+            self.p.line("")  # a blank line parts the approval from what stands above it, one, never two
             n = event.total
             self.recording = self.p.step("Recording your answer" if n == 0 else
                                          f"Recording {thousands(n)} approval{'' if n == 1 else 's'}")
@@ -625,9 +595,7 @@ class FirstRunScreen:
             self.arranging = self.p.step(f"Reviewing {n}")
         elif self.arranging is not None:
             step, self.arranging = self.arranging, None
-            rows = step.done(f"Reviewed {n}")
-            if self.cue:  # the late list's line and this one under it go with the list
-                self.cue += rows
+            step.done(f"Reviewed {n}")
 
     def _build(self, start: bool, said: str = "") -> None:
         if start:
@@ -642,44 +610,16 @@ class FirstRunScreen:
             self.handled.update(lines)
 
     def _late(self, curators: int) -> None:
-        """Announce a late list, under the build's region drawn a last time, on a line the list's approval takes
-        away with the list."""
+        """Announce a late list, on a line under the build's region drawn a last time."""
         from .first_run import late_line
 
         self.settle()
-        text = _wrap(late_line(curators), 0, self.p.width())
-        self.p.line(text)
-        self.cue = _climb([visible_width(line) for line in text.split("\n")], 0, self.p.width())
+        self.p.line(_wrap(late_line(curators), 0, self.p.width()))
 
-    def _drop(self) -> bool:
-        """Take the run's region off the screen, so what was approved comes next, on a terminal where its first row is
-        still on screen, and say a blank line in its place, under what stands above it. Once only: the late list's
-        approval finds no region. Whether it erased it."""
-        if self.cue:  # the line that announced the late list goes with the list, which cleared itself
-            self.p.out.write(f"\r\x1b[{self.cue}A\x1b[J")
-            self.p.out.flush()
-            self.cue, self.p._tail = 0, "\n\n"
-            return True
-        rows, self.rows = self.rows, None
-        if rows is None:
-            return False
-        self.p.out = rows.out  # type: ignore[assignment]
-        if rows.rows <= 0 or rows.rows >= self.p.height():
-            return False
-        self.p.out.write(f"\r\x1b[{rows.rows}A\x1b[J\n")
-        self.p.out.flush()
-        self.p._tail = "\n\n"
-        return True
-
-    def list_shown(self, drawn: bool) -> None:
-        """A list was shown: `drawn` when its own screen drew it and cleared it, leaving the screen as it was; else
-        its lines were printed past the printer, so the region cannot be counted, and the printer's blank line is
-        said afresh."""
-        if not drawn:
-            if self.rows is not None:
-                self.p.out = self.rows.out  # type: ignore[assignment]
-            self.rows, self.cue = None, 0  # a printed list stays, and the line above it with it
-            self.p._tail = ""
+    def list_shown(self) -> None:
+        """A list was shown: its last frame stays where it stood, printed past the printer, so the printer's blank
+        line is said afresh."""
+        self.p._tail = ""
 
     def _region(self) -> LiveProgress:
         """The build's region, opened as its first event comes, or again after a question took the screen."""

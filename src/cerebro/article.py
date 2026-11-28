@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import re
 import unicodedata
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, tzinfo
 from pathlib import Path
@@ -98,6 +99,7 @@ CITED = re.compile(r"\[\^([^\]\s]+)\]")
 MARK = "[^unsupported]"  # what grounding writes after a sentence its facts do not fully back
 UNSUPPORTED = f"{MARK}: Not fully backed by the facts it cites."  # its one definition, at the end of an article
 NOT_FOUND = "not found"  # the footnote of a citation that names nothing the article's runs read
+RETRACTED = "retracted"  # ... and of one that names a fact that was retracted
 ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
 CLOSING = re.compile(r"(?:^|[ \t]+)#+$")
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}(?=[^`]*$)|~{3,})")
@@ -391,13 +393,13 @@ def yaml_text(value: Any) -> str:
     return yaml.dump(value, Dumper=_Indented, sort_keys=False, allow_unicode=True, width=1 << 20)
 
 
-YAML_PLAIN = re.compile(r"[\w .,;:'/@#%+=?-]*")  # what a value holds that no renderer reads as markup
+YAML_PLAIN = re.compile(r"[\w .,;:'/@#%+=?()-]*")  # what a value holds that no renderer reads as markup
 QUOTED = "CerebroQuoted"
 
 
 def _quoted_scalar(text: str) -> str:
     """`text` as a YAML double-quoted scalar that any YAML reader reads back as `text`, written in letters, digits,
-    spaces and `.,;:'/@#%+=?-_` alone, every other character as an escape such as `\\x3C`, so a renderer that reads
+    spaces and `.,;:'/@#%+=?()-_` alone, every other character as an escape such as `\\x3C`, so a renderer that reads
     the front matter as text finds no markup in it."""
     out = []
     linked = _bare_bad(text)  # a colon GitHub would read as a scheme's is written as an escape too
@@ -423,7 +425,7 @@ def _risky(text: str) -> bool:
 
 def front_matter(front: dict[str, Any]) -> str:
     """`front` as YAML that reads back as `front`, and in which a renderer that reads it as Markdown text finds no
-    markup: a key or a text value with anything but letters, digits, spaces and `.,;:'/@#%+=?-_` in it is written
+    markup: a key or a text value with anything but letters, digits, spaces and `.,;:'/@#%+=?()-_` in it is written
     double-quoted, with escapes, and every other value as YAML writes it, on one line."""
     held: dict[str, str] = {}
 
@@ -441,11 +443,13 @@ def front_matter(front: dict[str, Any]) -> str:
     return re.sub(QUOTED + r"\d+x", lambda m: held[m.group()], text) if held else text
 
 
-def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = UTC) -> str:
+def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = UTC,
+             retracted: Callable[[list[str]], Collection[str]] | None = None) -> str:
     """The article as a person reads it: front matter, the empty-article note while there is nothing else to read,
-    each compilation under its heading, then a footnote per citation with its source and quote, one that says
-    `NOT_FOUND` for a citation its parts hold no source of, and `UNSUPPORTED` once when a part holds `MARK`. `facts`
-    are the facts linked to the article, which the note counts."""
+    each compilation under its heading, then a footnote per citation with its source and quote, one for each id cited
+    with no source that says `NOT_FOUND`, and `UNSUPPORTED` once when a part holds `MARK`. A footnote of an id
+    `retracted` gives, asked of every cited id, says `RETRACTED` in place of the rest. `facts` are the facts linked to
+    the article, which the note counts."""
     who = article.identity
     front: dict[str, Any] = {"id": who.id, "title": who.title}
     if who.status != "active":
@@ -468,21 +472,24 @@ def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = U
         else:
             lines += [f"## {compilation.heading}", ""] + ([text, ""] if text else [])
         notes |= {c.id: c for c in compilation.citations if c.id not in notes}
+    written = "\n".join(c.text for c in article.compilations)
+    named = {label(c.id) for c in notes.values()} | {MARK[2:-1]}
+    unnamed = [found for found in dict.fromkeys(CITED.findall(written)) if found not in named]
+    gone = retracted([*notes, *unnamed]) if retracted is not None and (notes or unnamed) else ()
     for citation in notes.values():
         said = " ".join(citation.quote.split())  # one line: a quote's line breaks never forge a heading of the copy
         quote = f' "{said}"' if said else ""
-        lines += [f"[^{label(citation.id)}]: {inert(citation.source) or inert(citation.kind) or "source"}{quote}", ""]  # never cleaned
+        source = f"{inert(citation.source) or inert(citation.kind) or "source"}{quote}"  # never cleaned
+        lines += [f"[^{label(citation.id)}]: {RETRACTED if citation.id in gone else source}", ""]
         # each its own block: a renderer without footnotes reads lines together as one paragraph, where a backtick or
         # a bracket of one quote would pair with the next line's
-    written = "\n".join(c.text for c in article.compilations)
-    named = {label(c.id) for c in notes.values()} | {MARK[2:-1]}
-    lines += [line for found in dict.fromkeys(CITED.findall(written)) if found not in named
-              for line in (f"[^{found}]: {NOT_FOUND}", "")]
+    lines += [line for found in unnamed for line in (f"[^{found}]: {RETRACTED if found in gone else NOT_FOUND}", "")]
     lines += [UNSUPPORTED, ""] if MARK in written else []
     return "\n".join(lines).rstrip() + "\n"
 
 
-def mirror(article: Article, root: Path, facts: list[Fact] | None = None, zone: tzinfo = UTC) -> Path:
+def mirror(article: Article, root: Path, facts: list[Fact] | None = None, zone: tzinfo = UTC,
+           retracted: Callable[[list[str]], Collection[str]] | None = None) -> Path:
     """Write the article's copy under `root/articles/`, as `markdown` lays it out, and return its path.
 
     The copy goes to a temporary name and is renamed into place, so a reader never sees half a file. An OSError
@@ -496,7 +503,7 @@ def mirror(article: Article, root: Path, facts: list[Fact] | None = None, zone: 
     make_folder(path.parent)
     partial = path.with_name(f".{path.name}.partial")
     try:
-        write_file(partial, markdown(article, facts, zone))
+        write_file(partial, markdown(article, facts, zone, retracted))
         os.replace(partial, path)
     finally:
         partial.unlink(missing_ok=True)

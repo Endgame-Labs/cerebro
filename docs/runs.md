@@ -32,6 +32,8 @@ It runs a pass every 30 seconds and checks each source every 15 minutes. A chang
 
 `serve --once` reads every source now and skips the 4-hour wait, so a note you just saved reaches its article in that pass.
 
+On a terminal, `serve --once` shows each article as it is written, with its time so far. Off a terminal, or with `--plain`, it prints a `stage` line as each step starts and a `ran` line as each agent's run ends. To check on a long pass from another shell, run `cerebro status`: it shows when each agent's last run ended, and which articles are not yet written.
+
 ## What a pass does
 
 1. **Read.** Each source lists what changed since last time.
@@ -140,7 +142,7 @@ serve:
   interval: 30    # seconds between passes
 ```
 
-The four-hour wait means a busy afternoon of notes gives one rewrite, not twenty. Set `articles: 0` to rewrite on every pass. A new article, or a change to the agent's file, always runs at once.
+The four-hour wait means a busy afternoon of notes gives one rewrite, not twenty. Set `articles: 0` to rewrite on every pass. A new article, or a change to the agent's file, skips the wait. An agent woken only by a schedule writes a new article in its next period, as [When it runs](agents.md#when-it-runs) says.
 
 To give one source or one agent its own timing, set `freshness: 1h` in the source's file, or `heartbeat: { on: [change], cooldown: 30m }` in the agent's.
 
@@ -175,7 +177,7 @@ The run's row in the `agent-runs` log keeps what the run read and wrote, in toke
 
 ## When a run fails
 
-A run that fails waits before it tries again: 30 seconds, then twice as long each time, up to an hour. New evidence, a change to the agent's file, or a run by hand ends the wait. The pass names the failure and what to fix:
+A run that fails waits before it tries again: 30 seconds, then twice as long each time, up to an hour. New evidence, a change to the agent's file, or a run by hand ends the wait. A scheduled run tries once more on the next pass instead, then waits for its next period. The pass names the failure and what to fix:
 
 ```text
 failed    projects/atlas: MissingModelKey: agents/projects/atlas.md runs on fireworks glm-5p3, and no key for it is kept or set: run cerebro secrets set fireworks, or export FIREWORKS_API_KEY

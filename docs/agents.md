@@ -75,7 +75,7 @@ Each line under `evidence:` gathers one thing, in order. The agent cites what it
 | `- files: [workspace.md]` | Files from the workspace, whole |
 | `- sql: { source: warehouse, query: "select kind, count(*) as total from things group by kind" }` | Rows from a [database source](sources.md#query-a-database) |
 | `- script: { run: scripts/usage.py }` | What a script in the workspace prints, in at most 60 seconds. Give it a `#!` first line and run `chmod +x` on it. |
-| `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text |
+| `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text. A record's fields show only when the line names them, as `- held: { fields: [status, due] }`. A text field you name, such as a calendar's `description`, shows the record's text to the curator. |
 
 A record a source sends `into:` a collection is read once it shares a key with an article in any collection that is not archived, even a key it only carries, such as a party's domain. It stays held for its own collection until an article there takes it. Its curator is shown such records only through a `held` line, as `cerebro agents new` writes it:
 
@@ -113,6 +113,8 @@ In a value, `this` means the article being written. So `articles: this` keeps th
 
 A time range such as `last_30_days`, `next_14_days` or `this_quarter` works in `window:` on facts, and on any date field your articles have.
 
+A range counts from today. For a demo or a test, set `CEREBRO_TODAY` to count from another day, as in `CEREBRO_TODAY=2026-11-20 cerebro serve`.
+
 A query of a collection comes newest first by a date field Cerebro picks. Name the field yourself with `order_by:`, as in `- query: { from: projects, order_by: due }`.
 
 ## When it runs
@@ -125,11 +127,17 @@ A query of a collection comes newest first by a date field Cerebro picks. Name t
 | `hourly`, `daily`, `weekly` | Once in each period, in the workspace's time zone |
 | `manual` | Only when you run it, with `cerebro agents run` |
 
+After you save an agent's file, the next pass runs the agent on it at once, unless its heartbeat is `manual`. `cerebro serve` reads agent files again before each pass, so you do not restart it. It reads `extensions.py` only when it starts, so restart it after you change that file.
+
+An agent woken only by `hourly`, `daily` or `weekly` runs at once on each article it last wrote from the old file. If that run fails, a later pass tries the article again. An article added after its run in a period waits for the next one.
+
 After an agent writes an article, new evidence waits four hours before it rewrites it, so a busy afternoon gives one rewrite, not twenty. An agent can set its own wait:
 
 ```yaml
 heartbeat: { on: [change], cooldown: 30m }
 ```
+
+When you take back a fact or a record an article cites, its agent runs there on the next pass, whatever its heartbeat or cooldown. If its last run there failed, it still waits first, as [a failed run does](runs.md#when-a-run-fails).
 
 An agent with nothing new to write can say so, with a reason. Its run wrote nothing, and the article keeps the text it had. The pass prints the reason, and the agent runs again once its evidence moves:
 
@@ -261,6 +269,8 @@ In an agent file, `linked: this` finds what links to the article being written, 
 ## How Cerebro checks what an agent writes
 
 When an agent hands in its text, the decision model scores each sentence from 0 to 1 against the facts it cites. It reads meaning, not wording, so a fair summary, a translation or a quote in another style scores as well as a plain restatement. If any sentence scores under the floor, the agent gets those sentences back once, with each score and why, and hands in again. That text lands whole.
+
+Grounding checks that each sentence is backed, not how long the article is. A word limit in an agent's prompt, such as `Keep it under 300 words.`, is the writer's to keep.
 
 Grounding never cuts a sentence. One that still scores under the floor lands with a footnote, and the article defines it once:
 

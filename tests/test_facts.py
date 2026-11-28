@@ -16,6 +16,7 @@ from suites.extraction import *
 from suites.extraction import MEMO, OTHER
 
 import cerebro
+from cerebro.clock import stamp, system_clock
 from cerebro.connector import Record
 from cerebro.facts import (
     Extraction,
@@ -555,7 +556,7 @@ class CountedModels(ScriptedModels):
 
 
 @pytest.mark.parametrize("named", [(), ("Owner", "Hazard")])
-def test_a_records_fields_become_facts_by_rule_a_repeat_costs_nothing_and_a_change_replaces_the_old_fact(
+def test_a_records_fields_become_facts_by_rule_dated_by_it_a_repeat_costs_nothing_and_a_change_replaces_the_old_fact(
         tmp_path: Path, named: tuple[str, ...]) -> None:
     from factoid import Fact as FactoidFact
 
@@ -571,20 +572,25 @@ def test_a_records_fields_become_facts_by_rule_a_repeat_costs_nothing_and_a_chan
     assert sorted(f.text for f in first.facts) == ["The due date of Alder valve is 2026-12-01.",
                                                    "The phase of Alder valve is draft."]  # named, never by its id
     assert {f.kind for f in first.facts} == {"field_value"} and {f.record for f in first.facts} == {"p-7"}
+    assert {f.at for f in first.facts} == {"2026-11-20T10:00:00Z"}  # its record's time, not when it was extracted
     assert "generate" not in models.calls and not any("fact_class" in c for c in models.calls)  # one kind: no pick
     models.calls.clear()
     assert handler.extract_fields(part("draft")).facts == [] and models.calls == []  # the same values: no call
-    changed = handler.extract_fields(part("done"))
-    assert [f.text for f in changed.facts] == ["The phase of Alder valve is done."]
+    changed = handler.extract_fields(replace(part("done"), at="2026-11-22T10:00:00Z"))
+    assert [(f.text, f.at) for f in changed.facts] == [("The phase of Alder valve is done.", "2026-11-22T10:00:00Z")]
     assert sorted(f.text for f in handler.facts(record="p-7")) == ["The due date of Alder valve is 2026-12-01.",
                                                                    "The phase of Alder valve is done."]
     models.calls.clear()
     retimed = replace(part("done"), at="2026-11-25T10:00:00Z")
-    assert handler.extract_fields(retimed).facts == [] and models.calls == []  # a new time alone changes nothing
+    assert handler.extract_fields(retimed).facts == [] and models.calls == ["embed"]  # a new time alone: no new fact
     handler.extract_fields(replace(part("done"), fields={"name": "Alder valve", "phase": "done"}))
     assert [f.text for f in handler.facts(record="p-7")] == ["The phase of Alder valve is done."]  # due date gone
     handler.extract_fields(replace(part("done"), fields={"name": "Alder valve"}))
     assert handler.facts(record="p-7") == []  # every field gone
+    read = stamp(system_clock())
+    [ahead] = handler.extract_fields(Record(id="p-8", source="parts", revision="1", at="2999-01-01T09:00:00Z",
+                                            fields={"name": "Birch valve", "phase": "planned"})).facts
+    assert read <= ahead.at <= stamp(system_clock())  # a row ahead of now is dated when it is read
     handler.close()
 
 

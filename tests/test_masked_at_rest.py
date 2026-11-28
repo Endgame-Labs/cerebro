@@ -13,13 +13,14 @@ from typing import Any, ClassVar
 
 import anyio
 import pytest
+from click.testing import CliRunner
 from keyring.backend import KeyringBackend
 from mcp import Client
 from mcp.types import Implementation
 
 import cerebro.secrets
-from cerebro import Caller, Cerebro
-from cerebro.article import Identity
+from cerebro import Caller, Cerebro, cli
+from cerebro.article import Identity, Property
 from cerebro.compile import agent_surface
 from cerebro.connector import Connector, Listing, Record
 from cerebro.fakes import FakeConnector, FakeDecider, FakeExtraction, FakeSecrets, ScriptedRun
@@ -130,6 +131,25 @@ def test_a_decide_reason_and_a_retract_reason_holding_a_key_never_read_are_maske
         rows = str([row.data for log in ("proposals", "mcp-requests") for row in workspace.store.rows(log)])
     assert asked.record and "[secret]" in rows and KEY not in rows and at_rest(root) == []
     assert any("secrets store holds was masked" in n for n in [*taken.notes, *decided.notes.values()])
+
+
+@pytest.mark.parametrize("way", ["api", "person", "status", "eval"])  # MCP masks a reply twice: no one break shows
+def test_a_value_saved_as_a_secret_after_it_was_kept_is_masked_in_a_reply_and_in_what_a_command_prints(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, way: str) -> None:
+    secrets, root = FakeSecrets(), lay_out_workspace(tmp_path / "ws")
+    (suite := tmp_path / "suite.yaml").write_text(
+        "questions: [{id: q1, ask: who owns it, read: [projects/harbor], expect: {fields: {owner: Mara}}}]\n")
+    with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=secrets, agent_run=ScriptedRun(lambda p: {}),
+                 clock=lambda: DAY) as workspace:
+        workspace.tell(YOU, f"The staging model key is {KEY} until Friday.", as_="fact")
+        workspace.store.append("agent-runs", {"agent": "projects/said", "status": "failed", "note": f"it read {KEY}"})
+        workspace.store.create(Identity("projects/harbor", "projects", "Harbor"))
+        workspace.store.set_field("projects/harbor", "owner", Property(KEY, Caller("projects/said", "agent"), DAY.isoformat()))
+        secrets.set("vault", KEY)  # saved after each was kept, and never read here
+        monkeypatch.setattr(cli, "open_workspace", lambda root: workspace)
+        shown = str(WAYS[way](workspace, "query", {"from": "facts"})) if way in WAYS else CliRunner().invoke(
+            cli.main, [way, *([str(suite), "--no-model"] if way == "eval" else []), "--workspace", str(root)]).output
+    assert "[secret]" in shown and KEY not in shown, shown
 
 
 def test_a_sources_record_holding_a_key_never_read_is_masked_before_it_is_kept_and_before_the_facts_layer_reads_it(

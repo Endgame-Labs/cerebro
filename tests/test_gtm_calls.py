@@ -30,7 +30,7 @@ def test_a_call_holds_the_prep_until_the_calendar_says_it_happened_then_only_the
     agents = {a.id: a for a in load_agents(GTM)[0]}
     writer = agents["calls/article"]
     store, extraction = MemoryStore(), FakeExtraction()
-    lookup = StoreLookup(store, extraction)
+    lookup = StoreLookup(store, extraction, clock=lambda: datetime(2026, 11, 25, tzinfo=UTC))
     store.create(Identity("accounts/acme", "accounts", "Acme"))
     store.create(Identity(ARTICLE, "calls", "Acme QBR"))
     _facts(extraction, store, Record(id="local/acme.md", source="local", revision="1", at="2026-11-10T09:00:00Z",
@@ -54,6 +54,7 @@ def test_a_call_holds_the_prep_until_the_calendar_says_it_happened_then_only_the
 
     event("upcoming", "2026-12-01T09:00:00Z")
     run()
+    assert "upcoming" in seen[0].partition("<evidence>")[2]  # its calendar's facts, dated by its start ahead
     assert body(store.article(ARTICLE)) == "PREP."
     ahead["now"] = False
     event("past", "2026-11-19T09:00:00Z")  # the meeting ended: its status fact moves, and wakes the writer

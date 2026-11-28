@@ -572,7 +572,6 @@ def test_a_persons_instruction_reaches_the_writer_at_its_next_run(tmp_path: Path
 
 def test_a_persons_instruction_is_cited_by_its_record_and_an_agents_waiting_ask_lands_shown_as_not_found(
         tmp_path: Path) -> None:
-    from cerebro.article import markdown
     from cerebro.records import Proposal, propose
 
     store, _, _, common = setup(tmp_path)
@@ -589,21 +588,28 @@ def test_a_persons_instruction_is_cited_by_its_record_and_an_agents_waiting_ask_
     compiled = compile_article(AGENT, agent_run=ScriptedRun(write), **common)
     [part] = compiled.article.compilations
     assert [(c.kind, c.id) for c in part.citations] == [("record", told.record)]
-    assert "[^prop_agent1]: not found" in markdown(compiled.article)
+    assert "[^prop_agent1]: not found" in (tmp_path / "articles" / "reports" / "weekly.md").read_text()
 
 
 @pytest.mark.parametrize("role", ["writer", "subagent"])
-def test_an_article_read_by_tool_is_cited_as_found_and_the_judge_reads_its_text(tmp_path: Path, role: str) -> None:
-    from cerebro.article import Compilation, markdown
+def test_an_article_read_by_tool_is_cited_as_found_and_a_retracted_fact_read_by_tool_as_retracted(
+        tmp_path: Path, role: str) -> None:
+    from cerebro.article import Compilation
+    from cerebro.facts import Fact
     from cerebro.fakes import FakeDecider
 
     agents = workspace(tmp_path, {"briefs/article.md": BRIEF.replace("[risks, people]", "[risks]"),
                                   "briefs/subagents/risks.md": part("Risks")})
     store, _, _, common = setup(tmp_path)
+    extraction = FakeExtraction()
+    extraction.by_record["n0"] = [Fact(id="f_gone", text="Beta ships in June.", subject="Beta", kind="event",
+                                       at="2026-11-10", source="notes", record="n0", status="retracted")]
+    common["lookup"] = StoreLookup(store, extraction)
     store.create(Identity("things/beta", "things", "Beta"))
     store.write_compilation(Compilation("things/beta", "things/beta", "Beta ships in May.", by="x", whole=True))
     store.create(Identity("briefs/alder", "briefs", "Alder"))
-    reads = ScriptedRun(lambda p: "Beta ships in May [^things/beta].", calls=[("read", {"ids": ["things/beta"]})])
+    reads = ScriptedRun(lambda p: "Beta ships in May [^things/beta]. It ships in June [^f_gone].",
+                        calls=[("read", {"ids": ["things/beta", "f_gone"]})])
     decider = FakeDecider()
     if role == "writer":
         compiled = compile_article(AGENT, agent_run=reads, decider=decider, **common)
@@ -611,8 +617,13 @@ def test_an_article_read_by_tool_is_cited_as_found_and_the_judge_reads_its_text(
         run = ByAgent({"briefs/subagents/risks": reads, "briefs/article": ScriptedRun(lambda p: "")})
         compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider,
                                    **common)
-    assert "Beta ships in May." in decider.asked[0][0]["facts"]["things/beta"]["text"]
-    assert "[^things/beta]: not found" not in markdown(compiled.article)
+    asked = decider.asked[0][0]
+    assert "Beta ships in May." in asked["facts"]["things/beta"]["text"]
+    assert "f_gone" not in asked["facts"] and asked["retracted"] == ["f_gone"] and "not_found" not in asked
+    notes = [line for row in store.rows("agent-runs") for line in row.data.get("notes") or []]
+    assert any("[^f_gone], retracted" in line for line in notes), notes
+    copy = (tmp_path / "articles" / f"{compiled.article.identity.id}.md").read_text()
+    assert "[^things/beta]: not found" not in copy and "[^f_gone]: retracted" in copy
 
 
 def test_a_composer_stopped_by_the_cap_leaves_the_paid_drafts_standing(tmp_path: Path) -> None:
@@ -925,7 +936,7 @@ def test_a_stop_part_way_through_landing_leaves_the_article_as_it_was_and_the_ne
         """The process stopping, as serve's exit on SIGTERM does, while what a run handed in is grounded."""
 
     three = replace(AGENT, prompt="x\n\n# Output\n\n## Summary\n\n## Next\n\n## Risks", output=["Summary", "Next", "Risks"])
-    two = replace(AGENT, hash="edited")
+    two = replace(AGENT, data=b"edited")
 
     class StopOnNext(FakeDecider):
         def decide(self, state: Any, questions: Any) -> Any:
@@ -1494,17 +1505,18 @@ def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_artic
                                sorted(["briefs/subagents/people", "briefs/subagents/risks"] * 4))
 
 
-def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote_but_not_beside_one_that_stands(
+def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote_and_footnoted_retracted_beside_one_that_stands(
         ) -> None:
+    from functools import partial
     from types import SimpleNamespace
 
-    from cerebro.article import Compilation, Identity
+    from cerebro.article import Compilation, Identity, markdown
     from cerebro.clean import label
-    from cerebro.compile import _Grounding, _withdrawn
+    from cerebro.compile import _Grounding, _withdrawn, retracted_of
     from cerebro.facts import Fact
     from cerebro.fakes import MemoryStore
 
-    gone, kept, beside = "f 1<x>", "f_2", "f_3"
+    gone, kept, beside = "f 1<x>", "f_2", "f 3<y>"
     asked: list[str] = []
 
     class Facts:
@@ -1519,16 +1531,19 @@ def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_
     store = MemoryStore()
     store.create(Identity("things/halden", "things", "Halden"))
     store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].[^unsupported]\nIt has a dock [^{kept}].\n"
-                                                     f"It grew [^{beside}] [^{kept}].\n", by="things/parts",
+                                                     f"It grew [^{label(beside)}] [^{kept}].\n", by="things/parts",
                                 citations=[Citation("fact", gone), Citation("fact", kept), Citation("fact", beside)]))
-    grounding = _Grounding("things/halden", lookup=SimpleNamespace(extraction=Facts()),  # type: ignore[arg-type]
+    lookup = SimpleNamespace(extraction=Facts())
+    grounding = _Grounding("things/halden", lookup=lookup,  # type: ignore[arg-type]
                            root=Path("."), ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,
                            zone=UTC, floor=0.6)
     said = _withdrawn(grounding, store, "things/halden", ["things/parts"])
     part = next(s for s in store.article("things/halden").compilations if s.by == "things/parts")
     assert sorted(asked) == sorted([gone, kept, beside]) and len(said) == 1
     assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept, beside]
-    assert "It grew" in part.text  # a fact it cites still stands
+    assert f"It grew [^{label(beside)}] [^{kept}]." in part.text  # a fact it cites still stands: the line stays whole
+    copy = markdown(store.article("things/halden"), retracted=partial(retracted_of, lookup))  # type: ignore[arg-type]
+    assert f"[^{label(beside)}]: retracted" in copy and f"[^{kept}]: retracted" not in copy, copy
 
 
 LINKS = "---\nevidence:\n  - items: {}\n  - articles: [this.linked]\n---\n\n# Instructions\n\nDraft it.\n"

@@ -1,6 +1,6 @@
 ---
 evidence:
-  - facts: { window: last_365_days }   # this conversation's own facts: the calendar's, the recording's and your notes'
+  - facts: {}   # this conversation's own facts, whatever their date, as a meeting ahead is dated by its start: the calendar's, the recording's and your notes'
   - articles: [this.linked]
     text_only: true              # its account and attendees: their front matter and text, not their facts
   - articles: [this.attendees]   # the attendees with no article yet, each said so

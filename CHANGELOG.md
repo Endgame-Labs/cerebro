@@ -2,6 +2,40 @@
 
 What changed in each release, newest first.
 
+## 0.1.4
+
+- `cerebro serve` reads agent files again before each pass, so an agent file you save runs on the next pass without a restart, unless its heartbeat is `manual`. An agent woken only by `hourly`, `daily` or `weekly` runs at once on each article it last wrote from the old file. A change to `extensions.py` still needs a restart.
+- When you take back a fact or a record an article cites, its agent runs there on the next pass, whatever its heartbeat or cooldown, so a line that cites only what you took back comes out. If its last run there failed, it waits first, as a failed run does.
+- A footnote of a fact you took back reads `retracted` in place of its source and quote. The judge and the writer are told such a citation was retracted and backs nothing.
+- A query of the `mcp-requests` log leaves out the words of a tell you took back and marks its row `retracted`. A `read` of a record you took back says `record <id> was retracted` and no longer lists it under `missing`.
+- Notes has two new tools. `browse_notes` lists a collection as a folder does, without the notes' text, and `delete_note { "id": "2026-11-20-export-plan" }` deletes a note. A deleted note is gone from every listing and query of notes and from a session's five newest, cannot be revised, and its facts are taken back. The workspace still holds its words.
+- A query of an app's records leaves out those a retract took back and says how many, as `1 record of note was retracted, so the query left it out`. `Workspace.records` leaves them out too. A query by `collection` alone now filters as any field does, and gives no `collections` or `recent`.
+- A field's fact is dated by its record's time, not by when Cerebro first read it. A record with no time, or one still ahead, such as a meeting to come, is dated when it is read. The same value at a new time adds no fact and keeps its date, for one small model call at most.
+- The gtm template's calls and opportunities writers and its people overview read every fact of their article, whatever its date. A deal or a person untouched for a year still shows its fields.
+- A `held` line takes `fields`, as `- held: { fields: [status, due] }`, and shows the curator each named field of a held record that has a value. A text field you name, such as a calendar's `description`, shows the record's text to the curator.
+- An admit is refused when the article's name or one of its keys holds a value the secrets store keeps, and so is a link whose key holds one. This holds for a curator's call and for a row you tick on the first run's list, and the line says what to change.
+- A value you save as a secret after Cerebro kept it is masked in `cerebro status`, `cerebro eval`, `cerebro tools`, and the lists of the first run and `cerebro review`.
+- When you save a secret after Cerebro kept text that holds it, what an agent reads masks the whole value before any line is cut to fit, so no part of it reaches the model. This covers held records, the reasons on proposals and admits, quotes and titles.
+- Once Cerebro reads a Postgres source's login, it masks each password in it wherever it appears, in facts and articles too. A password under 6 characters is never masked, so use a long one that is not a common word.
+- `cerebro sources check <name>` on a database source opens it, read only, with a query that reads no table, and says `the database opens, read only`. A database that does not open stops the check and says why.
+- A failed call to the decision model ends with what the provider replied, masked and cut at 300 characters, as `answered HTTP 400: check the model id and the request. The reply said: ...`.
+- When the facts layer's model answers with a redirect, the call fails with a line that names the status and says to check `providers` in `settings.yaml`. The redirect is not followed, so your key stays with its host, and the next pass tries again.
+- When the decision model fails to judge a near match, the pass says so in one line, as `failed    facts: linking 2 facts by a near match failed: <why>`, and each fact keeps its other links.
+- A `query` that filters on a field the articles have but none fills says `owner on projects holds no value`, in place of `check its name`.
+- Set `CEREBRO_TODAY` to a date, as in `CEREBRO_TODAY=2026-11-20 cerebro serve`, to run a demo or a test as of that day. Time ranges such as `last_30_days`, the date writers and the judge are told, a first run's 14 days and `behind:` in a files source's `window:` count from it. Schedules, leases and the times Cerebro records keep the real clock. A value that is not a date stops the command with a line that says what to write.
+- On a terminal, the first run's screen draws cleanly. What it showed stays in place once you approve, a resize no longer clears the screen into your scrollback, a list you scroll shows each group under its heading, and a stage's `complete` count counts only its own work.
+- A front matter value with parentheses, such as `kind: Beagle (dog)`, is written as it reads, with no escapes.
+- A Gong call's title that Gong sends with HTML escapes, such as `&amp;`, reads as its characters in the record's title and text.
+- The docs say that grounding does not check how long an article is, how to run `cerebro eval` on a suite from another folder, how to check on a long `serve --once` from another shell, and that a scheduled run that fails tries once more on the next pass.
+
+### Upgrading
+
+- In a gtm workspace, copy three agent files from `<clone>/src/cerebro/templates/gtm/agents/` over the files of the same name in your workspace's `agents/`: `calls/article.md`, `opportunities/article.md` and `people/subagents/overview.md`. `<clone>` is the clone you installed 0.1.4 from. This replaces any edit you made to them.
+- If you edited one of those files, keep yours and change its `- facts: { window: last_365_days }` line to `- facts: {}` instead.
+- The next pass runs each of those agents again on its articles, since its file changed.
+- Field facts Cerebro read before the upgrade keep the date it first read them. A field gets its record's date once its value changes.
+- An app of your own that read `retracted`, `collections` or `recent` from a query of its kind finds them gone. A query of its kind and `Workspace.records` now leave out what a retract took back.
+
 ## 0.1.3
 
 - Grounding no longer cuts or rewrites what a writer wrote. The decision model scores each sentence from 0 to 1 against the facts it cites, and the writer gets the sentences under the floor back once, with each score and why, while it can still revise. A sentence still under the floor lands with the footnote `[^unsupported]: Not fully backed by the facts it cites.`

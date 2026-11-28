@@ -52,7 +52,7 @@ from .budget import Ledger
 from .caller import Caller
 from .clock import Clock, stamp, system_clock
 from .compile import agent_surface, drop_material, field_refused, keep_judge, run_agent, unmirrored
-from .connector import NOBODY, Connector, Ours, Record, registrable, same_event
+from .connector import NOBODY, Connector, Ours, Record, masking, registrable, same_event
 from .connectors import CONNECTORS
 from .errors import CerebroError
 from .evidence import Evidence, EvidenceError, Item, KeepJudge, Starter, _item, fingerprint, gather
@@ -72,9 +72,21 @@ from .identity import ADMITTED_FROM, follow, reached, redirects, working, would_
 from .lookup import LINKED, Lookup, OperationError
 from .models import Decider, ModelSpec
 from .project import read_ours
-from .records import APPLIES, TOLD, Decision, Gone, Proposal, _proposal, _slug, named_alike, proposals, propose
+from .records import (
+    APPLIES,
+    TOLD,
+    Decision,
+    Gone,
+    Proposal,
+    _proposal,
+    _refuse_secret,
+    _slug,
+    named_alike,
+    proposals,
+    propose,
+)
 from .run import WROTE_NOTHING, AgentRun, Run
-from .store import Store, record_from, update_state
+from .store import Store, record_from, scrubbed, update_state
 from .workspace import Workspace
 
 if TYPE_CHECKING:
@@ -773,10 +785,10 @@ def _landed(store: Store, target: str, payload: dict[str, Any], by: Caller, at: 
     working set already, as one an ask by name finds, changes in nothing but what the admit adds."""
     found = store.article(target)
     keys, left = _held_elsewhere(store, target, address_form(dict(payload.get("keys") or {})))
+    collection, _, name = target.rpartition("/")
+    title = str(payload.get("name") or payload.get("title") or name.replace("-", " ").capitalize())
+    _refuse_secret(store, target, title, keys, CurateError)
     if found is None:
-        collection, _, name = target.rpartition("/")
-        _refuse_masked(store, target)
-        title = str(payload.get("name") or payload.get("title") or name.replace("-", " ").capitalize())
         store.create(Identity(target, collection, title.strip(), keys, "active", by, at, reason.strip()))
         if target in redirects(store):  # a path a fold led elsewhere names this article from now on
             store.append("merges", {"at": at, "redirect": target, "path": target})
@@ -831,14 +843,6 @@ def _lands_in(store: Store, ref: dict[str, Any], collection: str) -> bool:
     """Whether the held record `ref` names, by source and id, lands in `collection`, as its listing says."""
     return any(row.get("id") == ref.get("id") and row.get("into") == collection
                for row in store.state(f"held:{ref.get('source')}") or [])
-
-
-def _refuse_masked(store: Store, target: str) -> None:
-    """Refuse a new article whose path would hold a value the secrets store keeps."""
-    if store.masks is not None and store.masks(slug=_slug)(target) != target:
-        raise CurateError(f"admit into {target.rpartition('/')[0]}: its name holds a value the secrets store keeps, "
-                          "which its article's id would hold, so nothing is admitted: give a name without the value, "
-                          "or change the stored value")
 
 
 def _set_fields(store: Store, article: str, payload: dict[str, Any], by: Caller, at: str) -> dict[str, Any]:
@@ -1127,8 +1131,8 @@ class _Curation:
             raise CurateError(why)
         if not yes and (why := repeated(self.store, self.caller, kind, target, payload)):  # a yes is carried out
             raise CurateError(why)
-        if kind == "article.admit" and self.store.article(target) is None:
-            _refuse_masked(self.store, target)
+        if kind in ("article.admit", "article.link"):
+            _refuse_secret(self.store, target, str(payload.get("name") or ""), payload.get("keys"), CurateError)
         at = self.now()
         proposal = Proposal(id=_proposal_id(), kind=kind, target=target, by=self.caller, at=at, payload=payload,
                             reason=reason, cites=list(self.answers))
@@ -2093,7 +2097,8 @@ def _accepted(store: Store, agent: Agent) -> list[Evidence]:
     rows = [p for p in every if not carried_out(p) and may_answer(agent, p, named)]
     items = [Item(f"proposal:{p.id}", f"- {p.id} {_asks(p)}, filed by {p.by.name}, accepted by "
                   f"{p.decided_by.name if p.decided_by else 'a caller'}: "
-                  f"{' '.join(p.decision_reason.split())[:NOTE_CAP] or _why(store, p)}, {p.at[:10]}")
+                  f"{' '.join(scrubbed(p.decision_reason, store.scrubbing()).split())[:NOTE_CAP] or _why(store, p)}, "
+                  f"{p.at[:10]}")
              for p in rows[:MAX_WAITING]]
     if not items:
         return []
@@ -2106,9 +2111,10 @@ def _accepted(store: Store, agent: Agent) -> list[Evidence]:
 
 
 def _why(store: Store, p: Proposal) -> str:
-    """A proposal's reason, or the words of the tell it was filed from."""
+    """A proposal's reason, or the words of the tell it was filed from, masked as the store masks now before the cut:
+    a row kept before a secret was saved holds it in the clear."""
     told = next((r.body for id in p.cites if (r := store.record(id)) is not None), "")
-    return " ".join((p.reason or told).split())[:NOTE_CAP]
+    return " ".join(scrubbed(p.reason or told, store.scrubbing()).split())[:NOTE_CAP]
 
 
 def _decisions(store: Store, agent: Agent) -> tuple[list[Evidence], int]:
@@ -2283,7 +2289,8 @@ class _Measure:
         if item.startswith("fact:"):
             if key not in before.view or key not in after.view or before.side[item][0] == after.side[item][0]:
                 return False
-            said = [_item(f).text for f in self.facts.facts(ids=[item.removeprefix("fact:")])] if self.facts else []
+            with masking(self.store.scrubbing() or (lambda text: text)):  # as `gather` holds it for the view's line
+                said = [_item(f).text for f in self.facts.facts(ids=[item.removeprefix("fact:")])] if self.facts else []
             return bool(said) and (before.side[item][1] + "\n").startswith((said[0] + "\n", said[0] + " ["))
         if item.startswith("unlinked:"):
             return key not in after.view and bool(set(self.store.named(item.removeprefix("unlinked:"))) & wrote)

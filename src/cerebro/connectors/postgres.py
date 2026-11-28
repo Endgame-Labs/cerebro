@@ -10,14 +10,14 @@ error line masks it and the password inside it, as the workspace's mask does eve
 Read only is three layers, as for SQLite. Before anything is sent, the query must pass `check_query` as SQLite reads
 it and again as Postgres reads it, with the words that write in Postgres refused too (`copy`, `merge`, and `share`,
 which locks rows), and no call of a function that reads the server's files, reaches the network, waits, signals
-another session or changes a setting (`REFUSED_CALLS`). Then the session and its one transaction are read only at the
+another session or changes a setting (`REFUSED_CALLS`). Then a statement timeout for the time the query has left, set
+before anything else and again before each fetch, and the session and its one transaction are read only at the
 server: `SET default_transaction_read_only = on`, `BEGIN READ ONLY`, a refusal of a login that is a superuser or may
-read the server's files or run its programs (`TOO_STRONG`), a statement timeout for the time the query has left, set
-again before each fetch, the one query through a server-side cursor, wrapped so the server stops a row far past the
-size limit before sending it (`WRAPPED`), and always `ROLLBACK`, never `COMMIT`; the connection is opened in
-autocommit, so the driver sends no `BEGIN` or `COMMIT` of its own. Last, the same limits bound what comes back: at
-most `ROWS` rows, read a few at a time from the cursor, at most `SIZE` bytes of them, no value longer than `SIZE`, and
-no more than `SECONDS` in all. The real guard is a role that can only read the tables it should: the docs give the SQL
+read the server's files or run its programs (`TOO_STRONG`), the one query through a server-side cursor, wrapped so the
+server stops a row far past the size limit before sending it (`WRAPPED`), and always `ROLLBACK`, never `COMMIT`; the
+connection is opened in autocommit, so the driver sends no `BEGIN` or `COMMIT` of its own. Last, the same limits bound
+what comes back: at most `ROWS` rows, read a few at a time from the cursor, at most `SIZE` bytes of them, no value
+longer than `SIZE`, and no more than `SECONDS` in all. The real guard is a role that can only read the tables it should: the docs give the SQL
 to make one. A NOTICE or WARNING the server sends is dropped: psycopg passes one only to a handler, and none is added.
 
 Each value comes back as the SQLite source gives one, None, a number or text (`cell` writes down each choice).
@@ -41,6 +41,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 from ..clock import seconds
 from ..connector import one_line
 from ..errors import CerebroError
+from ..run import masked_error
 from ..secrets import Scrubber, SecretsError, check_name
 from ..source import SourceError, SourceFile
 from .database import DatabaseError, Engine, Limits, QueryRefused, Rows, bounded, check_query
@@ -78,7 +79,7 @@ TOO_STRONG = ("SELECT rolsuper OR pg_has_role(current_user, 'pg_read_server_file
               "OR pg_has_role(current_user, 'pg_write_server_files', 'MEMBER') "
               "OR pg_has_role(current_user, 'pg_execute_server_program', 'MEMBER') "
               "FROM pg_roles WHERE rolname = current_user")
-TIMEOUT = "SET LOCAL statement_timeout = {ms}"
+TIMEOUT = "SET statement_timeout = {ms}"  # for the session: the first is set before the transaction begins
 ROLLBACK = "ROLLBACK"
 ROW_MARK = "cerebro_row_bytes:"
 ROW_FACTOR = 4  # a row's text past this many times the size limit is stopped at the server, before it is sent
@@ -200,23 +201,28 @@ def cell(value: Any) -> Any:
 
 
 def _secrets_in(dsn: str) -> list[str]:
-    """The connection string, each password and each host written in it, as a URL's or as a `password=`, `host=` or
-    `hostaddr=` keyword, so a line can mask them all."""
-    found = [dsn]
+    """`_passwords_in`, and each host written in the connection string, as a URL's or as a `host=` or `hostaddr=`
+    keyword, so a line of the engine's own can mask them all. A host is an address, so no other line masks it."""
+    found = _passwords_in(dsn)
     if "://" in dsn:
-        try:
+        with contextlib.suppress(ValueError):  # not a URL's address: its keywords still read
             parts = urlsplit(dsn)
-            password = parts.password
-        except ValueError:
-            parts, password = None, None
-        if password:
-            found += [password, unquote(password)]
-        if parts is not None:
-            hosts = parts.netloc.rpartition("@")[2]
-            found += [_host(h) for h in hosts.split(",")]
-            found += [v for k, v in parse_qsl(parts.query) if k in ("password", "host", "hostaddr")]
+            found += [_host(h) for h in parts.netloc.rpartition("@")[2].split(",")]
+            found += [v for k, v in parse_qsl(parts.query) if k in ("host", "hostaddr")]
     for match in re.finditer(r"(?:host|hostaddr)\s*=\s*('(?:[^'\\]|\\.)*'|[^\s&]+)", dsn):
         found += match.group(1).strip("'").split(",")
+    return found
+
+
+def _passwords_in(dsn: str) -> list[str]:
+    """The connection string and each password written in it, as a URL's or as a `password=` keyword: what every line
+    of the workspace masks once the login is read."""
+    found = [dsn]
+    if "://" in dsn:
+        with contextlib.suppress(ValueError):
+            parts = urlsplit(dsn)
+            found += [parts.password, unquote(parts.password)] if parts.password else []
+            found += [v for k, v in parse_qsl(parts.query) if k == "password"]
     for match in re.finditer(r"password\s*=\s*('(?:[^'\\]|\\.)*'|[^\s&]+)", dsn):
         value = match.group(1)
         found.append(value[1:-1].replace("\\'", "'").replace("\\\\", "\\") if value.startswith("'") else value)
@@ -261,13 +267,17 @@ class PostgresEngine(Engine):
         try:
             db = connect(dsn, autocommit=True, connect_timeout=max(2, math.ceil(limits.seconds)),
                          application_name=APPLICATION)
-        except Exception as error:
+        except Exception as error:  # one not the driver's goes on, with its login masked
             if not hasattr(error, "sqlstate") and not isinstance(error, OSError):
-                raise
+                if (safe := masked_error(error, hide)) is error:
+                    raise
+                raise safe from None
             raise DatabaseError(f"{self.label}: the database does not open ({one_line(hide(str(error)))}): check "
                                 f"the connection string kept as {self.item}, and that the server is up") from None
         cursor = None
         try:
+            deadline = self.ticks() + limits.seconds
+            self._time_left(db, deadline, limits)
             db.execute(READ_ONLY)
             db.execute(BEGIN)
             if (db.execute(TOO_STRONG).fetchone() or (True,))[0]:
@@ -275,17 +285,17 @@ class PostgresEngine(Engine):
                                     "or a role that may read the server's files or run its programs, which a sql line "
                                     "could reach through any function: make a role that can only read, as the sources "
                                     "docs show, and keep its connection string instead")
-            deadline = self.ticks() + limits.seconds
-            self._time_left(db, deadline, limits)
             cursor = db.cursor(name=CURSOR_NAME)
             cursor.execute(WRAPPED.format(query=query, cap=ROW_FACTOR * limits.size))
             columns = [str(d[0]) for d in cursor.description or ()]
             return bounded(columns, self._fetch(db, cursor, limits, deadline), limits)
         except CerebroError:
             raise
-        except Exception as error:
+        except Exception as error:  # one not the driver's goes on, with its login masked
             if not hasattr(error, "sqlstate"):
-                raise
+                if (safe := masked_error(error, hide)) is error:
+                    raise
+                raise safe from None
             raise self._failure(error, hide, limits) from None
         finally:
             if cursor is not None:

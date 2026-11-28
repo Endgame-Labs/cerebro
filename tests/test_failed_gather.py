@@ -111,6 +111,7 @@ def test_a_change_to_workspace_md_or_the_agent_file_ends_the_wait(tmp_path: Path
         clock.after(5)
         agent = root / "agents" / "reports" / "broken.md"
         agent.write_text(agent.read_text().replace("Sum it up.", "Sum it all up."))
+        workspace.agents_read()  # as serve does before its next pass
         line.down = None
         clock.after(1)
         done = workspace.run_once()

@@ -6,9 +6,11 @@ collection's article reaches it, as its parent does, is kept there too while no 
 it. The `held` evidence line, `- held: {}` on a curator's file, gives the curator the records held for its
 collection: those whose `into` is that collection and that no article of it in the working set binds, and those of no
 collection whose keys bind only articles of it
-that are out of the working set. Each is data, never text of the record: its
+that are out of the working set. Each is data, never the record's body: its
 source, its id, its name as its keys or fields give it, its keys, `at`, the record's own time as its listing gives
-it, and `listed_at`, when a pass first held it, as the runner keeps it beside the listing. The list is newest first
+it, `listed_at`, when a pass first held it, as the runner keeps it beside the listing, and last those of its fields
+the line names, as `- held: { fields: [status, due] }`, that its source gives a value. Its source, id and name come
+first, so a line cut at `MAX_LINE` keeps what names the record. The list is newest first
 by the record's own time, and at most `LIST_MAX` long, or the line's `limit`, with a count of the rest.
 
 A record leaves the list the moment it is bound to an article of its collection in the working set, as the curator's
@@ -34,6 +36,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
+from . import clock
 from .agent import Agent, EvidenceLine
 from .connector import NOBODY, Ours, Record, outside_domain, registrable
 from .evidence import RECENT_DAYS, Evidence, EvidenceError, Item
@@ -105,6 +108,7 @@ class Held:
     ours: list[str] = field(default_factory=list)  # the names of the parties on it who are yours, as its source says
     carried: list[str] = field(default_factory=list)  # the keys it only carries, which an admit of it does not take
     own: bool = False  # whether the record itself is on the workspace's own side, as `own_record` says
+    fields: dict[str, Any] = field(default_factory=dict)  # those its held line names that its source gives a value
 
     def naming(self) -> dict[str, list[str]]:
         """The keys an article admitted from this record takes: those that name it, never one it only carries."""
@@ -157,7 +161,9 @@ def first_run_since(store: Store) -> str:
     with no session."""
     session = store.state(FIRST_RUN_KEY)
     began = session.get("at") if isinstance(session, dict) else None
-    return (datetime.fromisoformat(began) - timedelta(days=RECENT_DAYS)).date().isoformat() if began else ""
+    if not began:
+        return ""
+    return (clock.pinned(datetime.fromisoformat(began)) - timedelta(days=RECENT_DAYS)).date().isoformat()
 
 
 def before_cut(at: str, since: str) -> bool:
@@ -489,12 +495,13 @@ def _first_run_marks(store: Store, record: Record, standing: list[StandIn], ours
 
 
 def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: int | None = LIST_MAX,
-             ours: Ours = NOBODY, only: Collection[tuple[str, str]] | None = None) -> HeldList:
+             ours: Ours = NOBODY, only: Collection[tuple[str, str]] | None = None,
+             fields: Collection[str] = ()) -> HeldList:
     """The records `sources` hold for `collection`, newest first, at most `limit`, or every one with None, read from each source's held
     state. A record a key binds to an article of the working set is in scope, so it is not listed, whatever the state
     still says before the next pass. A record on the workspace's own side, by `ours`, comes after the others. `only`,
     by source and id, weighs those records alone, each as the whole list would give it, so a call that names a few
-    records does not weigh every one held."""
+    records does not weigh every one held. Each carries those of `fields` its source gives a value."""
     found: list[Held] = []
     sources = list(sources)
     standing = stand_ins(store) if first_run_open(store) else None
@@ -512,7 +519,8 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
         found.append(Held(record.source, record.id, name, keys, record.at, record.revision,
                           str(row.get("listed_at") or ""), links, itself, parties_outside(record, ours),
                           [str(n) for n in record.fields.get("ours") or [] if str(n).strip()],
-                          [k for k in record.carried or () if k in keys], own_record(record, ours)))
+                          [k for k in record.carried or () if k in keys], own_record(record, ours),
+                          {k: record.fields[k] for k in fields if record.fields.get(k) not in (None, "", [], {})}))
     found.sort(key=lambda held: (held.source, held.id))
     found.sort(key=lambda held: held.at, reverse=True)  # newest first; one time apart, by source and id
     found.sort(key=lambda held: held.own)
@@ -520,14 +528,18 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
 
 
 def check_line(args: Any, curator: bool, fail: Callable[[str], Exception]) -> dict[str, Any]:
-    """The arguments of a `held` line as an agent file writes it, checked: none, or a `limit` of 1 to `LIST_MAX`,
-    and only on a curator's file. Raises what `fail` makes of the problem."""
+    """The arguments of a `held` line as an agent file writes it, checked: none, a `limit` of 1 to `LIST_MAX`, the
+    names of the `fields` each record shows, or both, and only on a curator's file. Raises what `fail` makes of the
+    problem."""
     args = {} if args is None else args
-    if not isinstance(args, dict) or set(args) - {"limit"}:
-        raise fail("it takes limit alone, or nothing: write - held: {} or - held: { limit: 200 }")
+    if not isinstance(args, dict) or set(args) - {"limit", "fields"}:
+        raise fail("it takes limit and fields, or nothing: write - held: {} or - held: { limit: 200, fields: [status] }")
     limit = args.get("limit", LIST_MAX)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= LIST_MAX:
         raise fail(f"limit {limit!r} is not a whole number from 1 to {LIST_MAX}: write limit: 200")
+    names = args.get("fields", [])
+    if not isinstance(names, list) or not all(isinstance(name, str) and name.strip() for name in names):
+        raise fail(f"fields {names!r} is not a list of field names: write fields: [status, due]")
     if not curator:
         raise fail("it lists the records held for a curator's collection, and this file is no curator.md: move "
                    "the line to the collection's curator.md, or delete it")
@@ -535,27 +547,32 @@ def check_line(args: Any, curator: bool, fail: Callable[[str], Exception]) -> di
 
 
 MAX_REASON = 200  # characters of a left-out reason, as leave_out bounds it
-MAX_LINE = 2000  # characters one held record takes of the list, whatever its keys hold
+MAX_LINE = 2000  # characters one held record takes of the list, whatever its keys and fields hold
+FIRST = ("source", "id", "name")  # what admit and leave_out name a held record by, first on its line
 
 
-def _capped(text: str, cap: int) -> str:
-    """Text folded to one line and cut at `cap` characters, with how long it was."""
-    one = " ".join(str(text).split())
+def _capped(text: str, cap: int, mask: Callable[[str], str]) -> str:
+    """Text masked by `mask`, folded to one line and cut at `cap` characters, with how long it was. The mask comes
+    first: a row kept before a secret was saved holds it in the clear, and a cut first would leave part of it."""
+    one = " ".join(mask(str(text)).split())
     return one if len(one) <= cap else f"{one[:cap]}… ({len(one)} characters)"
 
 
-def _line(data: dict[str, Any]) -> str:
-    """One held record as the list shows it: its data as JSON, cut at `MAX_LINE` characters."""
-    return "- " + _capped(json.dumps(data, sort_keys=True), MAX_LINE)
+def _line(data: dict[str, Any], mask: Callable[[str], str]) -> str:
+    """One held record as the list shows it: its data as JSON, masked by `mask`, cut at `MAX_LINE` characters,
+    `FIRST` first, then the rest sorted, its fields last, so a cut never takes what names the record."""
+    data = json.loads(json.dumps(data, sort_keys=True))  # every level sorted, an order json.loads keeps
+    order = sorted(data, key=lambda key: FIRST.index(key) if key in FIRST else len(FIRST) + (key == "fields"))
+    return "- " + _capped(json.dumps({key: data[key] for key in order}), MAX_LINE, mask)
 
 
 def _data(held: Held) -> dict[str, Any]:
     data = asdict(held)
     data.pop("revision")  # counted in the item's key, so the digest moves, and of no use to the run
     data.pop("carried")  # the source's own knowledge: an admit of the record leaves those keys off its article
-    for mark in ("links_to", "proposed", "outside"):
+    for mark in ("links_to", "proposed", "outside", "fields"):
         if not data[mark]:
-            data.pop(mark)  # proposed is set on a first run alone; links_to and outside when a record has them
+            data.pop(mark)  # proposed is set on a first run alone; the others when a record has them
     # named as a fact's label is: a bare "ours" beside a record's other names read as all of them
     own = [held.name] if data.pop("own") and held.name else []
     if own := list(dict.fromkeys(own + data.pop("ours"))):
@@ -588,16 +605,18 @@ def entry(agent: Agent, store: Store | None, sources: Iterable[str], n: int, lin
         raise EvidenceError(f"{name}: evidence {n}, held: the lookup it was gathered with holds no store, so no held "
                             "record can be read: gather it through the workspace's own lookup")
     args = line.args if isinstance(line.args, dict) else {}
-    found = held_for(store, agent.target, sources, limit=int(args.get("limit", LIST_MAX)), ours=ours)
+    found = held_for(store, agent.target, sources, limit=int(args.get("limit", LIST_MAX)), ours=ours,
+                     fields=args.get("fields", ()))
     left = {(row.data.get("source"), row.data.get("id")): str(row.data.get("reason", ""))
             for row in store.rows("left-out", {"collection": agent.target}) if row.data.get("id")}
     out = Evidence(f"Held for {agent.target}: records your sources hold that no article in the working set binds, "
                    "newest first", spelled=f"held for {agent.target}")
+    mask = store.scrubbing() or (lambda text: text)  # as the store masks what it keeps now, for every reader
     for held in found.items:
-        shown = _line(_data(held))
-        counted = _line(_counted(held, agent.id))
+        shown = _line(_data(held), mask)
+        counted = _line(_counted(held, agent.id), mask)
         reason = left.get((held.source, held.id))
-        text = _line(_data(held) | {"left_out": _capped(reason, MAX_REASON)}) if reason else shown
+        text = _line(_data(held) | {"left_out": _capped(reason, MAX_REASON, mask)}, mask) if reason else shown
         # the reason is the curator's own words, so it is shown and never counted: a reworded one wakes no run
         out.items.append(Item(f"held:{held.source}:{held.id}:{held.revision}", text, at=held.at,
                               left=f"{held.source}:{held.id}", counts=counted if text != counted else None))

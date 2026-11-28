@@ -278,9 +278,11 @@ def open_read_only(path: Path, seconds: float = SECONDS, longest: int = SIZE) ->
     """A connection to the SQLite file at `path` that cannot write it: read-only URI mode, `query_only` on, and no
     other database attached. The path goes in as a file URI, so nothing in it adds a parameter. No string or blob,
     the query's own text and every value it builds on the way included, may pass `longest` bytes, so one huge value
-    is refused by SQLite before it is built, not cut after."""
+    is refused by SQLite before it is built, not cut after. It reads the file's schema, so a file that is not a
+    database fails here, not at the query."""
     db = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=seconds, isolation_level=None)
     try:
+        db.execute("pragma schema_version")
         db.execute("pragma query_only = on")
         db.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
         db.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, max(longest, QUERY_CHARS * 4))
@@ -313,8 +315,8 @@ class SqliteEngine(Engine):
         try:
             db = open_read_only(self.path, limits.seconds, limits.size)
         except sqlite3.Error as error:
-            raise DatabaseError(f"{self.label}: the database does not open ({one_line(error)}): check the file it "
-                                "names is a SQLite database") from None
+            check = ": check the file it names is a SQLite database" if error.sqlite_errorname == "SQLITE_NOTADB" else ""
+            raise DatabaseError(f"{self.label}: the database does not open ({one_line(error)}){check}") from None
         try:
             db.set_authorizer(_authorizer(denied))
             deadline = self.ticks() + limits.seconds
@@ -415,9 +417,19 @@ class DatabaseConnector(Connector):
     @classmethod
     def build(cls, source: SourceFile, root: Path, app: Any) -> DatabaseConnector:
         """Every value it gives masked, and never one that names the workspace's own files. A source with an auth line
-        is handed its login, which a SQLite file refuses and a Postgres database reads."""
-        login = app.login(source) if source.auth else None
-        return cls(source, root, login=login, mask=app.mask, masks=app.mask_every, own=app.own_files())
+        is handed its login, which a SQLite file refuses and a Postgres database reads, and once it is read each
+        password it names is masked as well as the whole of it."""
+        read = app.login(source) if source.auth else None
+
+        def login() -> str:
+            from .postgres import _passwords_in  # it imports this module
+
+            dsn = read()
+            app.mask.add(*_passwords_in(dsn))
+            return dsn
+
+        return cls(source, root, login=login if read else None, mask=app.mask, masks=app.mask_every,
+                   own=app.own_files())
 
     def __init__(self, source: SourceFile, root: Path, *, login: Callable[[], str] | None = None,
                  mask: Callable[[str], str] | None = None, limits: Limits | None = None,

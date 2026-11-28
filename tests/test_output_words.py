@@ -907,8 +907,11 @@ def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_stat
     from factoid.models import ModelError
     from suites.extraction import MEMO
     from test_facts import on_factoid
+    from test_runner import workspace
 
+    from cerebro.connector import Record
     from cerebro.facts import ExtractionFailed
+    from cerebro.fakes import FakeConnector, FakeExtraction
     from cerebro.gateway import Gateway, Route
     from cerebro.models import DecisionError, HttpDecider, ModelSpec, YesNo
 
@@ -935,7 +938,15 @@ def test_the_lines_a_failed_model_call_says_for_a_refused_key_and_any_other_stat
                 handler.extract(MEMO)
             seen.append(str(failed.value))
         handler.close()
-    assert not [line for line in seen if words.search(line) or WORDS.search(line)], seen
+    notes = FakeConnector("notes", [Record(id="n1", source="notes", revision="1", at="2026-11-10T09:00:00Z",
+                                           body="It renewed.", fields={"subject": "the Alder deal"})])
+    linking = workspace(tmp_path / "linking", extraction=FakeExtraction(), notes=notes)
+    linking.decider = HttpDecider(ModelSpec("typesafe", "jev-1.13.0", job="decision", retries=0), key=lambda: "k",
+                                  send=lambda url, headers, data: (404, {}, b""))
+    linking.store.create(Identity("things/alder", "things", "Alder"))
+    near = [f"failed    {key}: {why}" for key, why in linking.run_once().failed.items()]
+    assert len(near) == 1, near  # the pass's one line for a near match that failed
+    assert not [line for line in seen + near if words.search(line) or WORDS.search(line)], seen + near
 
 
 def test_a_find_or_query_with_no_match_some_left_out_or_a_retracted_record_says_no_section_brain_or_page(

@@ -25,7 +25,7 @@ import sys
 import threading
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping
-from dataclasses import fields, is_dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Self
 from urllib.parse import unquote, urlsplit
@@ -38,7 +38,7 @@ from .apps import App, Exposed, bind, check_apps, collect
 from .article import pending
 from .budget import Held, Ledger, Metered
 from .caller import Caller
-from .clock import Clock, system_clock
+from .clock import Clock, pinned, system_clock
 from .compile import Compiled, _workspace, compile_article
 from .connector import Ask, Connector, Listing, Offer, Ours, Record, RecordNotFound, masking, one_line
 from .connectors import CONNECTORS
@@ -91,6 +91,7 @@ from .run import (
     RewriteFailed,
     Rewriter,
     Run,
+    ids_kept,
     masked,
     masked_error,
 )
@@ -395,6 +396,7 @@ class Cerebro:
                  trusted: bool | None = None):
         project = load(root, trusted=trusted)
         self.clock = clock or system_clock
+        pinned(self.clock())  # a CEREBRO_TODAY that is no date is refused as the workspace opens
         self.root = project.root
         self.settings = project.settings
         self.models = project.models
@@ -443,7 +445,7 @@ class Cerebro:
                                 f"{self.secrets.where()}, which only your user can read")
         found = decider if decider is not None else self._decider()
         self.decider = MaskedDecider(found, self.mask_every) if found is not None else None
-        self.agents, self.exposed, refused, self.notices = self._agents_and_functions(project, self.notices)
+        self.exposed, self.agents, refused, self.notices = self._agents_and_functions(project, self.notices)
         self.refused += refused
         self._slugged: dict[Callable[[str], str], tuple[Any, Any, list[str]]] = {}  # by slug: the forms, slugged
         self.store = self._open_store(store)
@@ -480,15 +482,22 @@ class Cerebro:
         return handed
 
     def _agents_and_functions(self, project: Project,
-                              notices: list[str]) -> tuple[list[Agent], Exposed, list[str], list[str]]:
-        """The workspace's agents and each app's, the functions the workspace and its apps expose, a line for each
-        agent file refused, and `notices` with what loading adds, less those of a refused agent. Two agents with one
-        id or one target, or an evidence function named for a built-in kind, are refused in one line; an agent whose
-        evidence reads a kind nothing gives, or that lists a tool nothing runs in its file, is refused alone."""
-        agents, functions, refused = list(project.agents), list(project.extensions), []
-        notices = list(notices)
+                              notices: list[str]) -> tuple[Exposed, list[Agent], list[str], list[str]]:
+        """The functions the workspace and its apps expose, then the agents, refused lines and notices `_agents` gives.
+        An evidence function named for a built-in kind is refused in one line."""
+        exposed = collect([*project.extensions, *(function for app in self.apps for function in app.functions)])
+        for name in exposed.evidence:
+            if name in BUILTIN:
+                raise WorkspaceError(f"evidence function {name} shadows the built-in kind {name}: rename it")
+        return exposed, *self._agents(exposed, project.agents, notices)
+
+    def _agents(self, exposed: Exposed, agents: list[Agent],
+                notices: list[str]) -> tuple[list[Agent], list[str], list[str]]:
+        """The workspace's `agents` and each app's, a line for each agent file refused, and `notices` with what loading
+        adds, less those of a refused agent. Two agents with one id or one target are refused in one line; an agent
+        whose evidence reads a kind nothing gives, or that lists a tool nothing runs in its file, is refused alone."""
+        agents, refused, notices = list(agents), [], list(notices)
         for app in self.apps:
-            functions += app.functions
             if app.agents is not None:
                 loaded, not_loaded = load_agents(Path(app.agents))
                 agents += loaded
@@ -496,14 +505,20 @@ class Cerebro:
                 notices += agent_notices(loaded)
         _refuse_duplicates(agents)
         notices += unbuilt(agents)
-        exposed = collect(functions)
-        for name in exposed.evidence:
-            if name in BUILTIN:
-                raise WorkspaceError(f"evidence function {name} shadows the built-in kind {name}: rename it")
         kinds = {**dict.fromkeys(BUILTIN), **exposed.evidence}
         agents, unknown, notices = refuse_unknown_kinds(agents, kinds, notices)
         agents, untooled, notices = refuse_unknown_tools(agents, exposed.agent_tools, notices)
-        return agents, exposed, refused + unknown + untooled, notices
+        return agents, refused + unknown + untooled, notices
+
+    def agents_read(self) -> None:
+        """Read every agent file again, as serve does before each pass, so the pass runs each agent on its file as it
+        stands. A file that no longer loads is refused in its line, as when the workspace was opened."""
+        agents, refused = load_agents(self.root / "agents")
+        agents, more, notices = self._agents(self.exposed, agents, agent_notices(agents))
+        # each line of an agent file opens with its name, agents/<id>.md, and no other line does
+        self.refused = [line for line in self.refused if not line.startswith("agents/")] + refused + more
+        self.notices = [line for line in self.notices if not line.startswith("agents/")] + notices
+        self.agents = agents
 
     def _lookup(self, kinds: list[str]) -> StoreLookup:
         """What the six operations read and write through: the store and its index, the facts layer metered against
@@ -615,17 +630,10 @@ class Cerebro:
         return mask
 
     def masked(self, value: Any) -> Any:
-        """A result with every string in it, in its records and lists too, masked of each value read from the
-        secrets store, as each surface shows it."""
-        if isinstance(value, str):
-            return self.mask(value)
-        if isinstance(value, list):
-            return [self.masked(item) for item in value]
-        if isinstance(value, dict):
-            return {key: self.masked(item) for key, item in value.items()}
-        if is_dataclass(value) and not isinstance(value, type):
-            return replace(value, **{f.name: self.masked(getattr(value, f.name)) for f in fields(value) if f.init})
-        return value
+        """A result with every string in it, at any depth, masked of every value the secrets store holds, read in this
+        process or not, as MCP masks a reply: a value saved after it was kept is masked too. The engine's own ids
+        are left as they are, as `ids_kept` says."""
+        return masked(value, ids_kept(value, self.mask_every()))
 
     def _mask_run(self, run: Run) -> None:
         """Mask every value the secrets store holds in a run's note and transcript, in place."""
@@ -717,13 +725,15 @@ class Cerebro:
         return [self.mask_every()(line) for line in runner.ready_by_hand(self, agent, articles)]
 
     def compile(self, agent: Agent, this: str | None = None, scheduled: bool = False, only: str = "",
-                hold: Callable[[list[str]], str] | None = None, by_hand: bool = False) -> Compiled:
+                hold: Callable[[list[str]], str] | None = None, by_hand: bool = False,
+                taken_back: bool = False) -> Compiled:
         """Run one agent on `this`, the article it writes, if anything it reads has moved or the run is scheduled.
         `by_hand` is a person's ask, as `compile --article`: it runs what moved, a failed run's wait or not.
         `compile.targets` lists the articles an agent writes. Its runs' transcripts and its lines come masked. With
-        no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, as
-        `compile_article` takes it. A run that lands, or that ran and wrote nothing, moves the article's clock, by hand
-        or in a pass; one that fails does not. What grounding did on it is counted in its `grounding`."""
+        no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, and `taken_back`
+        says the article cites what a caller took back, as `compile_article` takes them. A run that lands, or that ran
+        and wrote nothing, moves the article's clock, by hand or in a pass; one that fails does not. What grounding did
+        on it is counted in its `grounding`."""
         self.files_read()
         self.need_key(agent)
         self.refresh_mask()
@@ -739,7 +749,8 @@ class Cerebro:
                                            scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
                                            zone=self.zone, starter=self.start_script, sources=self.connectors,
                                            descriptions=descriptions(self.settings), only=only, hold=hold,
-                                           by_hand=by_hand, min_grounding=min_grounding(self.settings))
+                                           by_hand=by_hand, min_grounding=min_grounding(self.settings),
+                                           taken_back=taken_back)
         finally:
             TALLY.reset(counting)
         compiled.grounding = dict(tally)
@@ -847,7 +858,8 @@ class Cerebro:
         if spec is not None and PROVIDERS[spec.provider].decision_url:
             key = self.model_key(spec)
             if key():
-                return HttpDecider(spec, key=key, route=self.gateway.route(spec.provider))
+                return HttpDecider(spec, key=key, route=self.gateway.route(spec.provider),
+                                   mask=lambda text: self.mask_every()(text))
             why = (f"models.decision has no key: {spec.key_name} is not in the secrets store and {spec.variable} is "
                    "not set")
         else:
@@ -1096,7 +1108,7 @@ class Cerebro:
         sends them: `query` takes `from` and field keys, and `tell` takes `as`. Gives the operation's data as an
         outside agent gets it, as `reply.outside` shapes it. An operation the workspace does not offer raises
         `NotImplementedError` with one line that says so."""
-        return outside(self._call(caller, name, args))
+        return outside(self.masked(self._call(caller, name, args)))
 
     def _call(self, caller: Caller, name: str, args: dict[str, Any]) -> Any:
         from pydantic import ValidationError  # pydantic and the MCP layer load only once a tool is called

@@ -1,6 +1,6 @@
 ---
 evidence:
-  - facts: { window: last_365_days }
+  - facts: {}   # every fact of this person, whatever its date: a row untouched for a year still says who they are
 heartbeat: [change, manual]
 ---
 
