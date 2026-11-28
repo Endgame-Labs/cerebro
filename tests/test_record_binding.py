@@ -5,8 +5,8 @@ such as its parties' addresses and their domains, or the header lines of a note 
 key never binds the record, an admit of the record does not take it, and the record's facts still link by it. A
 record is matched within its own collection, so it stays held for that
 collection's curator while another collection's article holds a key it carries. The article an admit makes of a
-record binds that record, whatever keys it holds. A name binds a record of that name only while no key that names one
-thing holds other values on the two.
+record binds that record, whatever keys it holds. A name binds a record of that name, and a key a record that holds
+it, only while no key that names one thing tells the two apart: the strongest such key on both holds other values.
 """
 
 from __future__ import annotations
@@ -94,6 +94,21 @@ def test_a_record_that_shares_only_its_name_with_an_article_binds_it_only_when_n
     store.set_identity(gone)
     _hold(store, "src", replace(other, revision="2"))
     assert "'admitted': 'parts/unit-7-2'" in _admit(store, tmp_path, other)  # back by its own record: no merge asked
+
+
+def test_a_record_that_shares_a_key_with_an_article_is_another_thing_while_a_stronger_key_differs(
+        tmp_path: Path) -> None:
+    store = MemoryStore()
+    store.weights = {"code": 100, "domain": 10}  # two things may share a domain, never a code
+    held = {"code": ["A1"], "domain": ["alder.example"]}
+    store.create(Identity("parts/one", "parts", "One", held, "active"))
+    two = Record(id="2", source="src", revision="1", keys={"code": ["A2"], "domain": ["alder.example"]},
+                 fields={"title": "Two"}, into="parts")
+    _hold(store, "src", two)
+    assert bound_to(store, two) == [] and not would_bind(store, held, "One", two)
+    assert [h.id for h in held_for(store, "parts", ["src"]).items] == ["2"]
+    assert "'admitted': 'parts/two'" in _admit(store, tmp_path, two, keys=two.keys)  # its own article, as it is held
+    assert bound_to(store, two) == ["parts/two"]
 
 
 @pytest.mark.parametrize("names, title", [(["Ann Lee"], "Ann Lee"), (None, "Ann Lee"), (["Ann Lee"], "Ann Lee Park")],

@@ -1270,17 +1270,14 @@ class _Curation:
 
     def _existing(self, name: str, keys: dict[str, list[str]], at_path: Identity | None = None,
                   record: tuple[str, str] | None = None) -> Identity | None:
-        """The article an admit names, archived or not: one a key that names the thing binds, under any name, but not
-        one it binds only by keys that name no one thing, as a name, that `same_thing` tells apart from it, as binding
-        does; else `at_path`, the one at the path it gave; else the one its name or an alias it gives finds, as
-        `_named` reads them, unless an admit by name alone is another thing by `one_thing`. So an admit finds an
-        archived article by every name it answers to."""
+        """The article an admit names, archived or not: one a key binds, under any name, but not one `same_thing`
+        tells apart from it, as binding does; else `at_path`, the one at the path it gave; else the one its name or an
+        alias it gives finds, as `_named` reads them, unless an admit by name alone is another thing by `one_thing`. So
+        an admit finds an archived article by every name it answers to."""
         moved, weights = redirects(self.store), weights_of(self.store)
         held = [(key, id) for key, values in keys.items() for value in values
                 if (id := holder(self.store, self.collection, key, value))]
-        strong = {id for key, id in held if weights.get(key, 0) > 0}
-        by_key = list(dict.fromkeys(id for _, id in held if id in strong
-                                    or same_thing(keys, self.find(id).keys, weights) is not False))
+        by_key = list(dict.fromkeys(id for _, id in held if same_thing(keys, self.find(id).keys, weights) is not False))
         if len(by_key) > 1:
             bound = ", ".join(f"{id} ({held_key(self.store, self.find(id), keys)})" for id in by_key)
             raise CurateError(f"the keys of {name} bind {bound}: admit one article, or merge them first")
