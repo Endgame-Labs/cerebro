@@ -282,6 +282,8 @@ def test_a_query_that_matches_nothing_says_why(parts: tuple[Lookup, Store]) -> N
     lookup, store = parts
     assert lookup.query(YOU, "projects", {"owner": "west"}).warnings == [
         "no article of projects has a field owner: check its name"]
+    store.set_field("projects/apollo", "owner", Property(None, YOU, "2026-11-01T09:00:00Z"))
+    assert lookup.query(YOU, "projects", {"owner": "west"}).warnings == ["owner on projects holds no value"]
     assert lookup.query(YOU, "projects", {"stage": "won"}).warnings == [
         "no article of projects holds stage: won, which holds closed, open"]
     store.set_field("projects/apollo", "due", Property("2026-12-01", YOU, "2026-11-01T09:00:00Z"))
