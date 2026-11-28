@@ -1,0 +1,88 @@
+[
+  {
+    "id": "D01",
+    "date": "2026-09-01",
+    "matter": "Lantern Theater lease",
+    "document": "Lease L-17, executed",
+    "path": "local/01-lease.md",
+    "state": "executed",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "D02",
+    "date": "2026-09-18",
+    "matter": "Lantern Theater lease",
+    "document": "Amendment One, executed",
+    "path": "local/02-amendment-one.md",
+    "state": "executed",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "D03",
+    "date": "2026-10-22",
+    "matter": "Lantern Theater lease",
+    "document": "Landlord counsel letter",
+    "path": "local/03-landlord-letter.md",
+    "state": "correspondence",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "D04",
+    "date": "2026-11-03",
+    "matter": "Lantern Theater lease",
+    "document": "Amendment Two",
+    "path": "local/04-amendment-two.md",
+    "state": "unsigned",
+    "note": "Entry recorded 3 November, later corrected by 20 November handoff."
+  },
+  {
+    "id": "D05",
+    "date": "2026-11-04",
+    "matter": "Lantern Theater lease",
+    "document": "Extension proposal, unsigned draft",
+    "path": "local/05-draft.md",
+    "state": "unsigned",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "D06",
+    "date": "2026-11-10",
+    "matter": "Lantern Theater lease",
+    "document": "Client instructions",
+    "path": "local/06-client-instructions.md",
+    "state": "correspondence",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "D07",
+    "date": "2026-11-16",
+    "matter": "Lantern Theater lease",
+    "document": "Counsel correspondence on receipt",
+    "path": "local/07-notice-correspondence.md",
+    "state": "correspondence",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "D08",
+    "date": "2026-11-20",
+    "matter": "Lantern Theater lease",
+    "document": "Handoff and register correction",
+    "path": "local/08-handoff-correction.md",
+    "state": "correspondence",
+    "note": "Packet register entry."
+  },
+  {
+    "id": "R09",
+    "date": "2026-11-19",
+    "document": "Kettle receipt",
+    "state": "office-only",
+    "note": "Replacement kettle $24, no lease decision."
+  },
+  {
+    "id": "R10",
+    "date": "2026-11-19",
+    "document": "Biscuit rota",
+    "state": "office-only",
+    "note": "Jo brings ginger biscuits, no client work."
+  }
+]

@@ -1,0 +1,8 @@
+kind: files
+window: { behind: all }
+select:
+  - glob: register/documents.json
+    rows: json
+    id: "{row.id}"
+    at: "{row.date}"
+    extract: facts
