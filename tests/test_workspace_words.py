@@ -197,8 +197,9 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
             too_big = await client.call_tool("note", {"text": "x" * 60_000})
             return [empty, client.instructions, kept, too_big,
                     await client.call_tool("query", {"from": "note"}),
-                    await client.call_tool("query", {"from": "note", "collection": "notes"}),
-                    await client.call_tool("query", {"from": "note", "collection": "nowhere"})]
+                    await client.call_tool("browse_notes", {"collection": "notes"}),
+                    await client.call_tool("browse_notes", {"collection": "nowhere"}),
+                    {tool.name: tool.description for tool in (await client.list_tools()).tools}]
 
     async def again() -> str | None:
         async with Client(workspace.mcp_server()) as client:
@@ -214,7 +215,8 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
         workspace.close()
     assert said[0] and "notes yet" in said[0] and "newest notes" in said[-3]
     assert said[3].is_error and "50 KiB" in said[3].content[0].text
-    assert "read_as" in said[4].structured_content and "listed one level" in said[5].content[0].text
+    assert "read_as" in said[4].structured_content and said[5].structured_content["recent"]
+    assert said[6].structured_content["warnings"] and "browse_notes" in said[7]
     assert said[-2]["warnings"] and said[-1]["warnings"]
     for item in said:
         text = item if isinstance(item, (str, dict)) else (item.content[0].text, item.structured_content)
