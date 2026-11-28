@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -91,15 +91,16 @@ def _ask(row: Row) -> dict[str, Any]:
     return {"keys": row.keys, "record": row.record}
 
 
-def items(rows: list[Row]) -> list[list[Row]]:
+def items(rows: list[Row], weights: Mapping[str, int]) -> list[list[Row]]:
     """The proposals of one article, each item once, in the order they were filed: one path of one kind, but asks of
-    it that are other things, as `curate.one_thing` says, are items of their own, as a decide makes them."""
+    it that are other things, as `curate.one_thing` says by the workspace's `weights`, are items of their own, as a
+    decide makes them."""
     from .curate import one_thing
 
     out: list[list[Row]] = []
     for row in rows:
         same = next((item for item in out if (item[0].kind, item[0].path or item[0].id) == (row.kind, row.path or row.id)
-                     and all(one_thing(_ask(r), _ask(row)) for r in item)), None)
+                     and all(one_thing(_ask(r), _ask(row), weights) for r in item)), None)
         if same is None:
             out.append([row])
         else:
@@ -107,9 +108,9 @@ def items(rows: list[Row]) -> list[list[Row]]:
     return out
 
 
-def plain(rows: list[Row]) -> list[Group]:
+def plain(rows: list[Row], weights: Mapping[str, int]) -> list[Group]:
     """Every item a group of its own, in the order filed, nothing ticked."""
-    return [Group(item) for item in items(rows)]
+    return [Group(item) for item in items(rows, weights)]
 
 
 def _data(found: list[list[Row]]) -> list[dict[str, Any]]:
@@ -131,10 +132,10 @@ def _data(found: list[list[Row]]) -> list[dict[str, Any]]:
     return out
 
 
-def checked(text: str, found: list[list[Row]]) -> tuple[list[Group] | None, str]:
-    """The groups a reply gives, in its order, and a line on the groups it put together that may be other things, or
-    None with why the whole reply is refused. A group it refuses stays separate items at the place the group held, and
-    no two of them are ticked."""
+def checked(text: str, found: list[list[Row]], weights: Mapping[str, int]) -> tuple[list[Group] | None, str]:
+    """The groups a reply gives, in its order, and a line on the groups it put together that may be other things by
+    the workspace's `weights`, or None with why the whole reply is refused. A group it refuses stays separate items at
+    the place the group held, and no two of them are ticked."""
     from .curate import one_thing
     from .first_run import NAME_CAP
 
@@ -158,7 +159,8 @@ def checked(text: str, found: list[list[Row]]) -> tuple[list[Group] | None, str]
         rows = [row for i in ids for row in by_id[i]]
         if len({*ids}) != len(ids) or any(len(group_of[i]) > 1 for i in ids):
             refused.append(sorted({*ids}, key=lambda i: int(i[1:])))
-        elif len({row.collection for row in rows}) > 1 or not all(one_thing(_ask(a), _ask(b)) for a in rows for b in rows):
+        elif len({row.collection for row in rows}) > 1 or not all(one_thing(_ask(a), _ask(b), weights)
+                                                                  for a in rows for b in rows):
             refused.append(sorted(ids, key=lambda i: int(i[1:])))
             if refused[-1] not in said:
                 said.append(refused[-1])
@@ -200,18 +202,23 @@ def arrange(workspace: Cerebro, rows: list[Row],
     """The groups of `rows` as the model arranges them, or the plain ones and why; `asking`
     runs just before the model is asked. Only proposals that make an article go to the model: any other row keeps
     its place after them, a bind ticked as what it binds is."""
-    found = items([row for row in rows if row.kind == "article.admit" and row.path and not row.left_out])
-    rest = plain([row for row in rows if not (row.kind == "article.admit" and row.path) and not row.left_out])
+    from .curate import weights_of
+
+    weights = weights_of(workspace.store)
+    found = items([row for row in rows if row.kind == "article.admit" and row.path and not row.left_out], weights)
+    rest = plain([row for row in rows if not (row.kind == "article.admit" and row.path) and not row.left_out],
+                 weights)
     if not found:
         return rest, ""
     request = json.dumps({"items": _data(found)}, ensure_ascii=False)
     asking()
     try:
-        groups, why = checked(workspace.ask_model(PROMPT, request, job="compilation"), found)
+        groups, why = checked(workspace.ask_model(PROMPT, request, job="compilation"), found, weights)
     except CerebroError as error:
         groups, why = None, f"the model that arranges it did not answer: {error}"
     if groups is None:
-        return [*plain([row for item in found for row in item]), *rest], f"Shown in the order filed, nothing ticked: {why}."
+        return [*plain([row for item in found for row in item], weights), *rest], \
+            f"Shown in the order filed, nothing ticked: {why}."
     ticked = {row.path for g in groups if g.tick for row in g.rows}
     for g in rest:
         g.tick = all(row.kind == "article.admit" and row.linked[:1] and row.linked[0] in ticked for row in g.rows)

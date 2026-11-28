@@ -107,7 +107,7 @@ from .curate import (
 )
 from .errors import CerebroError
 from .evidence import IN_FIRST_BUILD, RECENT_DAYS
-from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
+from .facts import Extracted, ExtractionFailed, Fact, _Hooks, field_name, revision_of, saved_revision
 from .ground import counted
 from .held import (
     OWN_WEIGHED,
@@ -122,6 +122,7 @@ from .held import (
 from .identity import (
     DecisionJudge,
     follow,
+    kept_off,
     link,
     link_ties,
     linked_keys,
@@ -1881,22 +1882,32 @@ def _gone_at_source(workspace: Cerebro, name: str, id: str, result: PassResult, 
 
 
 def _keep_keys(workspace: Cerebro, name: str, record: Record | str) -> None:
-    """Keep the keys of a record just extracted, or forget those of a record removed, under `keys:<source>`, so its
-    facts can be linked again when an article is born. A record with no keys keeps nothing. A removed id that is not
-    text, such as a number, is taken by its text, as the store keeps it."""
+    """Keep the keys of a record just extracted, or forget those of a record removed, under `keys:<source>`, the
+    names of those it only carries under `carried:<source>`, and the name a field of it gives under `name:<source>`,
+    so its facts can be linked again when an article is born, as landing linked them. A record with no keys keeps
+    nothing. A removed id that is not text, such as a number, is taken by its text, as the store keeps it."""
     key = f"keys:{name}"
     kept = workspace.store.state(key) or {}
     if not isinstance(record, Record):
         record = str(record)
         if record in kept:
             update_state(workspace.store, key, lambda now: {k: v for k, v in (now or {}).items() if k != record})
-        if record in (workspace.store.state(f"ours:{name}") or {}):
-            update_state(workspace.store, f"ours:{name}", lambda now: {k: v for k, v in (now or {}).items() if k != record})
+        for each in (f"ours:{name}", f"carried:{name}", f"name:{name}"):
+            if record in (workspace.store.state(each) or {}):
+                update_state(workspace.store, each, lambda now: {k: v for k, v in (now or {}).items() if k != record})
         return
     if kept.get(record.id) != (linked_keys(record) or None):
         keys = linked_keys(record) if record.keys else None
         update_state(workspace.store, key, lambda now: {**{k: v for k, v in (now or {}).items() if k != record.id},
                                                     **({record.id: keys} if keys else {})})
+    carried = [k for k in record.carried or () if k in record.keys]
+    if (workspace.store.state(f"carried:{name}") or {}).get(record.id) != (carried or None):
+        update_state(workspace.store, f"carried:{name}", lambda now: {
+            **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: carried} if carried else {})})
+    named = field_name(record)
+    if (workspace.store.state(f"name:{name}") or {}).get(record.id) != (named or None):
+        update_state(workspace.store, f"name:{name}", lambda now: {
+            **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: named} if named else {})})
     # the names of the parties on it who are yours, as its source says, kept for the label its facts carry
     names = [str(n) for n in record.fields.get("ours") or [] if str(n).strip()]
     if (workspace.store.state(f"ours:{name}") or {}).get(record.id) != (names or None):
@@ -1955,21 +1966,29 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
         if p.kind == "article.link" and p.target in changed:
             removed = ((p.applied or {}).get("keys") or {}).get("removed", {})
             taken_off[p.target] |= {(k, v.lower()) for k, vs in removed.items() for v in vs}
-    moved = redirects(workspace.store)
+    moved, among = redirects(workspace.store), near_pool(store) if changed else []
     keys: dict[str, dict[str, dict[str, list[str]]]] = {}
     ours: dict[str, dict[str, list[str]]] = {}  # who each record marks as the workspace's own, which binds no namesake
+    only: dict[str, dict[str, list[str]]] = {}  # the keys each record only carries
+    named: dict[str, dict[str, str]] = {}  # the name a field of each record gives
     learned = stamp(workspace.clock())
     for fact in workspace.extraction.facts():
         if fact.source not in keys:  # a source's records, or an app's kind's
             keys[fact.source] = workspace.store.state(f"keys:{fact.source}") or {}
             ours[fact.source] = workspace.store.state(f"ours:{fact.source}") or {}
-        marked = ours[fact.source].get(fact.record)
+            only[fact.source] = workspace.store.state(f"carried:{fact.source}") or {}
+            named[fact.source] = workspace.store.state(f"name:{fact.source}") or {}
+        marked, own = ours[fact.source].get(fact.record), named[fact.source].get(fact.record)
         record = Record(id=fact.record, source=fact.source, revision="", keys=keys[fact.source].get(fact.record, {}),
-                        fields={"ours": marked} if marked else {})
+                        fields={**({"ours": marked} if marked else {}), **({"name": own} if own else {})},
+                        carried=only[fact.source].get(fact.record, []))
         if changed and fact.source != TOLD:  # a told fact is tied by its target, which no key of its record gives
             for id in changed - set(reached(store, record)):
                 if RECORD in store.ties_of(fact.id).get(id, []):
                     store.unlink(fact.id, [id], RECORD)
+            for id, how in kept_off(store, fact, record, among):
+                if id in changed:  # `link` below ties it again by what still holds, such as a key
+                    store.unlink(fact.id, [id], how)
             carried = {(k, v.lower()) for m in fact.mentions for k, vs in m.keys.items() for v in vs}
             for id in [id for id in changed if taken_off[id] & carried]:  # a judge's tie to it goes too: one row
                 if id not in {tied for tied, _ in ties(store, fact, record)}:

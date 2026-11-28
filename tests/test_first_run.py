@@ -8,7 +8,7 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from click.testing import CliRunner
@@ -237,13 +237,27 @@ def test_the_plain_list_shows_each_article_with_its_reason_and_the_left_out_last
                      "", "0 of 3 selected"]
 
 
+def test_the_plain_list_shows_two_things_that_share_a_name_and_differ_by_a_key_on_two_lines(tmp_path: Path) -> None:
+    class Coded(FakeConnector):
+        IDENTITY_KEYS: ClassVar[dict[str, int]] = {"code": 100}  # a key only this workspace's own source declares
+
+    script = Script({"things/curator": [("admit", {"name": "Unit 7", "keys": {"code": [id]}, "reason": f"Coded {id}."})
+                                        for id in ("A1", "A2")]})
+    with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
+                 connectors=[Coded("src", [replace(r, source="src") for r in RECORDS])]) as workspace:
+        script.store = workspace.store
+        run(workspace, choose=None)
+        shown = lines(LocalApproval(workspace).pile())
+    assert [line for line in shown if "Unit 7" in line] == ["    [ ] Unit 7  things"] * 2  # two things, two lines
+
+
 def test_a_group_of_more_than_ten_rows_shows_its_first_five() -> None:
     from cerebro.first_run import Listed
     from cerebro.tree import Row
     from cerebro.tree import plain as plain_groups
 
     rows = [Row(f"p_{n}", "things/curator", "things", f"Account {n}", path=f"things/a{n}") for n in range(12)]
-    pile = Pile([Listed("things/curator", "things", rows)], groups=plain_groups(rows))
+    pile = Pile([Listed("things/curator", "things", rows)], groups=plain_groups(rows, {}))
     for g in pile.groups[:3]:
         g.tick = True
     shown = lines(pile)
@@ -279,7 +293,7 @@ def test_every_string_the_plain_list_shows_from_a_workspace_or_a_model_is_escape
     rows = [Row("p_1", f"things/curator{bad}", f"things{bad}", f"Alder{bad}", f"why{bad}", path="things/alder"),
             Row("left-out:1", f"things/curator{bad}", f"things{bad}", f"Initech{bad}", f"vendor{bad}", True)]
     pile = Pile([Listed(f"things/curator{bad}", f"things{bad}", rows, note=f"did not finish{bad}")],
-                stopped=f"Discovery stopped{bad}", groups=plain_groups(rows[:1]), note=f"plain{bad}")
+                stopped=f"Discovery stopped{bad}", groups=plain_groups(rows[:1], {}), note=f"plain{bad}")
     text = "\n".join(lines(pile))
     assert not any(c in text for c in "\x1b\r\x07\u202e")
     assert text.count("\\x1b[2J") == 11  # the agent, each name, collection and reason, both notes, the stop line,

@@ -445,11 +445,11 @@ def _refusal(store: Store, p: Proposal, act: str, value: tuple[str, str] | None 
 def waiting_item(store: Store, target: str, payload: Mapping[str, Any] | None = None) -> list[Proposal]:
     """The admits that wait for a person to make the article `target` leads to: one item, decided as one. With
     `payload`, only those that may be the same thing as it, as `one_thing` says."""
-    moved = redirects(store)
+    moved, weights = redirects(store), weights_of(store)
     here = follow(target, moved)
     return [p for p in proposals(store, "waiting") if p.kind == "article.admit"
             and follow(p.target, moved) == here
-            and (payload is None or one_thing(p.payload, payload))]
+            and (payload is None or one_thing(p.payload, payload, weights))]
 
 
 def waits_alike(store: Store, collection: str, payload: Mapping[str, Any], curator: str) -> bool:
@@ -493,25 +493,36 @@ def may_answer(agent: Agent, p: Proposal, named: Collection[str]) -> bool:
     return not carried_out(p) or p.id not in named and p.status == "waiting" and another_curators(p, agent.id)
 
 
-def one_thing(one: Mapping[str, Any], other: Mapping[str, Any]) -> bool:
+def one_thing(one: Mapping[str, Any], other: Mapping[str, Any], weights: Mapping[str, int]) -> bool:
     """Whether two asks for an article may be one thing, whatever their names: by the strongest key that identifies
-    a thing which both carry, one when they share a value of it, whatever their records, as an event and its
-    recording do, and else two; two when each carries such keys and none is carried by both. When neither carries
+    a thing which both carry, by `weights`, one when they share a value of it, whatever their records, as an event and
+    its recording do, and else two; two when each carries such keys and none is carried by both. When neither carries
     one, two when they name different records, else one."""
     def record(payload: Mapping[str, Any]) -> tuple[str, str] | None:
         ref = payload.get("record")
         return (str(ref.get("source")), str(ref.get("id"))) if isinstance(ref, dict) else None
 
-    weights = key_weights()
-    mine, theirs = ({k: _lower(vs) for k, vs in dict(p.get("keys") or {}).items() if weights.get(k, 0) > 0 and vs}
-                    for p in (one, other))
-    if both := [k for k in mine if k in theirs]:  # the strongest key both carry decides: a weaker one shared, as a
-        top = max(weights[k] for k in both)  # domain, makes no two things one
-        return any(same_event(mine[k], theirs[k]) if k == "calendar_event_id" else mine[k] & theirs[k]
-                   for k in both if weights[k] == top)
-    if mine and theirs:
+    keys = [dict(p.get("keys") or {}) for p in (one, other)]
+    if (same := same_thing(*keys, weights)) is not None:
+        return same
+    if all(any(weights.get(k, 0) > 0 and vs for k, vs in held.items()) for held in keys):
         return False
     return not (record(one) and record(other) and record(one) != record(other))
+
+
+def same_thing(one: Mapping[str, Iterable[Any]], other: Mapping[str, Iterable[Any]],
+               weights: Mapping[str, int]) -> bool | None:
+    """Whether two sets of keys name one thing, by the strongest key that names one thing, one `weights` puts above 0,
+    which both carry: one when they share a value of it, as an event and its recording do, and two when they share
+    none. None when they carry no such key in common. A weaker key shared, as a domain, makes no two things one.
+    Values are read as an admit writes them, so `www.alder.example` is `alder.example`."""
+    mine, theirs = ({k: _lower(vs) for k, vs in address_form({k: list(vs) for k, vs in keys.items()}).items()
+                     if weights.get(k, 0) > 0} for keys in (one, other))
+    if not (both := [k for k in mine if k in theirs]):
+        return None
+    top = max(weights[k] for k in both)
+    return any(same_event(mine[k], theirs[k]) if k == "calendar_event_id" else bool(mine[k] & theirs[k])
+               for k in both if weights[k] == top)
 
 
 def free_path(store: Store, base: str) -> str:
@@ -555,7 +566,9 @@ def moot(store: Store, p: Proposal) -> str:
             return ""
         made = [q.payload for q in proposals(store, "accepted") if q.kind == "article.admit"
                 and q.applied.get("article") == found.identity.id]  # another thing of its name is made at a free path
-        return f"{found.identity.id} is in the working set already" if all(one_thing(m, p.payload) for m in made) else ""
+        weights = weights_of(store)
+        return f"{found.identity.id} is in the working set already" if all(one_thing(m, p.payload, weights)
+                                                                            for m in made) else ""
     if p.kind == "article.archive":
         return moot_archive(store, p.target)
     if p.kind == "article.merge":
@@ -643,10 +656,16 @@ def workspace_weights(connectors: Iterable[Connector]) -> dict[str, int]:
     return {**{key: weights.pop() for key, weights in said.items() if len(weights) == 1}, **built}
 
 
+def weights_of(store: Store) -> Mapping[str, int]:
+    """How strong each key is as an identity in a workspace: as the app set it on the store from its sources, else
+    the table every kind of source declares."""
+    return store.weights if store.weights is not None else key_weights()
+
+
 def holder(store: Store, collection: str, key: str, value: str, but: str = "") -> str | None:
     """The article of `collection`, but `but`, that holds a key value, or None. One value binds one article only where
     its key names the thing: a key a source issues at weight 0 is shared, and may sit on many."""
-    if (store.weights if store.weights is not None else key_weights()).get(key) == 0:
+    if weights_of(store).get(key) == 0:
         return None
     return next((id for id in store.bound(key, value) if id != but and id.startswith(collection + "/")), None)
 
@@ -1243,13 +1262,17 @@ class _Curation:
 
     def _existing(self, name: str, keys: dict[str, list[str]], at_path: Identity | None = None,
                   record: tuple[str, str] | None = None) -> Identity | None:
-        """The article an admit names, archived or not: one a key that names the thing binds, under any name; else
-        `at_path`, the one at the path it gave; else the one its name or an alias it gives finds, as `_named` reads
-        them, unless an admit by name alone is another thing by `one_thing`. So an admit finds an archived article by
-        every name it answers to."""
-        moved = redirects(self.store)
-        by_key = list(dict.fromkeys(id for key, values in keys.items() for value in values
-                                    if (id := holder(self.store, self.collection, key, value))))
+        """The article an admit names, archived or not: one a key that names the thing binds, under any name, but not
+        one it binds only by keys that name no one thing, as a name, that `same_thing` tells apart from it, as binding
+        does; else `at_path`, the one at the path it gave; else the one its name or an alias it gives finds, as
+        `_named` reads them, unless an admit by name alone is another thing by `one_thing`. So an admit finds an
+        archived article by every name it answers to."""
+        moved, weights = redirects(self.store), weights_of(self.store)
+        held = [(key, id) for key, values in keys.items() for value in values
+                if (id := holder(self.store, self.collection, key, value))]
+        strong = {id for key, id in held if weights.get(key, 0) > 0}
+        by_key = list(dict.fromkeys(id for _, id in held if id in strong
+                                    or same_thing(keys, self.find(id).keys, weights) is not False))
         if len(by_key) > 1:
             raise CurateError(f"the keys of {name} bind {', '.join(by_key)}: admit one article, or merge them first")
         if by_key:
@@ -1261,7 +1284,7 @@ class _Curation:
             named += [id for id in self._named(wanted, moved) if id not in named]
         # a held record admitted under an article's name pairs with it, as a recording with its meeting, unless
         # the two hold values of a key that identifies and share none, as two dates of one weekly meeting
-        named = [id for id in named if one_thing({"keys": keys}, {"keys": self.find(id).keys})]
+        named = [id for id in named if one_thing({"keys": keys}, {"keys": self.find(id).keys}, weights)]
         if len(named) > 1:
             raise CurateError(f"{name} names {', '.join(named)}: give keys that tell them apart")
         return self.find(named[0]) if named else None
@@ -1332,7 +1355,8 @@ class _Curation:
             payload["name"] = called  # as approved, though the curator gave its path or another spelling
             made = [p.payload for p in proposals(self.store, "accepted") if p.kind == "article.admit"
                     and p.applied.get("article") == path]  # another thing made there takes the next free path
-            asked = path if all(one_thing(m, own[0].payload) for m in made) else free_path(self.store, path)
+            weights = weights_of(self.store)
+            asked = path if all(one_thing(m, own[0].payload, weights) for m in made) else free_path(self.store, path)
         if not yes and (not self.authority.admit or self.proposing
                         or [p for p in waiting_item(self.store, asked) if not another_curators(p, self.agent.id)]
                         or waits_alike(self.store, self.collection, payload, self.agent.id)):
