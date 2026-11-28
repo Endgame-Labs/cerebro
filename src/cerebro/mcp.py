@@ -610,13 +610,6 @@ def render_query(result: QueryResult, offset: int = 0, budget: int = BUDGET) -> 
     notes = [f"{result.count} {matches} in {result.source}{order}{page}"] + [f"warning: {w}" for w in result.warnings]
     if result.read_as:
         notes.append(f"read_as: {result.read_as}")
-    if result.collections is not None:
-        notes.append(f"listed one level, without text: read a record whole with query from: {result.source}, id: "
-                     "<its id>")
-        notes += [f"- collection {c['collection']}: {c['count']} under it, newest {c['newest']}"
-                  for c in result.collections]
-        notes += ["recent:"] + [_item_line(r) for r in result.recent] if result.recent else []
-        notes += ["in it:"] if result.items else []
     merged = result.source == EVERYTHING
     if merged and result.items:
         notes.append("each line says what it is, an article or a fact, then its id: read takes either id, an "

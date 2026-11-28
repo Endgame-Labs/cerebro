@@ -26,6 +26,7 @@ from .lookup import (
     RetractResult,
     TellResult,
 )
+from .records import retracted_records, was_retracted
 from .store import Store, scrubbed
 
 __all__ = ["RECORD_MAX_BYTES", "Workspace"]
@@ -112,7 +113,9 @@ class Workspace:
         return self._clock()
 
     def records(self, kind: str) -> list[Record]:
-        """The first-party records of one kind an app declared, in the order they were kept."""
+        """The first-party records of one kind an app declared, in the order they were kept, without those a retract
+        took back, as a query leaves them out."""
         if kind not in self._kinds:
             raise OperationError(f"records: {kind} is not a kind an app declared: declare it in the app's kinds")
-        return self._store.records(kind)
+        taken = retracted_records(self._store)
+        return [r for r in self._store.records(kind) if not was_retracted(r, taken)]
