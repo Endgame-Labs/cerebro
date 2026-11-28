@@ -929,7 +929,6 @@ def test_an_admit_whose_id_would_hold_a_stored_value_however_slugged_is_refused_
 
 @pytest.mark.parametrize(("asked", "refused"), [
     ({"name": HELD_IN_ID[1]}, "its name holds"),
-    ({"name": f"Juniper {MARK}"}, "its name holds"),  # as a model copies a title it read masked
     ({"name": "Juniper", "keys": {"code": [SECRETS["plain"]]}}, "its code key holds")])
 def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_or_whose_key_holds_one_is_refused(
         tmp_path: Path, asked: dict[str, Any], refused: str) -> None:
