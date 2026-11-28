@@ -32,6 +32,8 @@ Cerebro hides nothing from a writer. When a fact is old, retired, or from anothe
 
 A curator or a writer is a model following a prompt. It makes the judgment calls: what matters, what to write, which article a record is about. Code does not second-guess those calls, because a better model gets them right more often, and a code rule stays wrong.
 
+Cerebro gives the models just enough structure to do this well, and no more. Code that tries to make a model's run certain, with branches and options you cannot follow, makes Cerebro worse.
+
 Code holds the lines that must never break, whatever a model says:
 
 - Cerebro runs a workspace only from a folder you trust.
