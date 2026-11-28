@@ -1,0 +1,3 @@
+# Contractor invoices, repair history, and monthly heating and solar totals.
+kind: database
+url: sqlite:data/expenses.sqlite

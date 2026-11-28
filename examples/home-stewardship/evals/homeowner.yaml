@@ -1,0 +1,101 @@
+context: >-
+  Lifetime owner's manual and maintenance wiki for 418 Cedar Hill Road, a 1924
+  craftsman house and half-acre garden, read by an outside agent helping the
+  homeowners or a visiting contractor.
+questions:
+  - id: boiler-bleed-and-valve
+    group: systems
+    ask: >-
+      What is the exact radiator bleed-valve order for the hydronic boiler, what
+      is the warning about valve #3, and what paint code is on the boiler wall?
+    find: Hydronic Boiler and Basement Zones
+    expect:
+      article: systems/hydronic-boiler-and-basement-zones
+      holds: ["Zone 1", "Zone 2", "Zone 3", "SW 7015"]
+      judge: >-
+        The answer gives the bleed order Zone 1 then Zone 2 then Zone 3, warns
+        never to fully close return isolation valve #3 because its brass gate
+        stem can shear shut, and gives Sherwin-Williams SW 7015 Repose Gray for
+        the boiler alcove wall.
+
+  - id: boiler-schedule-and-pressure
+    group: systems
+    ask: >-
+      When is the Zone 2 air-scoop replacement now scheduled, what is the quote,
+      and what expansion tank pre-charge pressure holds today?
+    find: Hydronic Boiler and Basement Zones
+    expect:
+      article: systems/hydronic-boiler-and-basement-zones
+      holds: ["15 psi", "680"]
+      fields:
+        next_service_due: "2026-12-12"
+      judge: >-
+        The answer states that the Zone 2 Spirovent Junior air-scoop replacement
+        moved to December 12, 2026 for $680, and that the expansion tank
+        pre-charge was raised to 15 psi.
+
+  - id: panel-knob-and-tube-correction
+    group: systems
+    ask: >-
+      Was all knob-and-tube wiring removed from 418 Cedar Hill Road, and what
+      work is scheduled for Circuit 14?
+    find: Main Electrical Panel
+    expect:
+      article: systems/main-electrical-panel
+      holds: ["Circuit 14", "1,450"]
+      fields:
+        next_service_due: "2026-12-18"
+      judge: >-
+        The answer corrects the 2024 inspection report by stating that 35 feet
+        of active knob-and-tube wiring remains on Circuit 14 in the north attic,
+        warns not to pack cellulose insulation over the uncovered junction box,
+        and states Phase 1 remediation is scheduled for December 18, 2026 for
+        $1,450 while the garage EV subpanel is deferred to April 2027.
+
+  - id: envelope-primer-and-paint
+    group: systems
+    ask: >-
+      What primer rule applies to bare exterior cedar repairs, and what are the
+      paint codes for the clapboard siding and window sash?
+    find: Exterior Envelope and Paint Schedule
+    expect:
+      article: systems/exterior-envelope-and-paint-schedule
+      holds: ["SW 2847", "HC-154", "Penetrol"]
+      judge: >-
+        The answer states the standing rule to use Flood Penetrol and
+        Sherwin-Williams Exterior Oil-Based Wood Primer on bare cedar (not
+        acrylic primer), and gives SW 2847 Roycroft Pewter for the clapboard
+        siding and Benjamin Moore HC-154 Hale Navy for the window sash.
+
+  - id: orchard-spray-and-valve
+    group: garden
+    ask: >-
+      When is the South Slope Orchard dormant copper spray scheduled, and where
+      is the drip irrigation shutoff valve located?
+    find: South Slope Orchard
+    expect:
+      article: garden/south-slope-orchard
+      holds: ["Zone B", "basalt"]
+      fields:
+        next_service_due: "2026-12-10"
+      judge: >-
+        The answer says the Bonide Liquid Copper Fungicide dormant spray moved
+        from November 28 to December 10, 2026 (requiring 24 dry hours) and
+        locates the buried Zone B drip valve 4 inches east of the third basalt
+        garden step under thyme.
+
+  - id: seasonal-calendar-digest
+    group: digests
+    ask: >-
+      What maintenance tasks are due in December 2026, and what were the
+      November 2026 heating therms and solar generation?
+    read: [digests/seasonal-calendar]
+    expect:
+      article: digests/seasonal-calendar
+      holds: ["2026-12-08", "2026-12-12", "2026-12-18", "76", "215"]
+      judge: >-
+        The seasonal calendar lists the December 2026 house and garden
+        maintenance tasks (including December 8 downspout reroute, December 12
+        boiler air-scoop replacement, and December 18 attic rewire) and reports
+        November 2026 heating demand of 76 therms and solar generation of 215
+        kWh.
