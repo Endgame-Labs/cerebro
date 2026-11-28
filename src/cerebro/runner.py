@@ -28,7 +28,8 @@ What is due, in order:
    `cooldown` and `_at_once` say, and the pass says until when.
 4. An agent on `change` is due, and its compile skips when nothing it reads has moved. A curator whose run failed,
    and a writer whose run stopped at its budget with nothing handed in, wait as `waits_after` says.
-5. Any other agent waits for its next period.
+5. Any other agent is due on each article whose last finished run read other files than it has, as `_older` says.
+6. Any other agent waits for its next period.
 
 But a writer of an article that cites what a caller took back since it last ran there is due as for a change,
 whatever its heartbeat.
@@ -335,7 +336,8 @@ def run_forever(workspace: Cerebro, *, interval: float, stop: Callable[[], bool]
     """The loop behind `serve`: a pass, then `sleep(interval)`, until `stop()` is true, and give the number of
     passes. Each pass goes to `on_pass`. A pass that raises goes to `on_error`, or the `cerebro.runner` log, and the
     loop goes on. `sleep` is handed in, so a caller can wake it early and a test never waits. Each wake reads the
-    daily caps in settings.yaml again first, and says on `say` each cap that no longer stops calls."""
+    daily caps in settings.yaml again first, and says on `say` each cap that no longer stops calls, then reads the
+    agent files again, so an edit runs on the next pass."""
     from .first_run import served  # imported here: the first run builds on this module
 
     passes, kept = 0, {}
@@ -343,6 +345,7 @@ def run_forever(workspace: Cerebro, *, interval: float, stop: Callable[[], bool]
         try:
             _read_caps(workspace, kept, say)
             workspace.files_read()  # each pass reads workspace.md and profile.md again, and stops on a fault in either
+            workspace.agents_read()
             # a workspace in its first run proposes and waits for a person; each source on its window otherwise
             result = served(workspace, say=say) or workspace.run_once(scheduled=True, say=say)
         except Stopped:
@@ -413,10 +416,12 @@ def _words(workspace: Cerebro, agent: Agent) -> list[str]:
     return list(dict.fromkeys(word for sub in subs for word in sub.heartbeat))
 
 
-def _wake(agent: Agent, words: list[str], beat: _Beat, now: datetime, zone: tzinfo) -> tuple[str | None, str, str]:
+def _wake(agent: Agent, words: list[str], beat: _Beat, moved: bool, now: datetime,
+          zone: tzinfo) -> tuple[str | None, str, str]:
     """Whether `agent`, woken by `words`, is due at `now`: the schedule word whose period is due, or None, and why it
-    runs, or empty with why it waits. A writer due for a change may still wait out its cooldown on an article, which
-    compile asks `_hold` once it knows that new evidence alone moved there."""
+    runs, or empty with why it waits. One that `moved` says has an article whose last finished run read other files
+    than it has is due as for a change, whatever its schedule. A writer due for a change may still wait out its
+    cooldown on an article, which compile asks `_hold` once it knows that new evidence alone moved there."""
     if not words:
         return None, "", "nothing wakes it: give it a heartbeat, or its subagents one"
     if all(word == "manual" for word in words):
@@ -431,6 +436,8 @@ def _wake(agent: Agent, words: list[str], beat: _Beat, now: datetime, zone: tzin
         nexts.append(after)
     if "change" in words:
         return None, "change", ""
+    if moved:
+        return None, "its agent file changed", ""
     plan = ", ".join(words)
     return None, "", f"heartbeat is {plan}: it ran this period, and runs next at {min(nexts):%Y-%m-%d %H:%M}"
 
@@ -445,7 +452,8 @@ def _due(workspace: Cerebro, agents: list[Agent], result: PassResult,
     for agent in agents:
         if agent.role == "subagent":
             continue
-        word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), now, zone)
+        word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), bool(_older(workspace, agent)),
+                                 now, zone)
         if agent.id in woken and word is None:
             why = "a caller accepted a proposal for its collection" if agent.role == "curator" else \
                 "a caller took back what an article it wrote cites"
@@ -480,8 +488,9 @@ def _ran(workspace: Cerebro, agent: Agent, word: str | None, run: Run | None, fa
          left: dict[str, str] | None = None) -> None:
     """Keep what one agent's turn did: when it ran, the files it ran on, and whether its schedule's period is spent.
     When it ran is `began`, the workspace's clock as the turn began, never the run's own stamps, and the period is the
-    one it began in. Each of `articles`, those a run of this turn wrote on, takes that time as its mark, so its
-    cooldown counts from there. A scheduled run that fails leaves its period due for one more try, then spends it.
+    one it began in. Each of `articles`, those a run of this turn wrote on or a curator's collection, takes that
+    time as its mark, so its cooldown counts from there. A scheduled run that fails leaves its period due for one
+    more try, then spends it.
     `left` names the articles a scheduled run did not finish, as `_Beat.pending` keeps them, each `failed`, or `whole`
     or `parts` for one held or waiting for a cap: those stay pending until they run, then the period is spent."""
     beat, now = _beat(workspace, agent), workspace.clock()
@@ -515,9 +524,36 @@ def ran_on(workspace: Cerebro, agent: Agent, article: str, began: datetime) -> N
 
 
 def _mark(workspace: Cerebro, agent: Agent, began: datetime) -> dict[str, str]:
-    """What a run of `agent` keeps on an article it ran on: when it began, and the agent's files and the workspace's
-    settings as they stand, which `_at_once` reads as causes once they change."""
+    """What a run of `agent` keeps on an article it ran on: when it began, the agent's files as the workspace read
+    them, and the workspace's settings as they stand, which `_at_once` and `_older` read as causes once they change."""
     return {"ran": stamp(began), "file": _file_stamp(workspace, agent), "setting": _setting_stamp(workspace)}
+
+
+def _older(workspace: Cerebro, agent: Agent) -> list[str]:
+    """The articles `agent` writes, as `targets` lists them, or its collection for a curator, whose last finished run
+    read other files than it has now. A run that failed, was held or stopped leaves its mark where it was, so the
+    article runs at once whatever the agent's schedule. An article no run finished on has no mark, and waits for the
+    schedule."""
+    file = _file_stamp(workspace, agent)
+    marked = [id for id, mark in (_beat(workspace, agent).articles or {}).items() if mark.get("file") != file]
+    if not marked or agent.role == "curator":
+        return marked
+    try:
+        writes = set(targets(agent, workspace.lookup))
+    except Exception:  # noqa: BLE001 - a target that does not read fails the agent where the pass plans its articles
+        return marked
+    return [id for id in marked if id in writes]
+
+
+def due_articles(workspace: Cerebro, agent: Agent, word: str | None, articles: list[str],
+                 taken: Collection[str]) -> list[str]:
+    """The articles of `articles` a due run of `agent` for `word` runs on: every one, but for an agent no change wakes
+    and no schedule word runs now, those `_older` finds and those of `taken`, which cite what a caller took back,
+    since one of the two alone woke it."""
+    if word is not None or "change" in _words(workspace, agent):
+        return articles
+    older = _older(workspace, agent)
+    return [article for article in articles if article in older or article in taken]
 
 
 def cooldown(workspace: Cerebro, agent: Agent, part: str = "", cadence: bool = True) -> tuple[int, str]:
@@ -537,11 +573,23 @@ def cooldown(workspace: Cerebro, agent: Agent, part: str = "", cadence: bool = T
 
 
 def _file_stamp(workspace: Cerebro, agent: Agent) -> str:
-    """One hash of the agent's file and of each of its subagents' files, as they stand now."""
+    """One hash of the agent's file and of each of its subagents' files, as the workspace read them: what its runs
+    read, though a file changes on disk while one is under way."""
     hashed = hashlib.sha256()
     for one in [agent, *(a for a in workspace.agents if a.id in agent.subagent_ids)]:
-        hashed.update(one.id.encode() + b"\0" + (one.path.read_bytes() if one.path.is_file() else one.prompt.encode()))
+        hashed.update(one.id.encode() + b"\0" + one.data)
     return hashed.hexdigest()[:16]
+
+
+def _read_on(workspace: Cerebro, agent: Agent, articles: list[str]) -> None:
+    """Move the file of the mark of each of `articles`, those a compile read and found nothing to land on, to the
+    agent's files as the workspace read them: what it read is no cause to run there again. Its time stays, so its
+    cooldown counts from its last run."""
+    beat, file = _beat(workspace, agent), _file_stamp(workspace, agent)
+    marks = beat.articles or {}
+    moved = {id: marks[id] | {"file": file} for id in articles if id in marks and marks[id].get("file") != file}
+    if moved:
+        workspace.store.set_state(f"heartbeat:{agent.id}", asdict(replace(beat, articles=marks | moved)))
 
 
 def _setting_stamp(workspace: Cerebro) -> str:
@@ -608,9 +656,9 @@ WAITS = "waits:"  # + an agent's id: its runs that wait after a failure or a sto
 
 
 def _wait_mark(workspace: Cerebro, agent: Agent, article: str) -> dict[str, Any]:
-    """What ends a wait: the agent's files, the workspace's settings and `settings.yaml` as they stand, the newest
-    row of its runs on `article`, so a run there by hand or in another process ends it, and for a curator the newest
-    proposal of its collection accepted and not carried out, so a new yes ends it."""
+    """What ends a wait: the agent's files as the workspace read them, the workspace's settings and `settings.yaml` as
+    they stand, the newest row of its runs on `article`, so a run there by hand or in another process ends it, and for
+    a curator the newest proposal of its collection accepted and not carried out, so a new yes ends it."""
     newest = workspace.store.latest("agent-runs", "target", {"agent": agent.id, "target": article})
     settings = workspace.root / "settings.yaml"
     setting = _setting_stamp(workspace) + (hashlib.sha256(settings.read_bytes()).hexdigest()[:16] if settings.is_file()
@@ -1217,7 +1265,8 @@ def curators_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, st
     woken = {agent.id for agent in curators if _beat(workspace, agent).again or new_yes(workspace.store, agent)}
     now, zone = workspace.clock(), zone_of(workspace.settings)
     for agent in curators:  # a scheduled run does not wait, as a writer's does not
-        word, _, held = _wake(agent, _words(workspace, agent), _beat(workspace, agent), now, zone)
+        word, _, held = _wake(agent, _words(workspace, agent), _beat(workspace, agent), bool(_older(workspace, agent)),
+                              now, zone)
         if agent.id not in listed and word is None and not held and (why := waits_after(workspace, agent, agent.target)):
             listed[agent.id] = []
             result.skipped[agent.id] = why
@@ -1291,7 +1340,8 @@ def _curate_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result:
             _again(workspace, agent, curated)
         if word is None and spends and not why and curated is not None and curated.run is not None:
             word = next((w for w in _words(workspace, agent) if w in SCHEDULES), None)
-        _ran(workspace, agent, word, curated.run if curated else None, bool(why), began)
+        # a run that did not fail, or a skip that found nothing moved since the last, read its files as they are
+        _ran(workspace, agent, word, curated.run if curated else None, bool(why), began, None if why else [agent.target])
 
 
 def _again(workspace: Cerebro, agent: Agent, curated: Any) -> None:
@@ -2301,6 +2351,7 @@ def _compile_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result
         _settle(workspace, turns.setdefault(agent.id, _Turn(agent, word)), article, compiled, error, result)
     for turn in turns.values():
         agent = turn.agent
+        _read_on(workspace, agent, turn.read)
         if turn.skipped:
             result.skipped[agent.id] = turn.waits or unmoved(workspace, agent, [p for a, _, p in plan if a.id == agent.id])
             del result.due[agent.id]
@@ -2321,10 +2372,10 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassR
           only: Collection[str] | None = None) -> tuple[list[tuple[Agent, str | None, str]], set[tuple[str, str]],
                                                         set[tuple[str, str]]]:
     """The articles a pass compiles, each with its agent and the schedule word it runs for, in path order, of `only`
-    alone when given, and of a writer a take-back alone woke only those `result.taken_back` gives it; the articles
-    whose next run runs only the parts that did not run; and those an agent on
-    `change` runs for a change while its period is owed. Why a due writer runs on none goes on `result.skipped`, and
-    one with none of `only` stays due, unsaid."""
+    alone when given, and of a writer its changed files or a take-back alone woke only those `due_articles` gives; the
+    articles whose next run runs only the parts that did not run; and those an agent runs for a change, its changed
+    files or a take-back while its period is owed. Why a due writer runs on none goes on `result.skipped`, and one
+    with none of `only` stays due, unsaid."""
     plan: list[tuple[Agent, str | None, str]] = []
     parts: set[tuple[str, str]] = set()
     changes: set[tuple[str, str]] = set()
@@ -2344,12 +2395,14 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassR
                 f"{agent.target} holds no article yet: its curator admits them"
             del result.due[agent.id]
             continue
-        if word is None and "change" not in _words(workspace, agent):  # a take-back alone woke it: what cites it runs
-            articles = [article for article in articles if article in result.taken_back.get(agent.id, [])]
+        taken = result.taken_back.get(agent.id, [])
+        articles = due_articles(workspace, agent, word, articles, taken)
         if (left := _left(workspace, agent, word)) is not None:  # what its period's run did not finish, alone
             parts |= {(agent.id, article) for article, how in left.items() if how == "parts"}
             owed = [article for article in articles if article in left]
-            rest = [article for article in articles if article not in left] if "change" in _words(workspace, agent) else []
+            older, changing = _older(workspace, agent), "change" in _words(workspace, agent)
+            rest = [article for article in articles if article not in left and (changing or article in older
+                                                                                 or article in taken)]
             changes |= {(agent.id, article) for article in rest}  # pending narrows the schedule alone: a change still runs
             if not owed:
                 _ran(workspace, agent, word, None, False)
@@ -2416,6 +2469,7 @@ class _Turn:
     waits: str = ""  # why it skipped: its cooldown, or a back-off after failed runs
     wrote: list[str] = field(default_factory=list)  # the articles its runs wrote on, or ran on and wrote nothing
     left: dict[str, str] = field(default_factory=dict)  # the articles its run did not finish, and how each runs next
+    read: list[str] = field(default_factory=list)  # the articles it read and had nothing to land on, nor to wait for
 
 
 def _settle(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, error: BaseException | None,
@@ -2453,8 +2507,12 @@ def _settle(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, error:
                                   "key says")
         if compiled.waiting:
             turn.waits = compiled.waiting
+        else:
+            turn.read.append(article)
         return
     _settle_ran(workspace, turn, article, compiled, cut, result)
+    if article not in turn.wrote and article not in turn.left:
+        turn.read.append(article)
 
 
 def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cut: list[str], result: PassResult) -> None:
@@ -2769,7 +2827,7 @@ def held_runs(workspace: Cerebro, agent: Agent, article: str) -> str:
     there, or else the writer's next run, which runs every part that did not run. A period whose earlier run left
     other articles to do owes only those."""
     zone, words = zone_of(workspace.settings), _words(workspace, agent)
-    word, _, _ = _wake(agent, words, _beat(workspace, agent), workspace.clock(), zone)
+    word, _, _ = _wake(agent, words, _beat(workspace, agent), moved=False, now=workspace.clock(), zone=zone)
     if word is not None and ((owed := _left(workspace, agent, word)) is None or article in owed):
         return "runs next pass"
     local = workspace.clock().astimezone(zone)

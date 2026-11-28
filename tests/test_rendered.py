@@ -657,7 +657,7 @@ def test_a_rendered_part_stands_before_the_agents_own_text_or_after_it_in_the_or
                     **common)
     assert [s.heading for s in passages(store.article("digests/index"))] == ["Contents", "Top", "Accounts", "Elsewhere"]
     moved = replace(agent, rendered={"Elsewhere": Render("collections"), "Contents": Render("collections", place="after"),
-                                     "Top": agent.rendered["Top"]}, hash="moved")
+                                     "Top": agent.rendered["Top"]}, data=b"moved")
     admit(store, "accounts/gamma-co")
     compile_article(moved, agent_run=ScriptedRun(lambda p: "## Accounts\n\n- [Gamma Co](../accounts/gamma-co.md)"),
                     **common)
@@ -672,7 +672,7 @@ def test_a_rendered_heading_the_agent_no_longer_names_is_removed_and_a_written_o
     run = ScriptedRun(lambda p: {"Accounts": "- Alpha Co"})
     compile_article(agent, agent_run=run, **common)
     store.write_compilation(Compilation("digests/index", "Notes", "Kept by hand.", by="you"))
-    renamed = replace(agent, rendered={"Collections": agent.rendered["Contents"]}, hash="edited")
+    renamed = replace(agent, rendered={"Collections": agent.rendered["Contents"]}, data=b"edited")
     admit(store, "accounts/gamma-co")
     compile_article(renamed, agent_run=run, **common)
     held = {s.heading: s.by for s in passages(store.article("digests/index"))}

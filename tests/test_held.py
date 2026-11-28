@@ -500,6 +500,7 @@ def test_what_changes_outside_the_store_during_a_curators_act_still_wakes_it(tmp
     else:
         workspace.curate(next(a for a in workspace.agents if a.id == "things/curator"))
     monkeypatch.undo()
+    workspace.agents_read()  # as serve does before its next pass
     assert "things/curator" in workspace.run_once().due
 
 

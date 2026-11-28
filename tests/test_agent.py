@@ -36,7 +36,7 @@ def test_every_gtm_template_agent_file_loads_into_a_typed_record_with_nothing_dr
         front = {("on" if k is True else k): v for k, v in front.items()}
         for key, value in front.items():
             assert FIELDS[key](agent, value), (agent.id, key)
-        assert agent.hash and agent.prompt and agent.warnings == []
+        assert agent.data and agent.prompt and agent.warnings == []
     by = {a.id: a for a in agents}
     roles = {id: (a.role, a.target) for id, a in by.items()}
     assert roles["accounts/curator"] == ("curator", "accounts")
@@ -65,7 +65,6 @@ def test_every_gtm_template_agent_file_loads_into_a_typed_record_with_nothing_dr
     assert index.notice == ""
     assert by["reports/pipeline"].notice == ""  # its left line is built
     assert by["calls/article"].evidence[1].options == {"text_only": True}
-    assert by["accounts/subagents/opportunities"].hash == "05d0b6dc"
 
 
 def test_a_file_with_a_byte_order_mark_loads_and_unacted_keys_are_named(tmp_path: Path) -> None:

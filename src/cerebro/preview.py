@@ -78,6 +78,7 @@ from .runner import (
     _release,
     compile_groups,
     curators_due,
+    due_articles,
     hold,
     ready_by_hand,
     writers_due,
@@ -864,7 +865,8 @@ def _next_pass(reading: _Reading, out: Stale, curators: bool = True) -> None:
     jobs: list[tuple[Agent, list[str], str]] = []
     for agent, word in writers:
         try:
-            articles = targets(agent, reading.lookup)
+            articles = due_articles(overlay, agent, word, targets(agent, reading.lookup),  # type: ignore[arg-type]
+                                    result.taken_back.get(agent.id, []))
         except Exception as error:  # noqa: BLE001 - one agent's failure is a row, and the others go on
             out.rows.append(Row(agent.target, "failed", agent.id, said(workspace, error)))
             continue

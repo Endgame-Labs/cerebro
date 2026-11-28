@@ -936,7 +936,7 @@ def test_a_stop_part_way_through_landing_leaves_the_article_as_it_was_and_the_ne
         """The process stopping, as serve's exit on SIGTERM does, while what a run handed in is grounded."""
 
     three = replace(AGENT, prompt="x\n\n# Output\n\n## Summary\n\n## Next\n\n## Risks", output=["Summary", "Next", "Risks"])
-    two = replace(AGENT, hash="edited")
+    two = replace(AGENT, data=b"edited")
 
     class StopOnNext(FakeDecider):
         def decide(self, state: Any, questions: Any) -> Any:
