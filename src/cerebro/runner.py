@@ -1922,13 +1922,14 @@ def _link(workspace: Cerebro, landed: list[tuple[Fact, Record]], result: PassRes
     """Link each fact to its articles, in order, on this thread. The ties of up to `compile.concurrency` facts are
     worked out at once, so their judge calls wait side by side. With a decision model, a near match goes to its judge,
     each call held to the extraction cap as `budget.Held` holds it, under the fact's id, priced on the decision
-    model. The working set is read once for every near match. A judge that fails is named in `failed`, and its fact
-    is linked by its other ties. Results match one fact at a time only while `ties` reads nothing `link_ties` writes,
-    and linking changes no article."""
+    model. The working set is read once for every near match. A fact whose judge fails is linked by its other ties,
+    and one line in `failed` counts them and names the first error. Results match one fact at a time only while
+    `ties` reads nothing `link_ties` writes, and linking changes no article."""
     learned, model = stamp(workspace.clock()), workspace.models["decision"]
     width = max(1, int((workspace.settings.get("compile") or {}).get("concurrency") or 8))
     waiting, among = iter(landed), near_pool(workspace.store) if workspace.decider is not None else []
     asked: deque[tuple[Fact, Record, Future[list[tuple[str, str]]]]] = deque()
+    missed: list[DecisionError] = []
 
     def ask(fact: Fact, record: Record) -> tuple[Fact, Record, Future[list[tuple[str, str]]]]:
         judge = None if workspace.decider is None else DecisionJudge(
@@ -1941,13 +1942,15 @@ def _link(workspace: Cerebro, landed: list[tuple[Fact, Record]], result: PassRes
             fact, record, made = asked.popleft()
             try:
                 if isinstance(failed := made.exception(), DecisionError):
-                    result.failed[f"facts/{fact.id}"] = ("the near-match judge failed, so the fact is linked without "
-                                                         f"it: {failed}")
+                    missed.append(failed)
                     made = pool.submit(ties, workspace.store, fact, record)
                 result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
             except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
                 result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
             asked.extend(ask(*pair) for pair in islice(waiting, 1))
+    if missed:
+        count = "1 fact" if len(missed) == 1 else f"{len(missed)} facts"
+        result.failed["facts"] = f"linking {count} by a near match failed: {missed[0]}"
     own_facts(workspace, landed)
 
 

@@ -446,7 +446,7 @@ def test_a_near_match_is_judged_through_the_pass_held_to_the_extraction_cap_and_
     assert result.extracted == 1 and judge_asked(decider) == [] and cerebro.store.facts_of("things/alder") == []
 
 
-def test_a_near_match_judge_that_fails_is_named_in_the_pass_and_the_fact_keeps_its_other_links(tmp_path: Path) -> None:
+def test_near_matches_that_fail_are_one_line_in_the_pass_and_each_fact_keeps_its_other_links(tmp_path: Path) -> None:
     from cerebro.models import Decider, DecisionError
 
     class Down(Decider):
@@ -459,13 +459,14 @@ def test_a_near_match_judge_that_fails_is_named_in_the_pass_and_the_fact_keeps_i
     cerebro.store.create(Identity("things/alder", "things", "Alder"))
     cerebro.store.create(Identity("things/birch", "things", "Birch"))
     cerebro.run_once()  # each article is seen, so no later pass links its facts again by their names alone
-    notes.add(Record(id="n1", source="notes", revision="1", at="2026-11-10T09:00:00Z", body="It renewed.",
-                     keys={"project": ["Birch"]}, fields={"subject": "the Alder deal"}))
+    for id, body in (("n1", "It renewed."), ("n2", "It grew.")):
+        notes.add(Record(id=id, source="notes", revision="1", at="2026-11-10T09:00:00Z", body=body,
+                         keys={"project": ["Birch"]}, fields={"subject": "the Alder deal"}))
     result = cerebro.run_once()
-    fact = cerebro.extraction.facts(record="n1")[0].id
-    assert result.failed == {f"facts/{fact}": "the near-match judge failed, so the fact is linked without it: rune "
-                                              "answered HTTP 400: check the model id and the request"}
-    assert cerebro.store.facts_of("things/birch") == [fact] and cerebro.store.facts_of("things/alder") == []
+    facts = sorted(cerebro.extraction.facts(record=id)[0].id for id in ("n1", "n2"))
+    assert result.failed == {"facts": "linking 2 facts by a near match failed: rune answered HTTP 400: check the "
+                                      "model id and the request"}
+    assert sorted(cerebro.store.facts_of("things/birch")) == facts and cerebro.store.facts_of("things/alder") == []
 
 
 def test_facts_kept_before_their_article_is_born_link_to_it_and_its_first_run_reads_them(tmp_path: Path) -> None:
