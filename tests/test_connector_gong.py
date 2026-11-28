@@ -244,6 +244,12 @@ def test_a_call_with_no_transcript_gives_its_header_alone(connector: GongConnect
     assert server.paths() == ["/v2/calls/extensive", "/v2/calls/transcript"]
 
 
+def test_a_title_gong_sends_escaped_reads_as_its_characters(connector: GongConnector, server: StandIn) -> None:
+    server.calls["1000000000000937912"]["metaData"]["title"] = "Thing &lt;&gt; Other &amp; co"
+    record = connector.get("1000000000000937912")
+    assert record.body.splitlines()[0] == record.fields["title"] == "Thing <> Other & co"
+
+
 # -- read only, and nothing kept
 
 
