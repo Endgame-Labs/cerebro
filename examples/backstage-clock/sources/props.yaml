@@ -1,0 +1,9 @@
+kind: files
+select:
+  - glob: "handoffs/*.jsonl"
+    rows: jsonl
+    id: "{row.id}"
+    at: "{row.date}"
+    into: props
+    identity: { asset_id: "{row.asset_id}" }
+    extract: facts

@@ -1,0 +1,26 @@
+revision_id,date,cue_id,display_number,scene,call,readiness
+Q-L01-r1,2026-09-09,Q-L01,LX 1,The clockmaker opens shop,Workbench lights on Nella's first footstep,ready
+Q-S01-r1,2026-09-09,Q-S01,SND 1,The clockmaker opens shop,Recorded bell after Open on time,ready
+Q-L02-r1,2026-09-09,Q-L02,LX 12,The midnight picnic,Sandwich reveal after eight seconds,needs rehearsal
+Q-S02-r1,2026-09-09,Q-S02,SND 8,The midnight picnic,Proposed chime on midnight,ready
+Q-L03-r1,2026-09-09,Q-L03,LX 7,The orchard wager,Orchard light,ready
+Q-L01-r2,2026-10-02,Q-L01,LX 1,The clockmaker opens shop,Workbench lights on Nella's first footstep,ready
+Q-S01-r2,2026-10-02,Q-S01,SND 1,The clockmaker opens shop,Recorded bell after Open on time,ready
+Q-L02-r2,2026-10-02,Q-L02,LX 12,The midnight picnic,Sandwich reveal after eight seconds,needs rehearsal
+Q-S02-r2,2026-10-02,Q-S02,SND 8,The midnight picnic,Proposed chime on midnight,ready
+Q-L03-r2,2026-10-02,Q-L03,LX 7,The orchard wager,"Retired with cut scene on 2 October, never call",retired
+Q-L01-r3,2026-10-15,Q-L01,LX 1,The clockmaker opens shop,Workbench lights on Nella's first footstep,ready
+Q-S01-r3,2026-10-15,Q-S01,SND 1,The clockmaker opens shop,Recorded bell after Open on time,ready
+Q-L02-r3,2026-10-15,Q-L02,LX 12,The midnight picnic,Sandwich reveal after eight seconds,needs rehearsal
+Q-S02-r3,2026-10-15,Q-S02,SND 8,The midnight picnic,Proposed chime on midnight,ready
+Q-L03-r3,2026-10-15,Q-L03,LX 7,The orchard wager,"Retired with cut scene on 2 October, never call",retired
+Q-L01-r4,2026-11-16,Q-L01,LX 1,The clockmaker opens shop,Workbench lights on Nella's first footstep,ready
+Q-S01-r4,2026-11-16,Q-S01,SND 1,The clockmaker opens shop,Recorded bell after Open on time,ready
+Q-L02-r4,2026-11-16,Q-L02,LX 14,The midnight picnic,Reveal after laugh settles and six silent seconds,needs rehearsal
+Q-S02-r4,2026-11-16,Q-S02,SND 8,The midnight picnic,Silent standby marker with output bus disabled,ready
+Q-L03-r4,2026-11-16,Q-L03,LX 7,The orchard wager,"Retired with cut scene on 2 October, never call",retired
+Q-L01-r5,2026-11-24,Q-L01,LX 1,The clockmaker opens shop,Workbench lights on Nella's first footstep,ready
+Q-S01-r5,2026-11-24,Q-S01,SND 1,The clockmaker opens shop,Recorded bell after Open on time,ready
+Q-L02-r5,2026-11-24,Q-L02,LX 14,The midnight picnic,Reveal after laugh settles and six silent seconds,needs rehearsal
+Q-S02-r5,2026-11-24,Q-S02,SND 8,The midnight picnic,Silent standby marker with output bus disabled,ready
+Q-L03-r5,2026-11-24,Q-L03,LX 7,The orchard wager,"Retired with cut scene on 2 October, never call",retired

@@ -1,0 +1,4 @@
+kind: files
+select:
+  - glob: "local/*.md"
+    extract: facts
