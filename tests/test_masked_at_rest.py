@@ -132,6 +132,17 @@ def test_a_decide_reason_and_a_retract_reason_holding_a_key_never_read_are_maske
     assert any("secrets store holds was masked" in n for n in [*taken.notes, *decided.notes.values()])
 
 
+@pytest.mark.parametrize("way", list(WAYS))
+def test_a_value_saved_as_a_secret_after_it_was_kept_is_masked_in_a_reply(tmp_path: Path, way: str) -> None:
+    secrets = FakeSecrets()
+    with Cerebro(lay_out_workspace(tmp_path / "ws"), trusted=True, extraction=FakeExtraction(), secrets=secrets,
+                 agent_run=ScriptedRun(lambda p: {}), clock=lambda: DAY) as workspace:
+        workspace.tell(YOU, f"The staging model key is {KEY} until Friday.", as_="fact")
+        secrets.set("fireworks", KEY)  # saved after the fact was kept, and never read here
+        reply = str(WAYS[way](workspace, "query", {"from": "facts"}))
+    assert "[secret]" in reply and KEY not in reply
+
+
 def test_a_sources_record_holding_a_key_never_read_is_masked_before_it_is_kept_and_before_the_facts_layer_reads_it(
         tmp_path: Path) -> None:
     facts = Seen()
