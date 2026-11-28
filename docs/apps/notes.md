@@ -48,15 +48,15 @@ You can ask your agent to keep notes, or let it decide. When a session connects,
 
 ## Find notes
 
-`query` reads notes like any other records:
+`browse_notes` lists a folder, and `query` reads notes like any other records:
 
 | To | Ask |
 |---|---|
-| Browse like a folder | `query { "from": "note", "collection": "notes" }` |
+| Browse like a folder | `browse_notes { "collection": "notes" }` |
 | Read every note, newest first | `query { "from": "note" }` |
 | Find a note by its title | `query { "from": "note", "collection": "notes/projects/atlas", "title": "Export plan" }` |
 
-Browsing shows each folder one level down, with how many notes it holds and when the newest was written, and the five newest notes under `recent`.
+Browsing shows the notes in the folder without their text, each folder one level down with how many notes it holds and when the newest was written, and the five newest notes under `recent`.
 
 ## The article
 

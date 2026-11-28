@@ -178,10 +178,11 @@ def test_a_collection_that_would_leave_the_collection_folder_is_refused_and_noth
     from cerebro import CerebroError
 
     note, notes = tools(app, workspace)
+    browse = bind(collect(app.functions).mcp_tools["browse_notes"], YOU, workspace)
     kept = note(text="A first note.", collection="notes/projects")
     for bad in ("..", "notes/../other", "a//b", "/notes/projects", "notes/projects/", "../../etc", "notes\\..\\x",
                 "notes/./x"):
-        for fn, args in ((note, {"text": "x"}), (note, {"text": "x", "id": kept["id"]}), (notes, {})):
+        for fn, args in ((note, {"text": "x"}), (note, {"text": "x", "id": kept["id"]}), (notes, {}), (browse, {})):
             with pytest.raises(CerebroError) as caught:
                 fn(**args, collection=bad)
             assert repr(bad) in str(caught.value) and "\n" not in str(caught.value)
@@ -191,7 +192,8 @@ def test_a_collection_that_would_leave_the_collection_folder_is_refused_and_noth
 def test_the_notes_app_declares_its_kind_tools_and_agents_folder(app: App) -> None:
     exposed = collect(app.functions)
     assert (app.name, app.kinds) == ("notes", ["note"])
-    assert set(exposed.mcp_tools) == {"note"} and set(exposed.evidence) == {"notes"} and not exposed.agent_tools
+    assert set(exposed.mcp_tools) == {"note", "browse_notes"} and set(exposed.evidence) == {"notes"}
+    assert not exposed.agent_tools
     assert app.agents == NOTES / "agents" and (NOTES / "agents" / "projects" / "standing.md").is_file()
 
 
@@ -372,8 +374,7 @@ def test_a_context_agents_tools_give_a_notes_facts_and_never_its_text_and_the_ar
                 query("note", {"matching": "zebra"}), read([record]), read([name]), read([record], about="zebra"),
                 query("facts", {"record": record}), query("facts", {"about": "zebra"})]
         listed = said[0]
-        assert listed["count"] == 1 and listed["items"][0]["fields"] == {
-            "name": name, "title": "Ship day", "collection": "notes/projects/ship"}
+        assert listed["count"] == 1 and listed["items"][0]["fields"] == {"name": name, "title": "Ship day"}
         assert "body" not in listed["items"][0] and "query from: facts, record:" in listed["warnings"][0]
         assert said[2]["count"] == 0  # no filter reads the text either
         assert any(f"query from: facts, record: {record}" in w for w in said[4]["warnings"])
@@ -510,7 +511,7 @@ def test_nothing_in_a_notes_title_collection_or_id_can_end_its_quote_or_start_a_
         said = anyio.run(connected, workspace) or ""
         _, read = agent_surface(workspace.lookup, Caller("projects/standing", "agent"))
         warned = next(w for w in read([kept[0]["record"]])["warnings"] if "is a note record" in w)
-        assert f', title {json.dumps(TRICKS[0])}, collection "notes", kept' in warned
+        assert f', title {json.dumps(TRICKS[0])}, kept' in warned
     listed = [line for line in said.splitlines() if line.startswith("- ")]
     assert len(listed) == 5
     for line in listed:
@@ -546,21 +547,19 @@ def test_a_collection_is_listed_one_level_with_its_child_collections_and_the_top
             now[0] = DAY + timedelta(hours=n)
             made.append(over_mcp(workspace, "note", {"text": f"Entry {n}. " + "words " * 200, "title": f"Entry {n}",
                                                  "collection": collection}).structured_content)
-        top = over_mcp(workspace, "query", {"from": "note", "collection": "notes"})
-        data = top.structured_content
+        assert not over_mcp(workspace, "retract", {"id": made[2]["record"], "reason": "moved"}).is_error
+        data = over_mcp(workspace, "browse_notes", {"collection": "notes"}).structured_content
         assert [i["fields"]["title"] for i in data["items"]] == ["Entry 6", "Entry 0"]
+        assert len(data["warnings"]) == 1 and made[2]["record"] in data["warnings"][0]  # among the newest alone
         assert all("body" not in i for i in data["items"] + data["recent"])
         assert data["collections"] == [
             {"collection": "notes/people", "count": 1, "newest": "2026-11-17T14:00:00Z"},
             {"collection": "notes/projects", "count": 4, "newest": "2026-11-17T13:00:00Z"}]
         assert [i["fields"]["title"] for i in data["recent"]] == [f"Entry {n}" for n in (6, 5, 4, 3, 2)]
-        assert len(top.content[0].text) < 2500 and "read_as" not in data
-        projects = over_mcp(workspace, "query", {"from": "note", "collection": "notes/projects"}).structured_content
+        projects = over_mcp(workspace, "browse_notes", {"collection": "notes/projects"}).structured_content
         assert [i["fields"]["title"] for i in projects["items"]] == ["Entry 1"] and "recent" not in projects
         assert [(c["collection"], c["count"]) for c in projects["collections"]] == [
             ("notes/projects/hire", 1), ("notes/projects/ship", 2)]
-        flat = over_mcp(workspace, "query", {"from": "note", "collection": "notes", "name": made[0]["id"]})
-        assert flat.structured_content["items"][0]["body"].startswith("Entry 0.")  # any other filter: whole
 
 
 def test_the_note_reply_says_when_the_note_made_its_collection(app: App, workspace: Workspace) -> None:
