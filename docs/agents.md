@@ -125,7 +125,7 @@ A query of a collection comes newest first by a date field Cerebro picks. Name t
 | `hourly`, `daily`, `weekly` | Once in each period, in the workspace's time zone |
 | `manual` | Only when you run it, with `cerebro agents run` |
 
-After you save an agent's file, the next pass runs the agent on it at once, unless its heartbeat is `manual`. `cerebro serve` reads agent files again before each pass, so you do not restart it.
+After you save an agent's file, the next pass runs the agent on it at once, unless its heartbeat is `manual`. `cerebro serve` reads agent files again before each pass, so you do not restart it. It reads `extensions.py` only when it starts, so restart it after you change that file.
 
 An agent woken only by `hourly`, `daily` or `weekly` runs at once on each article it last wrote from the old file. If that run fails, a later pass tries the article again. An article added after its run in a period waits for the next one.
 

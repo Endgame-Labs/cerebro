@@ -113,46 +113,56 @@ def test_under_serve_an_edited_agent_file_runs_on_the_next_pass_on_each_article_
     assert len(read) == 4 and all("Be briefer." in prompt or "Keep things and dates." in prompt for prompt in read)
 
 
-def test_under_serve_a_run_by_hand_on_an_edited_file_is_never_written_over_from_the_file_read_before(
+def test_a_scheduled_writer_whose_files_moved_but_whose_article_is_fresh_gathers_once_then_waits_for_its_period(
         tmp_path: Path) -> None:
-    from cerebro.runner import run_forever
-
-    hands, extraction, notes = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC)), FakeExtraction(), FakeConnector("notes", NOTES)
-    read, edited, passes = [], [], []
-    serve = workspace(tmp_path, "[change]", extraction, notes, hands, "schedule:\n  articles: 0\n",
-                      ScriptedRun(lambda prompt: read.append(prompt) or cited(prompt), clock=hands))
-    path = tmp_path / "agents" / "reports" / "weekly.md"
-
-    def by_hand(line: str) -> None:  # while serve's second pass extracts, a person edits the file and runs it elsewhere
-        if len(passes) == 1 and line.startswith("stage     extract") and not edited:
-            path.write_text(path.read_text() + "\nKeep it short.\n")
-            elsewhere = Cerebro(tmp_path, store=serve.store, extraction=extraction, clock=hands, connectors=[notes],
-                                agent_run=ScriptedRun(cited, clock=hands))
-            agent = elsewhere.agent("reports/weekly")
-            assert agent is not None
-            with elsewhere.hold(agent):
-                elsewhere.compile(agent, scheduled=True)
-            edited.append(len(read))
-
-    def sleep(seconds: float) -> None:  # a new note, read once the sources' window has passed
-        notes.add(Record(id=f"n{len(passes) + 6}", source="notes", revision="1", at="2026-11-16T09:30:00Z",
-                         body="A later note."))
-        hands.move(minutes=20)
-
-    run_forever(serve, interval=60, stop=lambda: len(passes) == 3, sleep=sleep, on_pass=passes.append, say=by_hand)
-    assert read[edited[0]:] and all("Keep it short." in prompt for prompt in read[edited[0]:])
-
-
-def test_a_workspace_an_earlier_release_ran_does_not_wake_its_scheduled_writer_for_an_unchanged_file(
-        tmp_path: Path) -> None:
+    """As on a workspace an earlier release ran, whose mark may name its files another way."""
     hands = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC))  # a Monday
     cerebro = workspace(tmp_path, "[weekly]", FakeExtraction(), clock=hands)
     assert cerebro.run_once().compiled == ["reports/weekly"]
     beat = cerebro.store.state("heartbeat:reports/weekly")
-    beat["articles"]["reports/weekly"]["file"] = "f52d78feee3a6219"  # how Cerebro 0.1.3 kept the file this run read
+    beat["articles"]["reports/weekly"]["file"] = "other files"
     cerebro.store.set_state("heartbeat:reports/weekly", beat)
     hands.move(days=1)
+    assert cerebro.run_once().skipped["reports/weekly"].startswith("nothing it reads has moved")
     assert cerebro.run_once().skipped["reports/weekly"].startswith("heartbeat is weekly: it ran this period")
+
+
+def test_a_scheduled_writer_is_not_woken_for_its_changed_file_by_an_article_its_target_no_longer_matches(
+        tmp_path: Path) -> None:
+    hands, store = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC)), MemoryStore()  # a Monday
+    (tmp_path / "agents" / "meetings").mkdir(parents=True)
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    prep = tmp_path / "agents" / "meetings" / "prep.md"
+    prep.write_text("---\ntarget: { from: meetings, status: upcoming }\nevidence:\n  - query: { from: facts, source: notes }\n"
+                    "heartbeat: [weekly]\n---\n\nPrep.\n\n# Output\n\n## Summary\n")
+    for id in ("meetings/later", "meetings/soon"):
+        store.create(Identity(id, "meetings", id, status="upcoming"))
+    cerebro = Cerebro(tmp_path, store=store, extraction=FakeExtraction(), clock=hands,
+                      connectors=[FakeConnector("notes", NOTES)], agent_run=ScriptedRun(cited, clock=hands))
+    assert sorted(cerebro.run_once().compiled) == ["meetings/later", "meetings/soon"]
+    prep.write_text(prep.read_text().replace("Prep.", "Prep briefly."))
+    store.set_identity(Identity("meetings/later", "meetings", "meetings/later", status="past"))
+    cerebro.agents_read()  # as serve does before its next pass
+    assert cerebro.run_once().compiled == ["meetings/soon"]
+    assert cerebro.run_once().skipped["meetings/prep"].startswith("heartbeat is weekly: it ran this period")
+
+
+def test_under_serve_an_agent_file_that_stops_loading_is_said_once_a_pass_keeps_its_state_and_runs_once_mended(
+        tmp_path: Path) -> None:
+    from cerebro.runner import run_forever
+
+    hands = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC))  # a Monday
+    cerebro = workspace(tmp_path, "[weekly]", FakeExtraction(), clock=hands)
+    path, passes = tmp_path / "agents" / "reports" / "weekly.md", []
+    good = path.read_text()
+
+    def sleep(seconds: float) -> None:  # refused for two passes, then mended
+        path.write_text(good.replace("[weekly]", "[weekly") if len(passes) < 3 else good + "\nBe brief.\n")
+        hands.move(minutes=1)
+
+    run_forever(cerebro, interval=60, stop=lambda: len(passes) == 4, sleep=sleep, on_pass=passes.append)
+    assert [sum(line.startswith("agents/reports/weekly.md: ") for line in p.refused) for p in passes] == [0, 1, 1, 0]
+    assert passes[3].compiled == ["reports/weekly"] and passes[3].due == {"reports/weekly": "its agent file changed"}
 
 
 def test_an_agent_on_manual_alone_waits_for_a_person(tmp_path: Path) -> None:

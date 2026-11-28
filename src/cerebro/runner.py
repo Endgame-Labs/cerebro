@@ -448,8 +448,6 @@ def _due(workspace: Cerebro, agents: list[Agent], result: PassResult,
                                  now, zone)
         if agent.id in woken and word is None:
             why, waits = "a caller accepted a proposal for its collection", ""
-        if not waits and agent.role in (*WRITERS, "curator") and _edited(workspace, agent):
-            waits = "its file changed after this pass read it: the next pass runs it on the file as it stands"
         if not waits and agent.role in (*WRITERS, "curator") and (until := _lease(workspace, agent, result.token, result)):
             waits = f"a pass in another process runs it now: it waits for that, or for its lease to lapse at {until}"
         if waits:
@@ -522,12 +520,19 @@ def _mark(workspace: Cerebro, agent: Agent, began: datetime) -> dict[str, str]:
 
 
 def _older(workspace: Cerebro, agent: Agent) -> list[str]:
-    """The articles of `agent` in the working set, or its collection for a curator, whose last finished run read other
-    files than it has now. A run that failed, was held or stopped leaves its mark where it was, so the article runs at
-    once whatever the agent's schedule. An article no run finished on has no mark, and waits for the schedule."""
+    """The articles `agent` writes, as `targets` lists them, or its collection for a curator, whose last finished run
+    read other files than it has now. A run that failed, was held or stopped leaves its mark where it was, so the
+    article runs at once whatever the agent's schedule. An article no run finished on has no mark, and waits for the
+    schedule."""
     file = _file_stamp(workspace, agent)
-    return [id for id, mark in (_beat(workspace, agent).articles or {}).items()
-            if mark.get("file") != file and (agent.role == "curator" or working(workspace.store, id))]
+    marked = [id for id, mark in (_beat(workspace, agent).articles or {}).items() if mark.get("file") != file]
+    if not marked or agent.role == "curator":
+        return marked
+    try:
+        writes = set(targets(agent, workspace.lookup))
+    except Exception:  # noqa: BLE001 - a target that does not read fails the agent where the pass plans its articles
+        return marked
+    return [id for id in marked if id in writes]
 
 
 def due_articles(workspace: Cerebro, agent: Agent, word: str | None, articles: list[str]) -> list[str]:
@@ -559,26 +564,20 @@ def _file_stamp(workspace: Cerebro, agent: Agent) -> str:
     """One hash of the agent's file and of each of its subagents' files, as the workspace read them: what its runs
     read, though a file changes on disk while one is under way."""
     hashed = hashlib.sha256()
-    for one in _with_subagents(workspace, agent):
+    for one in [agent, *(a for a in workspace.agents if a.id in agent.subagent_ids)]:
         hashed.update(one.id.encode() + b"\0" + one.data)
     return hashed.hexdigest()[:16]
 
 
-def _edited(workspace: Cerebro, agent: Agent) -> bool:
-    """Whether the agent's file or a subagent's no longer holds what the workspace read: a pass then leaves it to the
-    next, which under serve reads it again, so no run lands an older file's text over a newer one's."""
-    for one in _with_subagents(workspace, agent):
-        try:
-            if one.path.read_bytes() != one.data:
-                return True
-        except OSError:  # it went: the next read of the agent files lets it go
-            return True
-    return False
-
-
-def _with_subagents(workspace: Cerebro, agent: Agent) -> list[Agent]:
-    """The agent and each of its subagents: every file a run of it reads."""
-    return [agent, *(a for a in workspace.agents if a.id in agent.subagent_ids)]
+def _read_on(workspace: Cerebro, agent: Agent, articles: list[str]) -> None:
+    """Move the file of the mark of each of `articles`, those a compile read and found nothing to land on, to the
+    agent's files as the workspace read them: what it read is no cause to run there again. Its time stays, so its
+    cooldown counts from its last run."""
+    beat, file = _beat(workspace, agent), _file_stamp(workspace, agent)
+    marks = beat.articles or {}
+    moved = {id: marks[id] | {"file": file} for id in articles if id in marks and marks[id].get("file") != file}
+    if moved:
+        workspace.store.set_state(f"heartbeat:{agent.id}", asdict(replace(beat, articles=marks | moved)))
 
 
 def _setting_stamp(workspace: Cerebro) -> str:
@@ -2308,6 +2307,7 @@ def _compile_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result
         _settle(workspace, turns.setdefault(agent.id, _Turn(agent, word)), article, compiled, error, result)
     for turn in turns.values():
         agent = turn.agent
+        _read_on(workspace, agent, turn.read)
         if turn.skipped:
             result.skipped[agent.id] = turn.waits or unmoved(workspace, agent, [p for a, _, p in plan if a.id == agent.id])
             del result.due[agent.id]
@@ -2421,6 +2421,7 @@ class _Turn:
     waits: str = ""  # why it skipped: its cooldown, or a back-off after failed runs
     wrote: list[str] = field(default_factory=list)  # the articles its runs wrote on, or ran on and wrote nothing
     left: dict[str, str] = field(default_factory=dict)  # the articles its run did not finish, and how each runs next
+    read: list[str] = field(default_factory=list)  # the articles it read and had nothing to land on, nor to wait for
 
 
 def _settle(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, error: BaseException | None,
@@ -2458,8 +2459,12 @@ def _settle(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, error:
                                   "key says")
         if compiled.waiting:
             turn.waits = compiled.waiting
+        else:
+            turn.read.append(article)
         return
     _settle_ran(workspace, turn, article, compiled, cut, result)
+    if article not in turn.wrote and article not in turn.left:
+        turn.read.append(article)
 
 
 def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cut: list[str], result: PassResult) -> None:
