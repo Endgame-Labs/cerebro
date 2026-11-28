@@ -9,7 +9,8 @@ collection whose keys bind only articles of it
 that are out of the working set. Each is data, never the record's body: its
 source, its id, its name as its keys or fields give it, its keys, `at`, the record's own time as its listing gives
 it, `listed_at`, when a pass first held it, as the runner keeps it beside the listing, and last the fields its source
-gives it, so a line cut at `MAX_LINE` keeps what names the record. The list is newest first
+gives it that hold a value. Its source, id and name come first, so a line cut at `MAX_LINE` keeps what names the
+record. The list is newest first
 by the record's own time, and at most `LIST_MAX` long, or the line's `limit`, with a count of the rest.
 
 A record leaves the list the moment it is bound to an article of its collection in the working set, as the curator's
@@ -515,7 +516,7 @@ def held_for(store: Store, collection: str, sources: Iterable[str], *, limit: in
                           str(row.get("listed_at") or ""), links, itself, parties_outside(record, ours),
                           [str(n) for n in record.fields.get("ours") or [] if str(n).strip()],
                           [k for k in record.carried or () if k in keys], own_record(record, ours),
-                          {k: v for k, v in record.fields.items() if k != "ours"}))
+                          {k: v for k, v in record.fields.items() if k != "ours" and v not in (None, "", [], {})}))
     found.sort(key=lambda held: (held.source, held.id))
     found.sort(key=lambda held: held.at, reverse=True)  # newest first; one time apart, by source and id
     found.sort(key=lambda held: held.own)
@@ -539,6 +540,7 @@ def check_line(args: Any, curator: bool, fail: Callable[[str], Exception]) -> di
 
 MAX_REASON = 200  # characters of a left-out reason, as leave_out bounds it
 MAX_LINE = 2000  # characters one held record takes of the list, whatever its keys and fields hold
+FIRST = ("source", "id", "name")  # what admit and leave_out name a held record by, first on its line
 
 
 def _capped(text: str, cap: int) -> str:
@@ -548,12 +550,11 @@ def _capped(text: str, cap: int) -> str:
 
 
 def _line(data: dict[str, Any]) -> str:
-    """One held record as the list shows it: its data as JSON, cut at `MAX_LINE` characters, sorted but its fields
-    last, so a cut takes them before what names the record."""
+    """One held record as the list shows it: its data as JSON, cut at `MAX_LINE` characters, `FIRST` first, then the
+    rest sorted, its fields last, so a cut never takes what names the record."""
     data = json.loads(json.dumps(data, sort_keys=True))  # every level sorted, an order json.loads keeps
-    if "fields" in data:
-        data["fields"] = data.pop("fields")
-    return "- " + _capped(json.dumps(data), MAX_LINE)
+    order = sorted(data, key=lambda key: FIRST.index(key) if key in FIRST else len(FIRST) + (key == "fields"))
+    return "- " + _capped(json.dumps({key: data[key] for key in order}), MAX_LINE)
 
 
 def _data(held: Held) -> dict[str, Any]:
