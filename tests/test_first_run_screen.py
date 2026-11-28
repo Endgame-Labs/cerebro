@@ -238,6 +238,21 @@ def test_a_distill_pass_under_way_counts_its_records_done_of_those_it_goes_throu
         "Distilling", "  ✓ parts  2 records • 5 facts  1m 0s", "", "1 of 2 complete • 0 in flight • 1m 10s"]
 
 
+def test_the_footer_counts_the_work_of_the_stage_since_it_opened() -> None:
+    # the build's curators run under Agents with no count, then the late round opens it for its own
+    screen, out, _ = still()
+    screen(Progress("build", "start"))
+    for key in ("parts/curator", "things/curator"):
+        screen(Progress("agents", "start", key))
+        screen(Progress("agents", "end", key, mark="done", text="admitted 1"))
+    screen(Progress("agents", "open", total=1))
+    screen(Progress("agents", "start", "places/curator"))
+    screen(Progress("agents", "end", "places/curator", mark="done", text="proposed 1"))
+    screen(Progress("build", "end"))
+    screen.settle()
+    assert screen_of(out.getvalue()).endswith("1 of 1 complete • 0 in flight • 0s")
+
+
 def test_a_failure_threads_under_its_row_wrapped_at_its_spaces_and_a_line_said_goes_under_the_groups() -> None:
     screen, clock = region(width=40)
     screen(Progress("compile", "open", total=1))

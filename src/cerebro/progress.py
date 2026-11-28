@@ -99,7 +99,7 @@ class LiveProgress:
         self.rows: list[_Row] = []  # in the order the work started
         self.order: list[_Row] = []  # the work that ended, in the order it ended
         self.checks: dict[str, float] = {}  # the sources being checked, and when each check started
-        self.totals: dict[str, int] = {}  # each stage's count, as its stage opened
+        self.totals: dict[str, tuple[int, int]] = {}  # each stage's count as it opened, and its work complete by then
         self.counting = ""  # the stage the footer counts: the one opened last
         self.said: list[str] = []  # the lines said to the person amid the progress
         self.fresh: dict[str, int] = {}  # by stage, the work done with nothing moved, which shows no line
@@ -125,7 +125,7 @@ class LiveProgress:
                         self.rows.append(row)
                         self.order.append(row)
             elif event.kind == "open":
-                self.totals[event.stage] = event.total
+                self.totals[event.stage] = (event.total, self._complete(event.stage))
                 self.counting = event.stage
             elif event.kind == "start":
                 self.rows.append(_Row(event.stage, event.key, now))
@@ -272,11 +272,14 @@ class LiveProgress:
         took = minutes((row.ended or row.started) - row.started)
         return cut(f"  {mark} {'    '.join(cells)}    {self.p.dim(took)}", width - 1)
 
+    def _complete(self, stage: str) -> int:
+        return sum(1 for row in self.order if row.stage == stage) + self.fresh.get(stage, 0)
+
     def _footer(self, now: float, final: bool, width: int) -> list[str]:
-        stage = self.counting
-        complete = sum(1 for row in self.order if row.stage == stage) + self.fresh.get(stage, 0)
+        total, before = self.totals[self.counting]
+        complete = self._complete(self.counting) - before  # what the stage did before it opened is not of its count
         flying = 0 if final else sum(1 for row in self.rows if row.ended is None) + len(self.checks)
-        parts = [f"{thousands(complete)} of {thousands(self.totals.get(stage, complete))} complete",
+        parts = [f"{thousands(complete)} of {thousands(total)} complete",
                  f"{flying} in flight", elapsed(now - self.start)]
         lines, line = [], ""
         for part in parts:  # the footer fits the width, or breaks between its parts and then at a word
