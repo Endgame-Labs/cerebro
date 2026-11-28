@@ -33,7 +33,6 @@ A note's date is the day its first revision was kept, in the workspace's clock.
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -148,8 +147,8 @@ def note(text: str, workspace: Workspace, caller: Caller, title: str = "", colle
 def browse_notes(workspace: Workspace, caller: Caller, collection: str = ROOT) -> dict[str, Any]:
     """List one collection of notes as a folder lists, without their text: the notes in it, newest first, each
     collection one level under it with how many notes it holds and when the newest was written, and at a top-level
-    collection, such as notes, the five newest notes under it. Read a note whole with query from note, id <its
-    record>."""
+    collection, such as notes, the five newest notes under it. Read a note whole with query { from: note, name: <its
+    id> }."""
     under = collection_of(collection)
     filed = [(str(r.fields.get("collection", ROOT)), r) for r in sorted(workspace.records(KIND), key=lambda r: r.at,
                                                                          reverse=True)]
@@ -173,9 +172,10 @@ def browse_notes(workspace: Workspace, caller: Caller, collection: str = ROOT) -
 
 
 def _named(record: Record) -> dict[str, Any]:
-    """A note as a listing gives it: what names it and where it is filed, without its text."""
-    return asdict(replace(record, body=None, fields={k: record.fields[k] for k in ("name", "title", "collection")
-                                                     if k in record.fields}))
+    """A note as a listing gives it, without its text: its id and record, when it was written, its title, and where
+    it is filed."""
+    return {"id": name_of(record), "record": record.id, "at": record.at, "title": record.fields.get("title", ""),
+            "collection": record.fields.get("collection", ROOT)}
 
 
 @evidence("notes")
