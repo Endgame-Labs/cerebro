@@ -35,9 +35,15 @@ class ReviewApproval(LocalApproval):
         super().__init__(workspace, caller, agents=[])  # no curator is asked, so no left-out row is listed
 
     def pile(self) -> Pile:
+        """`_listed` as a screen shows it, masked as the first run's list is, each row a group of its own."""
+        pile = self.workspace.masked(self._listed())
+        pile.groups = [Group([row]) for row in pile.rows()]
+        return pile
+
+    def _listed(self) -> Pile:
         """The first run's pile of the admits that wait for the caller, then each other proposal of an article."""
         mine = {item.proposal.id: item for item in self.workspace.review(self.caller) if _article(item.proposal.kind)}
-        base = super().pile()
+        base = super()._listed()
         lists = [Listed(listed.agent, listed.collection, [row for row in listed.rows if row.id in mine])
                  for listed in base.lists]
         shown = {row.id for listed in lists for row in listed.rows}
@@ -48,16 +54,14 @@ class ReviewApproval(LocalApproval):
                 other.rows.append(Row(id, p.by.name, p.target.partition("/")[0], p.target,
                                       f"{item.change}; why: {p.reason or 'no reason given'}", path=p.target,
                                       kind=p.kind))
-        pile = Pile([listed for listed in [*lists, other] if listed.rows], review=True)
-        pile.groups = [Group([row]) for row in pile.rows()]
-        return pile
+        return Pile([listed for listed in [*lists, other] if listed.rows], review=True)
 
     def apply(self, choices: Choices) -> Applied:
         """Accept what is ticked, as the first run's list does, and with nothing ticked, decide nothing: either way
         what is left starts unticked again."""
         if choices.accept:
             return super().apply(choices)
-        offer(self.workspace, self.pile().rows())
+        offer(self.workspace, self._listed().rows())
         return Applied()
 
     def reject(self, group: Group, reason: str) -> tuple[str, str]:

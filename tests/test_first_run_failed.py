@@ -14,10 +14,12 @@ from test_first_run import Script, every_curator_weighs  # noqa: F401  (a fixtur
 from test_first_run_structure import by_record, lay_out_workspace, open_it
 
 from cerebro.app import MissingModelKey
-from cerebro.first_run import KEY, Choices, in_first_run, run
+from cerebro.fakes import FakeSecrets
+from cerebro.first_run import KEY, Choices, in_first_run, lines, run
 
 NO_KEY = MissingModelKey("agents/things/curator.md runs on fireworks rune, and no key for it is kept or set: run "
                          "cerebro secrets set fireworks, or export FIREWORKS_API_KEY")
+VALUE = "fake_deadbeefc0ffee0123456789abcdef"  # made up
 INDEX = ("---\nevidence:\n  - articles: [things, parts]\n    text_only: true\nrendered:\n  Contents: { kind: collections, "
          "style: outline }\nheartbeat: [change]\n---\n\nThe index of this wiki.\n\n# Output\n\n## Contents\n")
 
@@ -88,6 +90,19 @@ def test_some_curators_failed_and_some_proposed_the_list_goes_on_and_each_failur
         assert out is not None and not out.failed and out.result is not None
         assert workspace.store.state(KEY)["status"] == "done" and workspace.store.article("things/alder-works") is not None
         assert "Discovery for parts collection did not finish: RuntimeError: the provider is down" in out.lines
+
+
+def test_a_failure_kept_before_its_value_was_saved_as_a_secret_is_masked_on_the_list_and_in_its_line(
+        tmp_path: Path) -> None:
+    secrets = FakeSecrets()
+    script = Failing({"parts/curator"}, RuntimeError(f"the provider said {VALUE}"), {"things/curator": [by_record("T1")]})
+    with open_it(lay_out_workspace(tmp_path), script, secrets=secrets) as workspace:
+        run(workspace, choose=None, say=lambda line: None)  # the list waits, and the failure is kept with it
+        secrets.set("vault", VALUE)  # never read here
+        out = run(workspace, choose=Choices.starter, say=lambda line: None)
+    assert out is not None and "Discovery for parts collection did not finish: RuntimeError: the provider said " \
+        "[secret]" in out.lines
+    assert not any(VALUE in line for line in [*lines(out.pile), *out.lines])
 
 
 def test_some_failed_and_the_rest_proposed_nothing_still_fails(tmp_path: Path) -> None:
