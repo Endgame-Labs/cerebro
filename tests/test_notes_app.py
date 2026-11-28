@@ -656,6 +656,23 @@ def test_retracting_a_note_over_mcp_withdraws_its_facts_and_the_article_follows(
             record=other.structured_content["record"])}
 
 
+def test_a_revision_of_a_retracted_note_tells_its_maker_whether_its_facts_are_read(tmp_path: Path) -> None:
+    root, facts, now = workspace_folder(tmp_path / "workspace"), FakeExtraction(), [DAY]
+    with Cerebro(root, trusted=True, agent_run=ScriptedRun(standing, clock=lambda: now[0]), extraction=facts,
+                 clock=lambda: now[0]) as workspace:
+        kept = over_mcp(workspace, "note", {"text": "We chose the weekly cap."}).structured_content
+        assert "warnings" not in kept
+        assert not over_mcp(workspace, "retract", {"id": kept["record"], "reason": "wrong"}).is_error
+        same = over_mcp(workspace, "note", {"id": kept["id"], "text": "We chose the daily cap."}).structured_content
+        workspace.run_once()
+        assert "retracted too" in same["warnings"][0] and facts.facts(record=kept["record"]) == []
+        now[0] += timedelta(seconds=1)
+        later = over_mcp(workspace, "note", {"id": kept["id"], "text": "We chose the monthly cap."}).structured_content
+        workspace.run_once()
+        assert "is read into facts" in later["warnings"][0]
+        assert [f.text for f in facts.facts(record=kept["record"])] == ["We chose the monthly cap."]
+
+
 # -- two clients writing at once ----------------------------------------------------------------------------------------
 
 def opened(root: Path) -> Cerebro:

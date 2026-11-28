@@ -15,7 +15,8 @@ gives an agent the facts of the notes of one collection and the collections unde
 - **A revision is a full replace.** Writing with `id` keeps the whole new text as the next revision of the note's one
   record, in its place, under the same name: the facts layer replaces what the old text gave, and nothing is merged
   from it. Only the caller that wrote a note revises it, and every local client with no token is one caller, so a
-  note written in one is revised from another.
+  note written in one is revised from another. The reply to a revision of a note a retract took back says so, and
+  whether the revision's facts are read.
 - **A note's text is at most 50 KiB, its title 500 characters and its collection 200,** so it always comes back
   whole in one reply.
 - **A context agent reads a note's facts, never its text:** the app gives no kind's text to agents.
@@ -135,10 +136,22 @@ def note(text: str, workspace: Workspace, caller: Caller, title: str = "", colle
     others = [r for n, r in notes_now.items() if n != (id.strip() if id else None)]
     made = (not id or old.fields.get("collection", ROOT) != fields["collection"]) and all(
         r.fields.get("collection", ROOT) != fields["collection"] for r in others)
+    retracted = bool(id) and _stands_retracted(workspace, caller, old.id)
     record = workspace.keep(caller, KIND, text, fields, id=notes_now[id.strip()].id if id else None,
                             unique=("name", "slug"))
-    return {"id": name_of(record), "record": record.id, "collection": fields["collection"],
+    said = {"id": name_of(record), "record": record.id, "collection": fields["collection"],
             "revision": int(record.revision), "at": record.at} | ({"new_collection": True} if made else {})
+    if retracted:
+        said["warnings"] = [f"note {said['id']} was retracted: this revision is retracted too, so no facts are read "
+                            "from it" if _stands_retracted(workspace, caller, record.id) else
+                            f"note {said['id']} was retracted: this revision, written after the retract, is read "
+                            "into facts"]
+    return said
+
+
+def _stands_retracted(workspace: Workspace, caller: Caller, record: str) -> bool:
+    """Whether a retract took back a note as it stands now, as a query of it says."""
+    return f"record {record} was retracted" in workspace.query(caller, KIND, {"id": record}).warnings
 
 
 @evidence("notes")

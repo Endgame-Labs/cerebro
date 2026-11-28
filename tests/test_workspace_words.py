@@ -4,6 +4,7 @@ folder on every command."""
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -188,17 +189,24 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
     (root / "agents").mkdir(parents=True)
     (root / "settings.yaml").write_text("{}\n")
     (root / "extensions.py").write_text(f"from cerebro import load_app\n\nnotes = load_app({str(notes)!r})\n")
-    workspace = Cerebro(root, trusted=True, store=MemoryStore(), agent_run=ScriptedRun(lambda prompt: {}))
+    now = [datetime(2026, 11, 17, 9, 0, tzinfo=UTC)]
+    workspace = Cerebro(root, trusted=True, store=MemoryStore(), agent_run=ScriptedRun(lambda prompt: {}),
+                        clock=lambda: now[0])
 
     async def session() -> list[Any]:
         async with Client(workspace.mcp_server()) as client:
             empty = client.instructions
             kept = await client.call_tool("note", {"text": "We ship on Monday.", "collection": "notes/projects"})
             too_big = await client.call_tool("note", {"text": "x" * 60_000})
-            return [empty, client.instructions, kept, too_big,
+            said = [empty, client.instructions, kept, too_big,
                     await client.call_tool("query", {"from": "note"}),
                     await client.call_tool("query", {"from": "note", "collection": "notes"}),
                     await client.call_tool("query", {"from": "note", "collection": "nowhere"})]
+            await client.call_tool("retract", {"id": kept.structured_content["record"], "reason": "moved"})
+            said.append(await client.call_tool("note", {"id": kept.structured_content["id"], "text": "On Tuesday."}))
+            now[0] += timedelta(seconds=1)  # a revision in the retract's second is retracted too, and a later one read
+            said.append(await client.call_tool("note", {"id": kept.structured_content["id"], "text": "On Friday."}))
+            return said
 
     async def again() -> str | None:
         async with Client(workspace.mcp_server()) as client:
@@ -216,6 +224,7 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
     assert said[3].is_error and "50 KiB" in said[3].content[0].text
     assert "read_as" in said[4].structured_content and "listed one level" in said[5].content[0].text
     assert said[-2]["warnings"] and said[-1]["warnings"]
+    assert said[7].structured_content["warnings"] != said[8].structured_content["warnings"]
     for item in said:
         text = item if isinstance(item, (str, dict)) else (item.content[0].text, item.structured_content)
         assert not BRAIN.search(str(text)), text
