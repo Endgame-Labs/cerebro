@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import re
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+from click.testing import CliRunner
 
-from cerebro import Cerebro, Record
+from cerebro import Cerebro, Record, cli
 from cerebro.article import Identity
 from cerebro.clock import Clock, stamp
 from cerebro.fakes import FakeConnector, FakeExtraction, MemoryStore, ScriptedRun
@@ -65,6 +67,30 @@ def test_a_weekly_agent_runs_once_a_week_in_the_workspaces_zone_and_not_on_chang
     assert waits.skipped["reports/weekly"] == "heartbeat is weekly: it ran this period, and runs next at 2026-11-23 00:00"
     hands.move(hours=19)  # Monday 00:00 in Tokyo
     assert cerebro.run_once().compiled == ["reports/weekly"]
+
+
+def test_a_weekly_writer_runs_at_once_after_its_file_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Once, on the next pass or by a person's hand, and then it keeps its schedule."""
+    hands = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC))  # a Monday
+    notes, extraction = FakeConnector("notes", NOTES), FakeExtraction()
+    cerebro = workspace(tmp_path, "[weekly]", extraction, notes, hands)
+    assert cerebro.run_once().compiled == ["reports/weekly"]
+    path = tmp_path / "agents" / "reports" / "weekly.md"
+
+    def changed() -> Cerebro:
+        path.write_text(path.read_text() + "\nKeep it short.\n")
+        hands.move(days=1)
+        return Cerebro(tmp_path, store=cerebro.store, extraction=extraction, clock=hands, connectors=[notes],
+                       agent_run=ScriptedRun(cited, clock=hands))
+
+    again = changed()
+    ran = again.run_once()
+    assert ran.compiled == ["reports/weekly"] and ran.due["reports/weekly"] == "its agent file changed"
+    assert again.run_once().skipped["reports/weekly"].startswith("heartbeat is weekly: it ran this period")
+    by_hand = changed()
+    monkeypatch.setattr(cli, "open_workspace", lambda root: nullcontext(by_hand))
+    assert CliRunner().invoke(cli.main, ["agents", "run", "reports/weekly", "--workspace", str(tmp_path)]).exit_code == 0
+    assert by_hand.run_once().skipped["reports/weekly"].startswith("heartbeat is weekly: it ran this period")
 
 
 def test_an_agent_on_manual_alone_waits_for_a_person(tmp_path: Path) -> None:

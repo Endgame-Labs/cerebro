@@ -366,7 +366,7 @@ class _Beat:
     ran: str | None = None
     scheduled: str | None = None
     retried: str | None = None
-    file: str | None = None  # the agent's file, and its subagents', as its last run read them
+    file: str | None = None  # the agent's file, and its subagents', as its last turn read them, run or not
     # Each article its runs wrote on, by id: when its last run there started, and the agent's files and the workspace's
     # settings as that run read them. A writer's cooldown counts from it, article by article.
     articles: dict[str, dict[str, str]] | None = None
@@ -406,10 +406,12 @@ def _words(workspace: Cerebro, agent: Agent) -> list[str]:
     return list(dict.fromkeys(word for sub in subs for word in sub.heartbeat))
 
 
-def _wake(agent: Agent, words: list[str], beat: _Beat, now: datetime, zone: tzinfo) -> tuple[str | None, str, str]:
+def _wake(agent: Agent, words: list[str], beat: _Beat, file: str, now: datetime,
+          zone: tzinfo) -> tuple[str | None, str, str]:
     """Whether `agent`, woken by `words`, is due at `now`: the schedule word whose period is due, or None, and why it
-    runs, or empty with why it waits. A writer due for a change may still wait out its cooldown on an article, which
-    compile asks `_hold` once it knows that new evidence alone moved there."""
+    runs, or empty with why it waits. One whose files, `file` as they stand, are not those its last turn read is due
+    as for a change, whatever its schedule. A writer due for a change may still wait out its cooldown on an article,
+    which compile asks `_hold` once it knows that new evidence alone moved there."""
     if not words:
         return None, "", "nothing wakes it: give it a heartbeat, or its subagents one"
     if all(word == "manual" for word in words):
@@ -424,6 +426,8 @@ def _wake(agent: Agent, words: list[str], beat: _Beat, now: datetime, zone: tzin
         nexts.append(after)
     if "change" in words:
         return None, "change", ""
+    if beat.file not in (None, file):
+        return None, "its agent file changed", ""
     plan = ", ".join(words)
     return None, "", f"heartbeat is {plan}: it ran this period, and runs next at {min(nexts):%Y-%m-%d %H:%M}"
 
@@ -437,7 +441,8 @@ def _due(workspace: Cerebro, agents: list[Agent], result: PassResult,
     for agent in agents:
         if agent.role == "subagent":
             continue
-        word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), now, zone)
+        word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), _file_stamp(workspace, agent),
+                                 now, zone)
         if agent.id in woken and word is None:
             why, waits = "a caller accepted a proposal for its collection", ""
         if not waits and agent.role in (*WRITERS, "curator") and (until := _lease(workspace, agent, result.token, result)):
@@ -477,6 +482,7 @@ def _ran(workspace: Cerebro, agent: Agent, word: str | None, run: Run | None, fa
     beat, now = _beat(workspace, agent), workspace.clock()
     if run is not None:
         beat.ran = stamp(began or now)
+    if run is not None or not failed:
         beat.file = _file_stamp(workspace, agent)
     if articles:
         beat.articles = (beat.articles or {}) | dict.fromkeys(articles, _mark(workspace, agent, began or now))
@@ -1207,7 +1213,8 @@ def curators_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, st
     woken = {agent.id for agent in curators if _beat(workspace, agent).again or new_yes(workspace.store, agent)}
     now, zone = workspace.clock(), zone_of(workspace.settings)
     for agent in curators:  # a scheduled run does not wait, as a writer's does not
-        word, _, held = _wake(agent, _words(workspace, agent), _beat(workspace, agent), now, zone)
+        word, _, held = _wake(agent, _words(workspace, agent), _beat(workspace, agent), _file_stamp(workspace, agent),
+                              now, zone)
         if agent.id not in listed and word is None and not held and (why := waits_after(workspace, agent, agent.target)):
             listed[agent.id] = []
             result.skipped[agent.id] = why
@@ -2723,7 +2730,7 @@ def held_runs(workspace: Cerebro, agent: Agent, article: str) -> str:
     there, or else the writer's next run, which runs every part that did not run. A period whose earlier run left
     other articles to do owes only those."""
     zone, words = zone_of(workspace.settings), _words(workspace, agent)
-    word, _, _ = _wake(agent, words, _beat(workspace, agent), workspace.clock(), zone)
+    word, _, _ = _wake(agent, words, _beat(workspace, agent), _file_stamp(workspace, agent), workspace.clock(), zone)
     if word is not None and ((owed := _left(workspace, agent, word)) is None or article in owed):
         return "runs next pass"
     local = workspace.clock().astimezone(zone)
