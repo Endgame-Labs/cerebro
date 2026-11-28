@@ -103,7 +103,7 @@ def test_a_query_or_read_of_an_app_kind_says_which_records_it_shows_a_retract_to
         retract(store, None, YOU, id, clock=lambda: NOW)
     store.keep(replace(store.record("n2"), revision="2", at="2026-11-17T13:00:00Z"))  # its maker's word after it
     shown = lookup.query(YOU, "note", {"owner": "west"})
-    assert [r.id for r in shown.items] == ["n2", "n1"]
+    assert [r.id for r in shown.items] == ["n2", "n1"] and shown.retracted == ["n1"]
     assert shown.warnings == ["record n1 was retracted"]
     assert lookup.read(YOU, ["n3", "n2"]).warnings == ["record n3 was retracted"]
 
