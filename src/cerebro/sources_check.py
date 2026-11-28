@@ -245,8 +245,10 @@ def check(workspace: Cerebro, name: str, *, whole: bool = False, limit: int = 0)
             connector.select("select 1")
         except CerebroError as error:
             raise CheckRefused(mask(str(error))) from None
-        return Checked(name, "", mask=mask, opened=f"sources/{name}: the database opens, read only, and a pass lists "
-                       "no records from it: an agent reads it with a sql evidence line")
+        except Exception as error:  # noqa: BLE001 - every failure of the open is one masked line, never a traceback
+            raise CheckRefused(mask(f"sources/{name}.yaml: {type(error).__name__}: {error}")) from None
+        return Checked(name, "", mask=mask, opened=f"sources/{name}: the database opens, read only, and "
+                       f"{connector.lists_nothing}")
     store = workspace.store
     result = Checked(name, "", whole=whole, cursor=store.state(f"cursor:{name}") is not None, limit=limit, mask=mask,
                      first_run=in_first_run(workspace))

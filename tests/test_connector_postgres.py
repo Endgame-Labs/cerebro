@@ -127,15 +127,15 @@ class Cursor:
         self.connection.cursor_closed = True
 
 
-AGAIN = re.compile(r"SET LOCAL statement_timeout = \d+")
+AGAIN = re.compile(r"SET statement_timeout = \d+")
 
 
 def opened(query: str, ms: int = 10_000) -> list[str]:
-    """Every statement one read sends, in order, but the timeout set again before each fetch: the session read only,
-    one read-only transaction, the check that the login is not too strong, its timeout, the query wrapped so the
+    """Every statement one read sends, in order, but the timeout set again before each fetch: its timeout, first, the
+    session read only, one read-only transaction, the check that the login is not too strong, the query wrapped so the
     server stops a row far too long, and the rollback."""
-    return ["SET default_transaction_read_only = on", "BEGIN READ ONLY", postgres.TOO_STRONG,
-            f"SET LOCAL statement_timeout = {ms}", postgres.WRAPPED.format(query=query, cap=4 << 18), "ROLLBACK"]
+    return [f"SET statement_timeout = {ms}", "SET default_transaction_read_only = on", "BEGIN READ ONLY",
+            postgres.TOO_STRONG, postgres.WRAPPED.format(query=query, cap=4 << 18), "ROLLBACK"]
 
 
 def sent(connection: Connection) -> list[str]:
@@ -362,7 +362,7 @@ def test_a_session_the_server_will_not_make_read_only_never_sends_the_query(root
     server.fails["BEGIN READ ONLY"] = StandInError("server closed the connection unexpectedly", None)
     with pytest.raises(DatabaseError, match="the query failed .server closed the connection unexpectedly."):
         warehouse(root, store).select("select region from deals")
-    read_only(server, ["SET default_transaction_read_only = on", "BEGIN READ ONLY", "ROLLBACK"])
+    read_only(server, [*opened("")[:3], "ROLLBACK"])
 
 
 def test_a_login_too_strong_is_refused_before_the_query_is_sent(root: Path, store: FileSecrets,
@@ -374,7 +374,7 @@ def test_a_login_too_strong_is_refused_before_the_query_is_sent(root: Path, stor
         "sources/warehouse.yaml: the connection string kept as warehouse-dsn logs in as a superuser, or a role that "
         "may read the server's files or run its programs, which a sql line could reach through any function: make a "
         "role that can only read, as the sources docs show, and keep its connection string instead")
-    read_only(server, ["SET default_transaction_read_only = on", "BEGIN READ ONLY", postgres.TOO_STRONG, "ROLLBACK"])
+    read_only(server, [*opened("")[:4], "ROLLBACK"])
 
 
 def test_a_row_the_server_stopped_for_its_length_is_one_line(root: Path, store: FileSecrets, server: Server) -> None:
@@ -428,7 +428,7 @@ def test_rows_size_and_time_are_bounded_with_a_note_that_says_what_was_not_read(
     with pytest.raises(DatabaseError, match="ran past 3 seconds and was stopped"):
         slow.select("select region, amount from deals")
     assert sent(server.connections[-1]) == opened("select region, amount from deals", 2000)[:-1] + ["ROLLBACK"]
-    assert server.connections[-1].statements[-2] == "SET LOCAL statement_timeout = 1000"  # the time left, at the server
+    assert server.connections[-1].statements[-2] == "SET statement_timeout = 1000"  # the time left, at the server
     assert server.connections[-1].fetched == [50]  # it stopped between fetches, on the stand-in's seconds
     assert server.options[-1]["connect_timeout"] == 3
     whole = warehouse(root, store, limits=Limits(seconds=3), ticks=lambda: 100.0)
@@ -647,7 +647,7 @@ def test_an_engine_given_its_connect_uses_it_and_never_the_driver(monkeypatch: p
     PostgresEngine(lambda: DSN, "sources/warehouse.yaml", connect=brief.connect, ticks=lambda: 0.0).run(
         "select 1", Limits(seconds=0.0004))
     assert brief.options[0]["connect_timeout"] == 2  # libpq waits at least two seconds
-    assert brief.connections[0].statements[3] == "SET LOCAL statement_timeout = 1"  # zero would mean no limit
+    assert brief.connections[0].statements[0] == "SET statement_timeout = 1"  # zero would mean no limit
 
 
 def test_a_rollback_or_close_that_fails_on_the_way_out_changes_neither_the_rows_nor_the_failure(

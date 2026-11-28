@@ -10,14 +10,14 @@ error line masks it and the password inside it, as the workspace's mask does eve
 Read only is three layers, as for SQLite. Before anything is sent, the query must pass `check_query` as SQLite reads
 it and again as Postgres reads it, with the words that write in Postgres refused too (`copy`, `merge`, and `share`,
 which locks rows), and no call of a function that reads the server's files, reaches the network, waits, signals
-another session or changes a setting (`REFUSED_CALLS`). Then the session and its one transaction are read only at the
+another session or changes a setting (`REFUSED_CALLS`). Then a statement timeout for the time the query has left, set
+before anything else and again before each fetch, and the session and its one transaction are read only at the
 server: `SET default_transaction_read_only = on`, `BEGIN READ ONLY`, a refusal of a login that is a superuser or may
-read the server's files or run its programs (`TOO_STRONG`), a statement timeout for the time the query has left, set
-again before each fetch, the one query through a server-side cursor, wrapped so the server stops a row far past the
-size limit before sending it (`WRAPPED`), and always `ROLLBACK`, never `COMMIT`; the connection is opened in
-autocommit, so the driver sends no `BEGIN` or `COMMIT` of its own. Last, the same limits bound what comes back: at
-most `ROWS` rows, read a few at a time from the cursor, at most `SIZE` bytes of them, no value longer than `SIZE`, and
-no more than `SECONDS` in all. The real guard is a role that can only read the tables it should: the docs give the SQL
+read the server's files or run its programs (`TOO_STRONG`), the one query through a server-side cursor, wrapped so the
+server stops a row far past the size limit before sending it (`WRAPPED`), and always `ROLLBACK`, never `COMMIT`; the
+connection is opened in autocommit, so the driver sends no `BEGIN` or `COMMIT` of its own. Last, the same limits bound
+what comes back: at most `ROWS` rows, read a few at a time from the cursor, at most `SIZE` bytes of them, no value
+longer than `SIZE`, and no more than `SECONDS` in all. The real guard is a role that can only read the tables it should: the docs give the SQL
 to make one. A NOTICE or WARNING the server sends is dropped: psycopg passes one only to a handler, and none is added.
 
 Each value comes back as the SQLite source gives one, None, a number or text (`cell` writes down each choice).
@@ -78,7 +78,7 @@ TOO_STRONG = ("SELECT rolsuper OR pg_has_role(current_user, 'pg_read_server_file
               "OR pg_has_role(current_user, 'pg_write_server_files', 'MEMBER') "
               "OR pg_has_role(current_user, 'pg_execute_server_program', 'MEMBER') "
               "FROM pg_roles WHERE rolname = current_user")
-TIMEOUT = "SET LOCAL statement_timeout = {ms}"
+TIMEOUT = "SET statement_timeout = {ms}"  # for the session: the first is set before the transaction begins
 ROLLBACK = "ROLLBACK"
 ROW_MARK = "cerebro_row_bytes:"
 ROW_FACTOR = 4  # a row's text past this many times the size limit is stopped at the server, before it is sent
@@ -261,13 +261,13 @@ class PostgresEngine(Engine):
         try:
             db = connect(dsn, autocommit=True, connect_timeout=max(2, math.ceil(limits.seconds)),
                          application_name=APPLICATION)
-        except Exception as error:
-            if not hasattr(error, "sqlstate") and not isinstance(error, OSError):
-                raise
+        except Exception as error:  # noqa: BLE001 - whatever the driver raises holds the string it was handed
             raise DatabaseError(f"{self.label}: the database does not open ({one_line(hide(str(error)))}): check "
                                 f"the connection string kept as {self.item}, and that the server is up") from None
         cursor = None
         try:
+            deadline = self.ticks() + limits.seconds
+            self._time_left(db, deadline, limits)
             db.execute(READ_ONLY)
             db.execute(BEGIN)
             if (db.execute(TOO_STRONG).fetchone() or (True,))[0]:
@@ -275,8 +275,6 @@ class PostgresEngine(Engine):
                                     "or a role that may read the server's files or run its programs, which a sql line "
                                     "could reach through any function: make a role that can only read, as the sources "
                                     "docs show, and keep its connection string instead")
-            deadline = self.ticks() + limits.seconds
-            self._time_left(db, deadline, limits)
             cursor = db.cursor(name=CURSOR_NAME)
             cursor.execute(WRAPPED.format(query=query, cap=ROW_FACTOR * limits.size))
             columns = [str(d[0]) for d in cursor.description or ()]
