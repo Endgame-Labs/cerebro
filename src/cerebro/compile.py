@@ -60,7 +60,7 @@ from .article import (
 from .budget import LOG, BudgetSpent, Held, HeldForRoom, Ledger, Stopped, stopping, under
 from .caller import Caller
 from .clean import label, land_heading, underlined_as_atx, unlabeled
-from .clock import Clock, stamp, system_clock
+from .clock import Clock, pinned, stamp, system_clock
 from .connector import Connector
 from .errors import CerebroError
 from .evidence import (
@@ -664,7 +664,8 @@ class _Grounding:
         if decider is not None and self.ledger is not None and self.decision is not None:
             decider = Held(decider, self.ledger, "compilation", self.decision, self.clock, run)
             self.judges.append(decider)
-        judge = Judge(decider, self.article, _workspace(self.root), f"{self.clock().astimezone(self.zone):%Y-%m-%d}")
+        today = pinned(self.clock().astimezone(self.zone))
+        judge = Judge(decider, self.article, _workspace(self.root), f"{today:%Y-%m-%d}")
 
         def found(ids: list[str]) -> dict[str, dict[str, Any]]:
             entries = reads()

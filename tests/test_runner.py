@@ -172,6 +172,37 @@ def test_one_clock_reaches_the_window_the_run_and_the_ledger(tmp_path: Path) -> 
     assert cerebro.store.rows("spend")[0].data["at"] == "2026-11-17T20:00:00Z"
 
 
+def test_cerebro_today_moves_the_day_windows_the_writer_and_the_judge_read_and_no_stamp(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from cerebro.fakes import FakeDecider
+    from cerebro.run import PydanticRun
+
+    (tmp_path / "agents" / "reports").mkdir(parents=True)
+    (tmp_path / "settings.yaml").write_text("timezone: UTC\n")
+    (tmp_path / "agents" / "reports" / "weekly.md").write_text(
+        "---\nevidence:\n  - query: { from: facts, window: last_7_days }\n---\n\n# Output\n\n## Summary\n")
+    monkeypatch.setenv("CEREBRO_TODAY", "2026-11-20")
+    seen: list[str] = []
+    at = datetime(2027, 11, 20, 9, 0, tzinfo=UTC)  # a year on, the note is out of every window
+    note = Record(id="n", source="notes", revision="1", at="2026-11-18", body="A note from that week.")
+    decider = FakeDecider()
+    cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), clock=lambda: at, decider=decider,
+                      connectors=[FakeConnector("notes", [note])],
+                      agent_run=PydanticRun.scripted(lambda p: seen.append(p) or cited(p)))
+    cerebro.agent_run.clock = cerebro.clock
+    assert cerebro.run_once().compiled == ["reports/weekly"]
+    assert "Today is Fri Nov 20, 2026." in seen[0] and "A note from that week." in seen[0] and "2027" not in seen[0]
+    assert [state["today"] for state, _ in decider.asked if "passage" in state] == ["2026-11-20"]
+    assert cerebro.store.rows("spend")[0].data["at"] == "2027-11-20T09:00:00Z"
+
+
+def test_a_cerebro_today_that_is_no_date_is_refused_with_what_to_write(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CEREBRO_TODAY", "tomorrow")
+    result = workspace(tmp_path, extraction=FakeExtraction()).run_once()
+    assert "CEREBRO_TODAY is 'tomorrow': write a date such as 2026-11-20" in result.failed["reports/weekly"]
+
+
 def test_extraction_is_held_to_its_own_cap_and_its_cost_is_kept(tmp_path: Path) -> None:
     (tmp_path / "agents").mkdir()
     (tmp_path / "settings.yaml").write_text("budget:\n  extraction_daily_usd: 0.000000001\n")

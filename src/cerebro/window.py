@@ -1,6 +1,7 @@
 """Windows: named spans of time that a filter's value may be, as `due: last_90_days`.
 
-A window is read at a moment and in a time zone, both given by the caller: nothing here reads the clock. The names:
+A window is read at a moment and in a time zone, both given by the caller, on the day `CEREBRO_TODAY` names when it
+is set: nothing here reads the clock. The names:
 - `last_N_days`, `next_N_days` and `before_last_N_days`, for a whole N from 1 to 999999. The last N days run from
   the same moment N days back up to now, the next N days from now to N days on, and `before_last_N_days` holds
   every time before the last N days start, so the two never overlap.
@@ -20,6 +21,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 
+from .clock import pinned
 from .errors import CerebroError
 
 __all__ = ["NAMES", "Span", "WindowError", "holds", "is_window", "read_time", "shaped", "span"]
@@ -74,7 +76,7 @@ def span(name: str, now: datetime, zone: tzinfo, fiscal_start: int | None = None
     if now.tzinfo is None:
         raise WindowError("a window is read at a time with a zone, and this one has none: pass an aware datetime")
     key = name.strip().lower()
-    now = now.astimezone(zone)
+    now = pinned(now.astimezone(zone))
     if days := DAYS.fullmatch(key):
         n = timedelta(days=int(days[2]))
         earliest, latest = datetime(1, 1, 2, tzinfo=UTC), datetime(9999, 12, 30, tzinfo=UTC)
