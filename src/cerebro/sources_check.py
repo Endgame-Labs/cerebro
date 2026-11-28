@@ -234,19 +234,14 @@ def check(workspace: Cerebro, name: str, *, whole: bool = False, limit: int = 0)
     the next pass does with each record, as `runner.decide` decides it. Get each record the pass would get, at most
     `limit` when it is above 0. Reads the store and keeps nothing. A source that lists nothing by design, a database
     source, is instead opened once, read only, by a query that reads none of its tables. Raises `CheckRefused`,
-    masked, for a source the workspace refused or does not list, or one that does not open."""
+    masked, for a source the workspace refused or does not list, and the masked error of one that does not open."""
     workspace.refresh_mask()
     mask = workspace.mask_every()
     if why := refusal(workspace, name):
         raise CheckRefused(mask(why))
     connector = workspace.connectors[name]
     if connector.lists_nothing:
-        try:
-            connector.select("select 1")
-        except CerebroError as error:
-            raise CheckRefused(mask(str(error))) from None
-        except Exception as error:  # noqa: BLE001 - every failure of the open is one masked line, never a traceback
-            raise CheckRefused(mask(f"sources/{name}.yaml: {type(error).__name__}: {error}")) from None
+        connector.select("select 1")
         return Checked(name, "", mask=mask, opened=f"sources/{name}: the database opens, read only, and "
                        f"{connector.lists_nothing}")
     store = workspace.store

@@ -311,12 +311,12 @@ def test_a_database_source_passes_when_it_opens_and_fails_saying_why_when_it_doe
     (root / "data" / "warehouse.sqlite").write_text("North sold 1000.\n")
     broken = _check(root, "warehouse")
     assert broken.exit_code == 1
-    assert broken.output.splitlines()[-1].startswith("Error: sources/warehouse.yaml: ") and \
-        "not a database" in broken.output, broken.output
+    assert broken.output.splitlines()[-1].startswith("Error: sources/warehouse.yaml: the database does not open "
+                                                     "(file is not a database)"), broken.output
 
 
-def test_any_failure_to_open_a_database_is_one_line_with_its_login_masked(tmp_path: Path,
-                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_database_check_prints_neither_the_password_nor_the_host_of_its_login(tmp_path: Path,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
     from test_connector_postgres import DSN, PASSWORD, Server
 
     from cerebro.connectors import postgres
@@ -325,12 +325,10 @@ def test_any_failure_to_open_a_database_is_one_line_with_its_login_masked(tmp_pa
     server = Server()
     monkeypatch.setattr(postgres, "driver", lambda label: server.connect)
     monkeypatch.setattr(cli, "open_workspace", lambda folder: Cerebro(root, secrets=FakeSecrets({"warehouse-dsn": DSN})))
-    for fails in ({"connect": RuntimeError(f"no route to {PASSWORD}@db.example")}, {"query": KeyError("its own fault")}):
-        server.fails = fails
-        done = _check(root, "warehouse")
-        assert done.exit_code == 1 and done.output.splitlines()[-1].startswith("Error: sources/warehouse.yaml: "), \
-            done.output
-        assert PASSWORD not in done.output and "db.example" not in done.output, done.output
+    server.fails = {postgres.READ_ONLY: RuntimeError(f"lost {PASSWORD} at db.example")}
+    done = _check(root, "warehouse")
+    assert done.exit_code == 1 and done.output.splitlines()[-1].startswith("RuntimeError: lost "), done.output
+    assert PASSWORD not in done.output and "db.example" not in done.output, done.output
 
 
 def test_a_name_with_no_source_file_is_refused(tmp_path: Path) -> None:

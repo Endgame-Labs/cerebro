@@ -261,7 +261,9 @@ class PostgresEngine(Engine):
         try:
             db = connect(dsn, autocommit=True, connect_timeout=max(2, math.ceil(limits.seconds)),
                          application_name=APPLICATION)
-        except Exception as error:  # noqa: BLE001 - whatever the driver raises holds the string it was handed
+        except Exception as error:
+            if not hasattr(error, "sqlstate") and not isinstance(error, OSError):
+                raise
             raise DatabaseError(f"{self.label}: the database does not open ({one_line(hide(str(error)))}): check "
                                 f"the connection string kept as {self.item}, and that the server is up") from None
         cursor = None

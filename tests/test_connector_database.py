@@ -364,7 +364,7 @@ def test_a_missing_file_or_one_that_is_not_a_database_is_read_as_neither_and_not
     assert not (root / "data" / "missing.sqlite").exists()
     (root / "data" / "notes.sqlite").write_text("North sold 1000.\n")
     (root / "sources" / "warehouse.yaml").write_text("kind: database\nurl: sqlite:data/notes.sqlite\n")
-    with pytest.raises(DatabaseError, match="sources/warehouse.yaml: the query failed .*not a database"):
+    with pytest.raises(DatabaseError, match="warehouse.yaml: the database does not open .file is not a database."):
         warehouse(root).select("select 1")
     assert (root / "data" / "notes.sqlite").read_text() == "North sold 1000.\n"
 

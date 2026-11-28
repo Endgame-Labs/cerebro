@@ -83,6 +83,8 @@ def test_init_status_trust_and_forget_on_a_small_workspace_never_say_brain(tmp_p
     (root / "sources" / "warehouse.yaml").write_text("kind: database\nurl: sqlite:warehouse.sqlite\n")
     (root / "warehouse.sqlite").write_bytes(b"")
     said += [run("sources", "check", "warehouse", "--workspace", str(root))]
+    (root / "warehouse.sqlite").write_text("North sold 1000.\n")
+    said += [run("sources", "check", "warehouse", "--workspace", str(root))]
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     said += [run("forget", str(root), "--yes"), run("forget")]
     for result in said:

@@ -2070,7 +2070,7 @@ def sources_check(name: str, root: Path | None, whole: bool, limit: int) -> None
     how many wait. It keeps nothing: the next pass lists the same records."""
     from .sources_check import check
 
-    with open_workspace(root) as workspace:
+    with open_workspace(root) as workspace, _masked_errors(workspace):
         workspace.refresh_mask()
         _echo(workspace.mask_every()(f"workspace {workspace.root}"), cap=None)
         checked = check(workspace, name, whole=whole, limit=limit)
