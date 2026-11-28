@@ -833,7 +833,7 @@ def _keyed() -> Any:
 # -- each model call: its tries, its time and what it spends --------------------------------------------------------
 
 class ModelUnreachable(CerebroError, RuntimeError):
-    """A model call of the facts layer failed every try it is given."""
+    """A model call of the facts layer failed every try it is given, or was answered with a redirect."""
 
 
 class _Bounded(httpx.BaseTransport):
@@ -864,6 +864,11 @@ class _Bounded(httpx.BaseTransport):
             raise
         if self.gateway is not None:
             self.gateway.refused_at(str(request.url), response.status_code, "facts layer")
+        if 300 <= response.status_code < 400:  # Factoid would read the redirect's body as the model's answer
+            response.close()
+            raise ModelUnreachable(f"the facts layer's model at {request.url.host} answered with a redirect (HTTP "
+                                   f"{response.status_code}), which is not followed so the key stays with its host: "
+                                   "check providers in settings.yaml, then the next pass tries again")
         if response.status_code >= 400 and self.mask is not None:
             said = self.mask(response.read().decode("utf-8", "replace")).encode()
             kept = [(k, v) for k, v in response.headers.items() if k.lower() not in ("content-encoding", "content-length")]
