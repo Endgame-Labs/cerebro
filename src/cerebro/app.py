@@ -848,7 +848,8 @@ class Cerebro:
         if spec is not None and PROVIDERS[spec.provider].decision_url:
             key = self.model_key(spec)
             if key():
-                return HttpDecider(spec, key=key, route=self.gateway.route(spec.provider))
+                return HttpDecider(spec, key=key, route=self.gateway.route(spec.provider),
+                                   mask=lambda text: self.mask_every()(text))
             why = (f"models.decision has no key: {spec.key_name} is not in the secrets store and {spec.variable} is "
                    "not set")
         else:
