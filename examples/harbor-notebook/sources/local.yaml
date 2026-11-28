@@ -1,0 +1,17 @@
+kind: files
+window: { behind: all }
+select:
+  - glob: local/interviews/*.md
+    extract: facts
+  - glob: local/meetings/*.md
+    extract: facts
+  - glob: local/operating-budget.csv
+    rows: csv
+    id: "{row.line_id}"
+    at: "{row.date}"
+    extract: facts
+  - glob: local/corrections.jsonl
+    rows: jsonl
+    id: "{row.id}"
+    at: "{row.date}"
+    extract: facts

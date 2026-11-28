@@ -1,0 +1,10 @@
+# The change order log, one record per row. Its subcontractor column ties a row's facts to that subcontractor.
+kind: files
+window: { behind: all }
+select:
+  - glob: "logs/change-orders.csv"
+    rows: csv
+    id: "{row.co}"
+    at: "{row.date}"
+    extract: facts
+    identity: { subcontractor: "{row.subcontractor}" }

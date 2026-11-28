@@ -1,0 +1,6 @@
+# Keeper shift notes, one markdown file per shift. The Tanks: line says which tanks the note covers.
+kind: files
+window: { behind: all }
+select:
+  - glob: "shifts/*.md"
+    extract: facts

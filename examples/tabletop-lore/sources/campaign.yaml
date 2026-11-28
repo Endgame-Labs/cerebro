@@ -1,0 +1,11 @@
+# Campaign markdown files: session recaps, in-world handouts, and GM prep notes.
+kind: files
+window: { behind: 120d }
+notes: { each: faction, with: location }
+select:
+  - glob: "sessions/**/*.md"
+    extract: facts
+  - glob: "handouts/**/*.md"
+    extract: facts
+  - glob: "prep/**/*.md"
+    extract: facts

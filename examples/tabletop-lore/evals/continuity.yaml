@@ -1,0 +1,47 @@
+context: A tabletop RPG campaign continuity wiki for The Salt Crown, read by a game master and players before Session 14.
+questions:
+  - id: bramwell-transfer
+    group: continuity
+    ask: Where is Alderman Bramwell Oakhart held, and when is his transfer to High Reef Quarry scheduled?
+    find: Alderman Bramwell Oakhart
+    expect:
+      article: characters/alderman-bramwell-oakhart
+      holds: ["Brine Citadel", "2026-12-03"]
+      judge: The answer states that Alderman Bramwell Oakhart is imprisoned in Brine Citadel and that his transfer to High Reef Quarry was rescheduled from 2026-11-29 to 2026-12-03.
+  - id: tide-glass-holder
+    group: relics
+    ask: Who currently holds the Obsidian Tide-Glass, and was Sera Thorne guilty of stealing it?
+    find: Brother Aldric Fen
+    expect:
+      holds: ["Obsidian Tide-Glass", "Tidewatch Lighthouse"]
+      judge: The answer says Brother Aldric Fen holds the Obsidian Tide-Glass at Tidewatch Lighthouse (given to him by Captain Marlo Vance), clearing Sera Thorne of stealing it.
+  - id: vespera-oath
+    group: factions
+    ask: How did Magistrate Vespera Corwin break her October oath?
+    find: Magistrate Vespera Corwin
+    expect:
+      holds: ["Closed-Berth Writ", "Free Anchorage Pact"]
+      judge: The answer explains that Magistrate Vespera Corwin swore to uphold the Free Anchorage Pact until 2026-12-21, then broke that oath by pushing through the Closed-Berth Writ revoking free anchorage at Old Lantern Dock.
+  - id: salt-guild-ledger
+    group: factions
+    ask: What are The Salt Guild's current standing with the party and liquid treasury?
+    find: The Salt Guild
+    expect:
+      article: factions/the-salt-guild
+      holds: ["hostile", "44950"]
+      judge: The answer gives The Salt Guild's current standing as hostile and its current treasury as 44,950 gp (down from 48,200 gp).
+  - id: sera-status
+    group: characters
+    ask: What is Sera Thorne's public status after the Old Lantern Dock raid, and where is she actually hiding?
+    find: Sera Thorne
+    expect:
+      article: characters/sera-thorne
+      holds: ["missing", "Tidewatch Lighthouse"]
+      judge: The answer says Sera Thorne is publicly considered missing with a 500 gp Salt Guild bounty, while secretly sheltered by Brother Aldric Fen at Tidewatch Lighthouse.
+  - id: courier-clues
+    group: mysteries
+    ask: What clues link The Lantern Courier to Captain Marlo Vance?
+    find: The Lantern Courier
+    expect:
+      holds: ["limp", "brine-tar"]
+      judge: The answer lists physical or forensic clues linking The Lantern Courier to Captain Marlo Vance, such as the left-boot limp, smoked brine-tar scent, cracked crescent wax seal, or torn braided harbour-blue coat cuff.

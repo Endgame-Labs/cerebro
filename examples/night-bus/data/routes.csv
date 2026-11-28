@@ -1,0 +1,4 @@
+route_id,name,date,description
+R8,Route 8 evening service,2026-11-16,Market loop. Busiest service by scheduled trip count.
+R4,Route 4 evening service,2026-11-16,Hill connector. Last outbound leaves LS-E at 22:10.
+R12,Route 12 evening service,2026-11-16,Marsh feeder. Last inbound scheduled at LS-E at 22:08 connects to R4 at 22:10.

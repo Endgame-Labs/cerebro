@@ -1,0 +1,48 @@
+context: "Voyage operations and sensor wiki for R/V Shearwater (Expedition SW-26-09), queried by bridge officers and chief scientists before the 06:00 UTC watch meeting."
+questions:
+  - id: ctd-salinity-hold
+    group: instruments
+    ask: "What is the readiness of CTD Rosette #2, what caused its salinity drift, and what must happen before the 4,000-meter Flemish Cap cast?"
+    find: "CTD Rosette #2"
+    expect:
+      article: instruments/ctd-rosette-2
+      fields:
+        readiness: degraded
+      holds: ["0.41", "O-ring", "SB-44"]
+      judge: "The answer reports CTD Rosette #2 as degraded, connects the 0.41 PSU salinity drift in telemetry to the nicked primary conductivity bulkhead O-ring logged on night watch, and flags inspecting the bulkhead and swapping the O-ring before the 4,000-meter deep cast at Station NA-14."
+  - id: pelagia-voltage-correction
+    group: instruments
+    ask: "What is the corrected battery status and recovery plan for AUV Glider Pelagia?"
+    find: "AUV Glider Pelagia"
+    expect:
+      article: instruments/auv-glider-pelagia
+      fields:
+        readiness: degraded
+      holds: ["12.40", "November 27"]
+      judge: "The answer explains that earlier voltage estimates were corrected for a 4 percent shunt error, gives the low corrected battery voltage near the 12.40 V ballast-pump stall limit, and states early recovery is scheduled for November 27."
+  - id: winch-grounded
+    group: instruments
+    ask: "Why is the Starboard Traction Winch unavailable for coring?"
+    find: "Starboard Traction Winch"
+    expect:
+      article: instruments/starboard-traction-winch
+      fields:
+        readiness: grounded
+      holds: ["68.4", "60.0"]
+      judge: "The answer reports Starboard Traction Winch as grounded after a 68.4 kN tension spike exceeded its 60.0 kN safe working load at Station NA-12 and cracked the level-wind sheave pin."
+  - id: flemish-cap-plan
+    group: stations
+    ask: "What is the plan and what are the gear and weather constraints at Station NA-14 Flemish Cap?"
+    find: "Station NA-14: Flemish Cap"
+    expect:
+      article: stations/station-na-14-flemish-cap
+      holds: ["4,000", "CTD Rosette #2", "degraded"]
+      judge: "The answer gives Station NA-14's 4,000-meter depth, notes the cast moved to November 27 at 06:00 UTC ahead of the 12:00 UTC gale cutoff, and warns that CTD Rosette #2 is degraded with +0.41 PSU salinity drift on Cast 20."
+  - id: morning-bridge-brief
+    group: briefings
+    ask: "Which instruments are grounded or degraded in the Daily Bridge and Science Brief, and what immediate hold applies before the 4,000-meter cast?"
+    read: [briefings/daily]
+    expect:
+      article: briefings/daily
+      holds: ["CTD Rosette #2", "Starboard Traction Winch", "AUV Glider Pelagia", "O-ring", "0.41"]
+      judge: "The brief flags Starboard Traction Winch as grounded, AUV Glider Pelagia as degraded needing early recovery, and CTD Rosette #2 as degraded due to the 0.41 PSU salinity drift linked to the nicked O-ring ahead of the 4,000-meter Flemish Cap cast."

@@ -1,0 +1,7 @@
+# Recipe cards, one file per dish. Each card lands on its dish's article.
+kind: files
+window: { behind: all }
+select:
+  - glob: "recipes/*.md"
+    extract: facts
+    into: dishes

@@ -1,0 +1,6 @@
+# The superintendent's daily reports, one record per file, its body the text.
+kind: files
+window: { behind: all }   # every report, however old its Date: line
+select:
+  - glob: "site-reports/*.md"
+    extract: facts

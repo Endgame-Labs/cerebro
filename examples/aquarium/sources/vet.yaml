@@ -1,0 +1,6 @@
+# The staff vet's visit notes, one file per visit. Animal: and Tank: link each note to its articles.
+kind: files
+window: { behind: all }
+select:
+  - glob: "vet/*.md"
+    extract: facts

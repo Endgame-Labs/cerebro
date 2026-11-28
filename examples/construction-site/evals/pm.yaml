@@ -1,0 +1,23 @@
+# What a project manager asks the wiki. Run a pass first, then: cerebro eval evals/pm.yaml
+context: A general contractor's wiki for one library job, built from daily reports, mail, an RFI log and a change order log, read by the project manager's agent.
+questions:
+  - id: rfi-015-answered
+    ask: Is RFI-015 still holding up the electricians, and what did the architect say?
+    find: RFI-015
+    expect:
+      article: rfis/rfi-015
+      holds: [staff workroom]
+      judge: The answer says RFI-015 was answered on 25 November, moving the fire alarm panel to the staff workroom, so it no longer holds Brightline Electric.
+  - id: curtain-wall-start
+    ask: When does Clearspan Glazing start setting curtain wall?
+    find: Clearspan Glazing
+    expect:
+      article: subcontractors/clearspan-glazing
+      holds: [December 7]
+      judge: The answer gives December 7 as the start, and says it moved from November 30.
+  - id: c4-change-order
+    ask: What did we agree to pay Ridgeline Steel for the C-4 connections?
+    find: Ridgeline Steel
+    expect:
+      holds: ["11,900"]
+      judge: The answer says CO-003 was approved at $11,900 against $18,400 asked, with the owner paying the field welding and second inspection and Ridgeline carrying the plates.

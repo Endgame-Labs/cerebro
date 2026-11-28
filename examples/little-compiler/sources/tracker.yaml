@@ -1,0 +1,10 @@
+kind: files
+select:
+  - glob: "exports/*.jsonl"
+    rows: jsonl
+    id: "{row.id}"
+    at: "{row.date}"
+    into: components
+    identity: { component: "{row.component}" }
+    fields: { tracker_state: "{row.state}", tracker_kind: "{row.kind}" }
+    extract: facts

@@ -1,0 +1,7 @@
+# Staff meeting notes, inspection reports, prep notes and everything else the kitchen writes down, one record per
+# file, its body the text.
+kind: files
+window: { behind: all }   # every file you drop in, whatever its Date: line, as when absent
+select:
+  - glob: "local/**/*.md"
+    extract: facts

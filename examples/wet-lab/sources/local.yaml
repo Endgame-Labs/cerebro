@@ -1,0 +1,7 @@
+# Bench notebook entries, failed-run write-ups, and weekly lab meeting minutes in local/.
+kind: files
+window: { behind: all }
+notes: { each: protocol, with: reagent }
+select:
+  - glob: "local/**/*.md"
+    extract: facts
