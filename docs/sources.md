@@ -97,7 +97,7 @@ A source is one file, `sources/<name>.yaml`. The file's name is the source's nam
 |---|---|---|
 | `window:` | How far back to read, as `window: { behind: 30d }`. Most kinds read 90 days by default. | Every kind but `database` |
 | `freshness:` | How often `cerebro serve` checks the source, as `freshness: 1h`. 15 minutes by default. | Every kind but `database` |
-| `extract:` | `facts` turns each record into facts. `records` reads none of its text, only the fields a source maps. Either way each field becomes one fact, such as "The stage of Acme renewal is Negotiation.": the same value again costs nothing, and a changed value replaces the old fact. No pass writes a field onto an article: its curator and its agents do, from those facts. | Every kind but `database` |
+| `extract:` | `facts` turns each record into facts. `records` reads none of its text, only the fields a source maps. Either way each field becomes one fact, such as "The stage of Acme renewal is Negotiation.", dated by its record's time, or by when it is read if the record has none or its time is still ahead. The same value again adds no fact and keeps the date it had, for one small model call at most. A changed value replaces the old fact. No pass writes a field onto an article: its curator and its agents do, from those facts. | Every kind but `database` |
 | `into:` | The collection each record's article belongs to, as `into: things` | Each `select:` entry of `files` and `mcp`, and the top of `calendar`, `gong`, `granola` and `mcp` |
 | `owner:` | Whose source it is: `me`, the default, or a colleague's email | `calendar`, `github`, `gmail`, `granola`, `linear` and `slack` |
 
@@ -189,6 +189,8 @@ cerebro secrets set warehouse-dsn
 ```
 
 The value is a connection string, such as `postgresql://cerebro_reader:<password>@db.example:5432/team?sslmode=require`. Postgres needs one extra package, so install with `uv tool install '.[postgres]'`.
+
+Once Cerebro reads the login, it masks the password wherever it appears, so a password such as `postgres` masks that word in facts and articles too. A password under 6 characters is never masked, so use a long one that is not a common word.
 
 Cerebro runs only a single `SELECT`, read only, and stops at 500 rows or 10 seconds. Connect as a login that can only read the tables you want, and never as a superuser, which Cerebro refuses:
 

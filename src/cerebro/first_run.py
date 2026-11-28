@@ -249,8 +249,10 @@ def arranged(workspace: Cerebro, pile: Pile) -> Pile:
 
 
 def _articles(workspace: Cerebro) -> dict[str, str]:
-    """The articles of the working set, id to title, that a group may sit under."""
-    return {i.id: i.title or i.id for i in working_set(workspace.store)}
+    """The articles of the working set, id to title, that a group may sit under: each title masked of every value
+    the secrets store holds, as the list's rows are."""
+    mask = workspace.mask_every()
+    return {i.id: mask(i.title) or i.id for i in working_set(workspace.store)}
 
 
 @dataclass(frozen=True)
@@ -352,6 +354,7 @@ class LocalApproval(Approval):
                                      str(state.get("note") or ""), agent.id in cut, said,
                                      f"{len(unlisted)} more held for {agent.target} are of the workspace's own side "
                                      "and not listed" if unlisted else ""))
+        pile = self.workspace.masked(pile)  # before its tree, whose groups hold its rows
         pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
                            _articles(self.workspace), redirects(self.workspace.store))
         return pile
@@ -535,7 +538,7 @@ class LocalApproval(Approval):
         """File a ticked candidate left out as an admit of its curator's collection, for the accept that follows,
         its reason `left out: <reason>`, with its held record when it names one: no operation files an admit with its
         keys, so it is written here, through `records`, as a curator files one."""
-        _refuse_secret(self.workspace.store, f"{row.collection}/{_slug(row.name)}")
+        _refuse_secret(self.workspace.store, f"{row.collection}/{_slug(row.name)}", row.name, row.keys)
         proposal = Proposal(id=f"p_{uuid.uuid4().hex[:12]}", kind="article.admit", target=f"{row.collection}/{_slug(row.name)}",
                             by=Caller(row.agent, "agent"), at=stamp(self.workspace.clock()),
                             payload={"name": row.name, "keys": row.keys} | ({"record": dict(row.record)} if row.record else {}),
@@ -1427,6 +1430,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     into.paused |= more.paused
     into.grounding |= more.grounding
     into.cleaned |= more.cleaned
+    into.taken_back |= more.taken_back
 
 
 def late(workspace: Cerebro, *, say: Callable[[str], None] | None = None,
@@ -1553,9 +1557,9 @@ def _at_a_terminal() -> bool:
 
 def _failures(workspace: Cerebro) -> list[str]:
     """Each curator of this first run whose discovery did not finish, in the words `Discovery
-    for <collection> collection did not finish: <why>`."""
+    for <collection> collection did not finish: <why>`, masked of every value the secrets store holds now."""
     states = (_state(workspace) or {}).get("lists") or {}
-    return [note[:1].upper() + note[1:] for a in _curators(workspace)
+    return [workspace.mask_every()(note[:1].upper() + note[1:]) for a in _curators(workspace)
             if str((state := states.get(a.id) or {}).get("state") or "") == "failed"
             and (note := str(state.get("note") or ""))]
 

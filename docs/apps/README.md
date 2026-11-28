@@ -51,7 +51,7 @@ def bookmark(url: str, workspace: Workspace, caller: Caller, title: str = "") ->
 app = App(name="bookmarks", kinds=["bookmark"], functions=[bookmark])
 ```
 
-`Workspace` gives an app the same tools an outside agent has, plus `keep` and `records` for its own kinds. It never gives direct access to the store.
+`Workspace` gives an app the same tools an outside agent has, plus `keep` and `records` for its own kinds. Like a query, `records` leaves out a record that was taken back. It never gives direct access to the store.
 
 You can also mark functions straight in `extensions.py`, with no app around them.
 

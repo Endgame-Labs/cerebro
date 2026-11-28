@@ -231,12 +231,6 @@ def _client(ctx: Context) -> str:
     return params.client_info.name if params is not None and params.client_info is not None else ""
 
 
-def _proven(ctx: Any) -> Caller:
-    """The caller a request's token names, else the one local caller: over stdio no request carries one."""
-    proven = ctx.request.scope.get(CALLER_KEY) if ctx.request is not None else None
-    return proven if isinstance(proven, Caller) else LOCAL
-
-
 # -- a call's arguments, read as the tools take them -------------------------------------------------------------------
 
 class QueryArguments(ArgModelBase):
@@ -616,13 +610,6 @@ def render_query(result: QueryResult, offset: int = 0, budget: int = BUDGET) -> 
     notes = [f"{result.count} {matches} in {result.source}{order}{page}"] + [f"warning: {w}" for w in result.warnings]
     if result.read_as:
         notes.append(f"read_as: {result.read_as}")
-    if result.collections is not None:
-        notes.append(f"listed one level, without text: read a record whole with query from: {result.source}, id: "
-                     "<its id>")
-        notes += [f"- collection {c['collection']}: {c['count']} under it, newest {c['newest']}"
-                  for c in result.collections]
-        notes += ["recent:"] + [_item_line(r) for r in result.recent] if result.recent else []
-        notes += ["in it:"] if result.items else []
     merged = result.source == EVERYTHING
     if merged and result.items:
         notes.append("each line says what it is, an article or a fact, then its id: read takes either id, an "
@@ -778,9 +765,8 @@ def _resolved(result: Any) -> tuple[bool, list[str]]:
     if isinstance(result, ReadResult):
         ids = [a.identity.id for a in result.articles] + [f.id for f in result.facts]
         return bool(ids), ids
-    if isinstance(result, dict) and isinstance(result.get("record"), str):  # an app's tool that kept a record
-        return True, [result["record"]]
-    return True, []
+    record = result.get("record") if isinstance(result, dict) else getattr(result, "record", None)
+    return True, [record] if isinstance(record, str) else []  # a tell's record, or one an app's tool kept
 
 
 STOPPED_NOTHING = "serve is stopping, so this call did not run: nothing of it was written, so send it again once serve is back"

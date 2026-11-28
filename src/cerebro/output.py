@@ -893,8 +893,8 @@ class Step:
             if self in self.p._steps:
                 self.p._redraw()
 
-    def done(self, text: str = "") -> int:
-        return self.end(Mark.DONE, text)
+    def done(self, text: str = "") -> None:
+        self.end(Mark.DONE, text)
 
     def fail(self, text: str = "") -> None:
         self.end(Mark.FAILED, text)
@@ -930,10 +930,10 @@ class Step:
                 self.p._drop(self)
                 self.p._redraw()
 
-    def end(self, mark: Mark, text: str = "", *, collapse: bool = False) -> int:
-        """Resolve the step with mark and text, or its label when text is empty; the rows it printed."""
+    def end(self, mark: Mark, text: str = "", *, collapse: bool = False) -> None:
+        """Resolve the step with mark and text, or its label when text is empty."""
         if not self._stop():
-            return 0
+            return
         p = self.p
         with p._lock:
             text = text or self.label
@@ -948,7 +948,6 @@ class Step:
             else:
                 said = self.indent + mark.symbol(False) + " " + text + "\n" + subs
             p._write(p.out, said)
-            return _climb([visible_width(line) for line in said.split("\n")[:-1]], 0, p.width())
 
 
 def _climb(drawn: list[int], at: int, width: int) -> int:

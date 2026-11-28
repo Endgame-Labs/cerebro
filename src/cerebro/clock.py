@@ -2,7 +2,10 @@
 
 A clock is a function that gives an aware datetime. The app object holds one and passes it on. `seconds` is the one
 other reading: seconds on a counter that only moves forward, for pacing requests to a rate, never a time of day.
-`local_zone` reads the machine's own time zone by its IANA name, for `init` to offer.
+`local_zone` reads the machine's own time zone by its IANA name, for `init` to offer. `pinned` moves a moment to the
+day `CEREBRO_TODAY` names, the one today that windows, a writer and the grounding judge read, so a demo's dates stay
+in their windows. A first run's days back and a files source's `behind:` count from that day too, and a line of
+what left since the last run reads that run on it. Leases, schedules and stamps keep the real clock.
 """
 
 from __future__ import annotations
@@ -10,14 +13,17 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-__all__ = ["Clock", "is_zone", "local_zone", "seconds", "stamp", "system_clock"]
+from .errors import CerebroError
+
+__all__ = ["Clock", "is_zone", "local_zone", "pinned", "seconds", "stamp", "system_clock"]
 
 LOCALTIME = Path("/etc/localtime")
 TIMEZONE_FILE = Path("/etc/timezone")
+TODAY = "CEREBRO_TODAY"
 
 Clock = Callable[[], datetime]
 
@@ -35,6 +41,19 @@ def seconds() -> float:
 def stamp(moment: datetime) -> str:
     """A moment as ISO 8601 UTC text to the second, such as 2026-11-17T09:00:00Z."""
     return moment.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def pinned(moment: datetime) -> datetime:
+    """`moment` on the day `CEREBRO_TODAY` names, at the same time of day in its own zone, or `moment` when it is
+    unset. A value that is not a date is refused with what to write."""
+    given = os.environ.get(TODAY, "")
+    if not given:
+        return moment
+    try:
+        day = date.fromisoformat(given)
+    except ValueError:
+        raise CerebroError(f"{TODAY} is {given!r}: write a date such as 2026-11-20") from None
+    return moment.replace(year=day.year, month=day.month, day=day.day)
 
 
 def is_zone(name: str) -> bool:

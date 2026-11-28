@@ -86,6 +86,15 @@ def test_a_workspace_that_does_not_load_prints_one_line_naming_the_culprit(tmp_p
         assert culprit in result.output and "Traceback" not in result.output
 
 
+def test_a_cerebro_today_that_is_no_date_stops_a_command_in_one_line(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    monkeypatch.setenv("CEREBRO_TODAY", "tomorrow")
+    result = CliRunner().invoke(main, ["serve", "--once", "--workspace", str(tmp_path)])
+    assert result.exit_code == 1, result.output
+    assert result.output.strip() == "Error: CEREBRO_TODAY is 'tomorrow': write a date such as 2026-11-20"
+
+
 def test_mcp_serves_over_standard_input_and_output(tmp_path: Path) -> None:
     (tmp_path / "settings.yaml").write_text("{}\n")
     result = CliRunner().invoke(main, ["mcp", "--help"])

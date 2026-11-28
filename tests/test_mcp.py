@@ -275,6 +275,24 @@ def test_a_client_that_names_itself_as_a_curator_is_the_local_caller_and_decides
     assert [row.data["caller"] for row in workspace.store.rows("mcp-requests")] == ["mcp", "mcp"]
 
 
+def test_a_read_of_a_retracted_record_says_it_was_retracted_and_nothing_else(tmp_path: Path) -> None:
+    workspace = workspace_at(tmp_path / "workspace")
+    told = workspace.tell(YOU, "The launch moved to Monday.", None, "fact").record
+    workspace.retract(YOU, told, "It did not.")
+    assert render_read(workspace.read(YOU, [told])) == f"warning: record {told} was retracted"
+
+
+def test_a_query_of_the_request_log_labels_a_retracted_tell_and_gives_none_of_its_words(tmp_path: Path) -> None:
+    async def calls(client: Client) -> Any:
+        told = await client.call_tool("tell", {"text": "The launch moved to Monday.", "as": "fact"})
+        await client.call_tool("retract", {"id": told.structured_content["record"], "reason": "It did not."})
+        return await client.call_tool("query", {"from": "mcp-requests"})
+
+    log = over_mcp(workspace_at(tmp_path / "workspace"), calls)
+    [tell] = [row for row in log.structured_content["items"] if row["tool"] == "tell"]
+    assert tell["retracted"] is True and tell["args"] == {"as": "fact"} and "Monday" not in log.content[0].text
+
+
 def test_a_caller_takes_back_anyones_record_by_a_tell_of_a_retract_kind(tmp_path: Path) -> None:
     workspace = workspace_at(tmp_path / "workspace")
     said = workspace.tell(Caller("you", "person"), "The review moved.", "projects/apollo", "fact").record

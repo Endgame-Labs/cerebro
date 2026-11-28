@@ -425,6 +425,17 @@ class Model:
         self.top = max(min(self.top, len(lines) - view), 0)
         while self.top > 0 and self.top + 1 < len(lines) and lines[self.top + 1].kind == _DETAIL:
             self.top += 1
+        # a group's lines show only under its heading: the view opens on the heading where the cursor still fits under
+        # it, or else on the next heading down to the cursor
+        if self.top > 0:
+            up = next((i for i in range(self.top + 1, -1, -1) if lines[i].kind == _HEADING
+                       or lines[i].kind == _GROUP and not lst.groups[lines[i].at].heading), 0)
+            if lines[up].kind == _HEADING and up <= self.top:
+                down = next((i for i in range(self.top + 1, at + 1) if lines[i].kind == _HEADING), len(lines))
+                if end <= max(up - 1, 0) + view - 2:
+                    self.top = max(up - 1, 0)
+                elif down <= len(lines) - view + 1:
+                    self.top = down - 1
         last = min(self.top + view, len(lines))
         while last < len(lines) and lines[last - 1].kind == _DETAIL and last - 2 > max(end, at):
             last -= 1
@@ -1166,12 +1177,13 @@ class _InlineApp[T](App[T]):
 
         linux_inline_driver.os = _Reading(hung_up)  # type: ignore[attr-defined]
         # no focus or mouse reporting: the views need neither, and a terminal that reports them, as VS Code's
-        # does, then sends a sequence at every focus change and every mouse move, which it repaints the panel for
+        # does, then sends a sequence at every focus change and every mouse move, which it repaints the panel for.
+        # No screen clear either, which the driver writes on each resize and many terminals keep in the scrollback.
         driver_class = linux_inline_driver.LinuxInlineDriver
         driver_write = driver_class.write
 
         def write(driver: Any, data: str) -> None:
-            driver_write(driver, _NO_REPORTS.sub("", data))
+            driver_write(driver, _NO_REPORTS.sub("", data).replace("\x1b[2J", ""))
 
         driver_class.write = write  # type: ignore[method-assign]
 

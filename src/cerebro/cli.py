@@ -1040,6 +1040,7 @@ def status(root: Path | None, as_json: bool) -> None:
         data |= standing.gather(workspace, data)
         data["waits"] = waiting_runs(workspace) + reviewing.held_lines(workspace)
         data |= {"calls_go_to": hosts} if (hosts := calls_go_to(workspace.settings)) else {}
+        data = workspace.masked(data)
         zone, held_to, routes = zone_of(workspace.settings), workspace.ledger.caps, route_lines(workspace.settings)
     data["refused"] = list(map(_masking(data["refused"], root), data["refused"]))
     if as_json:
@@ -2070,7 +2071,7 @@ def sources_check(name: str, root: Path | None, whole: bool, limit: int) -> None
     how many wait. It keeps nothing: the next pass lists the same records."""
     from .sources_check import check
 
-    with open_workspace(root) as workspace:
+    with open_workspace(root) as workspace, _masked_errors(workspace):
         workspace.refresh_mask()
         _echo(workspace.mask_every()(f"workspace {workspace.root}"), cap=None)
         checked = check(workspace, name, whole=whole, limit=limit)
@@ -3549,9 +3550,10 @@ def eval_command(suite: Path, root: Path | None, group: str, workers: int, no_mo
     loaded = evals.load(suite)
     with open_workspace(root) as workspace:
         decider = None if no_model else workspace.decider
-        report = evals.run(workspace, loaded, decider=decider, model=workspace.models["decision"], ledger=workspace.ledger,
-                           cap_usd=cap if cap is not None else workspace.ledger.caps.evaluation, clock=workspace.clock,
-                           group=group, workers=max(1, workers))
+        report = workspace.masked(evals.run(
+            workspace, loaded, decider=decider, model=workspace.models["decision"], ledger=workspace.ledger,
+            cap_usd=cap if cap is not None else workspace.ledger.caps.evaluation, clock=workspace.clock, group=group,
+            workers=max(1, workers)))
     if as_json:
         _print_json(report)
         return
@@ -3848,13 +3850,13 @@ def _serve_once(workspace: Cerebro, yes: bool, plain: bool, under_init: bool = F
     from . import first_run
 
     asking = _asking() and not plain and not yes
-    screen = _first_run_screen(workspace, plain, region=under_init)
+    screen = _first_run_screen(workspace, plain)
     if screen is not None and under_init:  # a blank line under the Ready block sets the run apart
         screen.p.line("")
     told, failures = _first_failures(_echo if screen is None else screen.say)
     choose, ask_more = _screen(yes, plain), _ask_more if asking else None
     if screen is not None:  # a list or a question takes the screen once what is live there has gone
-        choose = _settled(screen, choose, drawn=not yes and asking)
+        choose = _settled(screen, choose)
         ask_more = _settled(screen, ask_more)
     try:
         workspace.files_read()  # the first run too stops on a workspace.md or profile.md that does not read
@@ -3973,7 +3975,7 @@ def _print_end(screen: Any, result: PassResult, fails: bool, said: set[str] = fr
     p.err_line(_wrap(p.last_line(failed=fails, run=result.next or "cerebro serve --once"), 2, width))
 
 
-def _first_run_screen(workspace: Cerebro, plain: bool, region: bool = False) -> Any:
+def _first_run_screen(workspace: Cerebro, plain: bool) -> Any:
     """A first run's live screen: its discovery on live steps and its build in the pass's region, on a
     terminal that takes styles; None off one, with --plain or NO_COLOR, where its plain lines print as they land."""
     if plain or not sys.stdout.isatty() or os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
@@ -3986,12 +3988,12 @@ def _first_run_screen(workspace: Cerebro, plain: bool, region: bool = False) -> 
         return None
     width = (workspace.settings.get("compile") or {}).get("concurrency", 8)
     return FirstRunScreen(printer, sources=sorted(workspace.connectors),
-                          limit=width if isinstance(width, int) and width > 0 else 8, region=region)
+                          limit=width if isinstance(width, int) and width > 0 else 8)
 
 
-def _settled(screen: Any, ask: Callable[..., Any] | None, drawn: bool = False) -> Callable[..., Any] | None:
-    """`ask`, which shows the person something, once what is live on `screen` has gone. `drawn` says a list with rows
-    is drawn on a screen of its own, which clears it when it is left; else what `ask` shows is printed."""
+def _settled(screen: Any, ask: Callable[..., Any] | None) -> Callable[..., Any] | None:
+    """`ask`, which shows the person something, once what is live on `screen` has gone. What it shows stays where it
+    stood."""
     if ask is None:
         return None
 
@@ -4000,10 +4002,7 @@ def _settled(screen: Any, ask: Callable[..., Any] | None, drawn: bool = False) -
         try:
             return ask(*args)
         finally:
-            from .first_run import Pile
-
-            pile = args[0] if args else None
-            screen.list_shown(drawn and isinstance(pile, Pile) and bool(pile.rows()))
+            screen.list_shown()
     return asked
 
 

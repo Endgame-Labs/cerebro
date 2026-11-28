@@ -57,8 +57,8 @@ from .article import Article, Citation, cut, fields
 from .article import passages as passages_of
 from .budget import BudgetSpent, Held, Ledger
 from .caller import Caller
-from .clock import Clock, seconds, system_clock
-from .connector import NOBODY, Connector, Record, one_line
+from .clock import Clock, pinned, seconds, system_clock
+from .connector import NOBODY, Connector, Record, masked_first, masking, one_line
 from .connectors.database import Rows, row_text
 from .errors import CerebroError
 from .facts import FIELD_KIND, Fact, superseded
@@ -69,7 +69,7 @@ from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, YesNo, 
 from .records import WAITING, proposal_from
 from .rendered import MARK
 from .shown import shown
-from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, update_state
+from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, scrubbed, update_state
 from .window import Span, WindowError, holds, is_window, read_time, span
 from .workspace import Workspace
 
@@ -170,32 +170,34 @@ def gather(agent: Agent, lookup: Lookup, functions: dict[str, Callable[..., Any]
     if this is None and (agent.role == "writer" or (agent.role == "composer" and "/" in agent.target)):
         this = agent.target
     gatherer = _Gatherer(agent, lookup, this, writers or [], root, now, last, starter, zone, fiscal_start, judge)
-    out = []
-    for n, line in enumerate(agent.evidence, 1):
-        if line.kind in functions:
-            out.append(gatherer.function(line.kind, bind(functions[line.kind], gatherer.caller, workspace), line))
-        elif line.kind == "query":
-            if not isinstance(line.args, dict) or not line.args.get("from"):
-                raise gatherer.fail(n, line, "it names no from: write - query: { from: notes }")
-            filters = {k: v for k, v in line.args.items() if k != "from"}
-            out.append(gatherer.query(n, line, line.args["from"], filters, left_key(line)))
-        elif line.kind == "facts":
-            out.append(gatherer.facts(n, line))
-        elif line.kind == "articles":
-            out.append(gatherer.articles(n, line))
-        elif line.kind == "files":
-            out.append(gatherer.files(n, line))
-        elif line.kind == "left":
-            out.append(gatherer.left(n, line, {item.key for entry in out for item in entry.items}))
-        elif line.kind == "script":
-            out.append(gatherer.script(n, line))
-        elif line.kind == "sql":
-            out.append(gatherer.sql(n, line, sources or {}))
-        elif line.kind == "held":  # the records held for a curator's collection
-            out.append(_held(agent, lookup, sources or {}, n, line, root))
-        else:
-            raise EvidenceError(f"{gatherer.name}: evidence kind {line.kind!r} is not one Cerebro or an app gives: "
-                                f"use one of {', '.join(BUILTIN)}, or an @evidence name")
+    store = getattr(lookup, "store", None)  # what it kept before a secret was saved is masked before a line is cut
+    with masking((store.scrubbing() if store is not None else None) or (lambda text: text)):
+        out = []
+        for n, line in enumerate(agent.evidence, 1):
+            if line.kind in functions:
+                out.append(gatherer.function(line.kind, bind(functions[line.kind], gatherer.caller, workspace), line))
+            elif line.kind == "query":
+                if not isinstance(line.args, dict) or not line.args.get("from"):
+                    raise gatherer.fail(n, line, "it names no from: write - query: { from: notes }")
+                filters = {k: v for k, v in line.args.items() if k != "from"}
+                out.append(gatherer.query(n, line, line.args["from"], filters, left_key(line)))
+            elif line.kind == "facts":
+                out.append(gatherer.facts(n, line))
+            elif line.kind == "articles":
+                out.append(gatherer.articles(n, line))
+            elif line.kind == "files":
+                out.append(gatherer.files(n, line))
+            elif line.kind == "left":
+                out.append(gatherer.left(n, line, {item.key for entry in out for item in entry.items}))
+            elif line.kind == "script":
+                out.append(gatherer.script(n, line))
+            elif line.kind == "sql":
+                out.append(gatherer.sql(n, line, sources or {}))
+            elif line.kind == "held":  # the records held for a curator's collection
+                out.append(_held(agent, lookup, sources or {}, n, line, root))
+            else:
+                raise EvidenceError(f"{gatherer.name}: evidence kind {line.kind!r} is not one Cerebro or an app "
+                                    f"gives: use one of {', '.join(BUILTIN)}, or an @evidence name")
     return preload(out, agent.budget)
 
 
@@ -436,7 +438,7 @@ def _cited(article: Article, compilations: list[Any]) -> list[Citation]:
 
 
 def _quoted(title: str) -> str:
-    return json.dumps(shown(title, TITLE_CAP), ensure_ascii=False)
+    return json.dumps(shown(masked_first(title), TITLE_CAP), ensure_ascii=False)  # masked before it is cut
 
 
 def _marked(item: Item, mark: str | None) -> Item:
@@ -1112,7 +1114,8 @@ class _Gatherer:
         if who.admitted_by is None:
             return item
         said = f"\n  admitted by {who.admitted_by.name} on {who.admitted_at[:10]}"
-        reason = " ".join(who.admitted_reason.split())
+        store = getattr(self.lookup, "store", None)  # its mask now, before the cut: kept earlier, it may hold a secret
+        reason = " ".join(scrubbed(who.admitted_reason, store.scrubbing() if store is not None else None).split())
         reason = reason if len(reason) <= 200 else f"{reason[:200]}… ({len(reason)} characters)"
         # the reason is the curator's own words: shown, and never counted
         return replace(item, text=item.text + said + (f": {reason}" if reason else ""),
@@ -1225,7 +1228,8 @@ class _Gatherer:
             else:
                 resolved[key] = ids[0] if len(ids) == 1 else ids
         windowed = any(is_window(v) for v in filters.values())
-        heading = spelled[:1].upper() + spelled[1:] + (f", as of {_day(self.now)}" if windowed and self.now else "")
+        on = f", as of {_day(pinned(self.now))}" if windowed and self.now else ""
+        heading = spelled[:1].upper() + spelled[1:] + on
         result = self.lookup.query(self.caller, source, resolved, order_by=order_by, descending=order_by is not None,
                                    limit=limit)
         entry = Evidence(heading, spelled=spelled)
@@ -1459,7 +1463,7 @@ class _Gatherer:
                     f"{head}\n\nWhy it left: {why}.\n\n{json.dumps(_front(article), sort_keys=True, default=str)}")
             entry.items.append(Item(f"left:{id}", text, [Citation("article", id, id)], left=f"articles/{id}.md"))
         count = len(entry.items)
-        on = f" on {_day(then.astimezone(self.zone))}" if then is not None else ""
+        on = f" on {_day(pinned(then.astimezone(self.zone)))}" if then is not None else ""
         read = ", read as of that run" if then is not None else ", read as of now"
         entry.heading = (f"Left since the last run{on}, query {spelled}: {count} article{'' if count == 1 else 's'} it "
                          f"returned then that it no longer returns{read}, each as it stands now with why it left")

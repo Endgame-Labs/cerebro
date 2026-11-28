@@ -122,7 +122,7 @@ $ cerebro tools retract --json '{"id": "r_f80dbd52d80e", "reason": "the date did
 }
 ```
 
-The words stay kept, marked as taken back. The article's agents drop the fact on their next run. Take back an instruction the same way, by the record that gave it.
+The words stay kept, marked as taken back, and a query of an app's records, such as notes, leaves the record out and counts it. The article's agents drop the fact on their next run. Take back an instruction the same way, by the record that gave it.
 
 ## Who may tell what
 

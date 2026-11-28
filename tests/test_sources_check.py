@@ -4,6 +4,8 @@ words, and every line is masked."""
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -296,15 +298,37 @@ def test_a_kind_not_built_is_refused_in_the_notice_a_pass_gives(tmp_path: Path,
     assert done.output.splitlines()[-1] == f"Error: {notice[0]}"
 
 
-def test_a_source_that_lists_nothing_by_design_is_refused_in_the_notice_a_pass_gives(tmp_path: Path) -> None:
+def test_a_database_source_passes_when_it_opens_and_fails_saying_why_when_it_does_not(tmp_path: Path) -> None:
     root = _workspace(tmp_path / "w", {"warehouse": "kind: database\nurl: sqlite:data/warehouse.sqlite\n"})
-    once = CliRunner().invoke(main, ["serve", "--once", "--workspace", str(root)])
-    notice = [line.removeprefix("notice    ") for line in once.output.splitlines()
-              if line.startswith("notice    sources/warehouse:")]
-    assert len(notice) == 1, once.output
+    (root / "data").mkdir()
+    with closing(sqlite3.connect(root / "data" / "warehouse.sqlite")) as db:
+        db.execute("create table things (kind text)")
     done = _check(root, "warehouse")
-    assert done.exit_code == 1
-    assert done.output.splitlines()[-1] == f"Error: {notice[0]}"
+    assert done.exit_code == 0, done.output
+    assert done.output.splitlines()[1:] == [("notice    sources/warehouse: the database opens, read only, and a "
+                                             "database source lists no records: an agent reads it with a sql evidence "
+                                             "line")]
+    (root / "data" / "warehouse.sqlite").write_text("North sold 1000.\n")
+    broken = _check(root, "warehouse")
+    assert broken.exit_code == 1
+    assert broken.output.splitlines()[-1].startswith("Error: sources/warehouse.yaml: the database does not open "
+                                                     "(file is not a database)"), broken.output
+
+
+def test_a_database_check_prints_neither_the_password_nor_the_host_of_its_login(tmp_path: Path,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    from test_connector_postgres import DSN, PASSWORD, Server
+
+    from cerebro.connectors import postgres
+
+    root = _workspace(tmp_path / "w", {"warehouse": "kind: database\nurl: postgres\nauth: { keychain: warehouse-dsn }\n"})
+    server = Server()
+    monkeypatch.setattr(postgres, "driver", lambda label: server.connect)
+    monkeypatch.setattr(cli, "open_workspace", lambda folder: Cerebro(root, secrets=FakeSecrets({"warehouse-dsn": DSN})))
+    server.fails = {postgres.READ_ONLY: RuntimeError(f"lost {PASSWORD} at db.example")}
+    done = _check(root, "warehouse")
+    assert done.exit_code == 1 and done.output.splitlines()[-1].startswith("RuntimeError: lost "), done.output
+    assert PASSWORD not in done.output and "db.example" not in done.output, done.output
 
 
 def test_a_name_with_no_source_file_is_refused(tmp_path: Path) -> None:

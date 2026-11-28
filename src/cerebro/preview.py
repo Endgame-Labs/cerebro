@@ -292,6 +292,7 @@ class _Reading:
         self.unrun = False
         self.capped = ""  # the cap's own line, once a daily cap stops a run
         self.unread = ""  # why a run's evidence may change before it runs, which a dry run cannot read, or empty
+        self.taken_back: dict[str, list[str]] = {}  # as the next pass's `writers_due` finds it
 
     def _unstarted(self, launch: Launch) -> Finished:
         self.unrun = True
@@ -612,9 +613,11 @@ def _single_stale(reading: _Reading, agent: Agent, article: str, by_hand: bool, 
     if (unknown := _unknown(reading, article, [agent.id])) is not None:
         return unknown
     read = digest(agent, evidence + _read_before(reading.lookup, store, agent, article))
+    taken = article in reading.taken_back.get(agent.id, [])
     row = _row(article, agent.id, due(agent, article, store, read, reading.workspace.clock(),
-                                   fresh=unmoved(store, agent, article, read), by_hand=by_hand, scheduled=bool(woke),
-                                   hold=None if woke else _hold(overlay, agent, article, by_hand)))
+                                   fresh=unmoved(store, agent, article, read) and not taken, by_hand=by_hand,
+                                   scheduled=bool(woke),
+                                   hold=None if woke or taken else _hold(overlay, agent, article, by_hand)))
     if row.status != "stale":
         return [row]
     cause = _cause(overlay, agent, article) if by_hand and not unmoved(store, agent, article, read) else ""
@@ -641,9 +644,9 @@ def _composer_stale(reading: _Reading, composer: Agent, article: str, by_hand: b
     held = [dict(kept.get(sub.id) or {}) for sub in subs]
     own = _stamp_of(digest(composer, lead + _read_before(reading.lookup, store, composer, article)),
                     *_returned(subs, held))
-    now = workspace.clock()
+    now, taken = workspace.clock(), article in reading.taken_back.get(composer.id, [])
     rows = [_row(article, sub.id, due(sub, article, store, stamps[n], now, scheduled=bool(woke),
-                                   fresh=held[n].get("digest") == stamps[n], by_hand=by_hand))
+                                   fresh=held[n].get("digest") == stamps[n] and not taken, by_hand=by_hand))
             for n, sub in enumerate(subs)]
     if instructed:
         rows.append(_row(article, composer.id, due(composer, article, store, own, now, by_hand=by_hand,
@@ -654,7 +657,7 @@ def _composer_stale(reading: _Reading, composer: Agent, article: str, by_hand: b
     order = [s.by for s in (current.compilations if current is not None else []) if s.by in writers]
     regrouped = _regrouped(store, composer, article, subs, held, order, instructed, workspace.agents)
     moved = [row.agent for row in rows if row.status == "stale"]
-    hold = None if woke else _hold(overlay, composer, article, by_hand)
+    hold = None if woke or taken else _hold(overlay, composer, article, by_hand)
     if moved and not regrouped and hold is not None and (why := hold(moved)):
         rows = [Row(article, "cooling down", row.agent, why.removeprefix(COOLING))
                 if row.status == "stale" else row for row in rows]
@@ -848,6 +851,7 @@ def _next_pass(reading: _Reading, out: Stale, curators: bool = True) -> None:
         writers = writers_due(overlay, result)  # type: ignore[arg-type]
     finally:
         _release(overlay, list(workspace.agents), result.token)  # type: ignore[arg-type]
+    reading.taken_back = result.taken_back
     for agent, word in due:
         reading.begin()
         try:
@@ -861,7 +865,8 @@ def _next_pass(reading: _Reading, out: Stale, curators: bool = True) -> None:
     jobs: list[tuple[Agent, list[str], str]] = []
     for agent, word in writers:
         try:
-            articles = due_articles(overlay, agent, word, targets(agent, reading.lookup))  # type: ignore[arg-type]
+            articles = due_articles(overlay, agent, word, targets(agent, reading.lookup),  # type: ignore[arg-type]
+                                    result.taken_back.get(agent.id, []))
         except Exception as error:  # noqa: BLE001 - one agent's failure is a row, and the others go on
             out.rows.append(Row(agent.target, "failed", agent.id, said(workspace, error)))
             continue

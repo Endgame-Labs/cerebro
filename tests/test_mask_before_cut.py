@@ -359,6 +359,53 @@ def test_the_keep_judge_a_rerank_the_request_log_and_the_runs_log_mask_before_th
     assert all(MARK in text for text in seen.values())
 
 
+@pytest.mark.parametrize("name", CUT_NAMES)
+def test_a_fact_kept_before_its_secret_was_saved_reaches_an_agent_masked_across_its_quote_and_label_cuts(
+        tmp_path: Path, name: str) -> None:
+    from cerebro.agent import load_agent
+    from cerebro.article import Property
+    from cerebro.evidence import TITLE_CAP, gather, render
+    from cerebro.fakes import MemoryStore
+    from cerebro.ground import QUOTE_BOUND
+    from cerebro.identity import RECORD
+    from cerebro.lookup import StoreLookup
+
+    secret, store, extraction = SECRETS[name], MemoryStore(), FakeExtraction()
+    things = []
+    for n, (quoted, titled) in enumerate(zip(offsets(QUOTE_BOUND, secret), offsets(TITLE_CAP, secret), strict=True)):
+        store.create(Identity(f"things/t{n}", "things", "x" * titled + secret + " and the rest of it"))
+        [fact] = extraction.extract(Record(id=f"r{n}.md", source="local", revision="1",
+                                           body="x" * quoted + secret + " and the rest of it")).facts
+        store.link(fact.id, [f"things/t{n}"], how=RECORD)
+        things.append(f"things/t{n}")
+    store.create(Identity("parts/one", "parts", "One"))
+    store.set_field("parts/one", "linked", Property(things, YOU, "2026-11-01T00:00:00Z"))
+    store.masks = lambda: scrubber(FakeSecrets(SECRETS))  # saved after each was kept
+    (tmp_path / "agents" / "parts").mkdir(parents=True)
+    (tmp_path / "agents" / "parts" / "article.md").write_text(
+        "---\nevidence:\n  - query: { from: facts, articles: this.linked }\n---\n\nWrite it.\n")
+    reader = load_agent(tmp_path / "agents" / "parts" / "article.md", tmp_path / "agents")
+    shown = render(gather(reader, StoreLookup(store, extraction), {}, this="parts/one"))
+    text = scrubber(FakeSecrets(SECRETS))(shown)  # as a run masks what it sends
+    assert MARK in text and not leaks(secret, text), leaks(secret, text)
+
+
+@pytest.mark.parametrize("name", CUT_NAMES)
+def test_an_agents_read_of_an_apps_record_kept_before_its_secret_was_saved_names_it_masked_across_the_cut(
+        name: str) -> None:
+    from cerebro.fakes import MemoryStore
+    from cerebro.lookup import StoreLookup
+
+    secret, store = SECRETS[name], MemoryStore()
+    ids = [store.keep(Record(id=f"r{n}", source="thing", revision="1", at="2026-11-10T09:00:00Z",
+                             fields={"name": "x" * start + secret + " and the rest of it"})).id
+           for n, start in enumerate(offsets(200, secret))]
+    store.masks = lambda: scrubber(FakeSecrets(SECRETS))  # saved after each was kept
+    read = StoreLookup(store, FakeExtraction(), kinds=["thing"]).read(Caller("parts/article", "agent"), ids)
+    text = scrubber(FakeSecrets(SECRETS))("\n".join(read.warnings))  # as the reply is masked
+    assert MARK in text and not leaks(secret, text), leaks(secret, text)
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_the_mask_finds_a_secret_a_source_already_escaped_or_folded_onto_one_line(name: str) -> None:
     secret = SECRETS[name]
@@ -451,6 +498,61 @@ def test_a_first_run_says_and_returns_no_part_of_a_secret_a_source_or_a_curator_
     text = "\n".join([*lines, *returned])
     assert "RuntimeError" in text
     assert not leaks(secret, text), leaks(secret, text)
+
+
+@pytest.mark.parametrize("name", CUT_NAMES)
+@pytest.mark.parametrize("way", ["run", "preview"])
+def test_what_was_kept_before_its_secret_was_saved_reaches_a_curator_masked_across_each_cut(
+        tmp_path: Path, way: str, name: str) -> None:
+    from pydantic_ai.messages import TextPart
+
+    from cerebro.curate import NOTE_CAP
+    from cerebro.fakes import MemoryStore
+    from cerebro.held import MAX_LINE
+    from cerebro.held import entry as held_entry
+    from cerebro.preview import show
+    from cerebro.records import Proposal, propose
+
+    secret, secrets, sent, at = SECRETS[name], FakeSecrets(), [], "2026-11-10T09:00:00Z"
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        sent.extend(strings(messages))
+        return ModelResponse(parts=[TextPart("Done.")])
+
+    def row(id: str, value: str) -> dict[str, Any]:
+        return dataclasses.asdict(Record(id=id, source="desk", revision="1", at=at, keys={"ref": [value]},
+                                         into="things"))
+
+    def line(agent: Agent, value: str) -> str:  # the held line of a record whose ref is `value`
+        store = MemoryStore()
+        store.set_state("held:desk", [row("t0", value)])
+        return held_entry(agent, store, ["desk"], 1, agent.evidence[0]).items[0].text
+
+    def said(start: int) -> str:
+        return "x" * start + secret + " and the rest of it"
+
+    root = first_workspace(tmp_path / "ws")
+    (root / "agents" / "things" / "curator.md").write_text(CURATES.replace("{}\n", "{}\n  - query: { from: things }\n"))
+    with Cerebro(root, trusted=True, agent_run=PydanticRun(FunctionModel(model)), extraction=FakeExtraction(),
+                 secrets=secrets, connectors=[FakeConnector("desk", [])], clock=lambda: DAY) as workspace:
+        agent, store = workspace.agent("things/curator"), workspace.store
+        # each kept while the secrets store held nothing: a held row, an accepted admit's reasons, an admit's reason
+        store.set_state("held:desk", [row(f"t{n}", padded(start, secret, lambda value: line(agent, value)))
+                                      for n, start in enumerate(offsets(len("- ") + MAX_LINE, secret))])
+        for n, start in enumerate(offsets(NOTE_CAP, secret)):
+            propose(store, Proposal(f"p_d{n}", "article.admit", f"things/d{n}", YOU, at, {"title": f"D{n}"},
+                                    status="accepted", decided_by=YOU, decided_at=at, decision_reason=said(start)))
+            propose(store, Proposal(f"p_r{n}", "article.admit", f"things/r{n}", YOU, at, {"title": f"R{n}"},
+                                    reason=said(start), status="accepted", decided_by=YOU, decided_at=at))
+        for n, start in enumerate(offsets(200, secret)):
+            store.create(Identity(f"things/a{n}", "things", f"A{n}", admitted_by=YOU, admitted_at=at,
+                                  admitted_reason=said(start)))
+        secrets.set("DESK_TOKEN", secret)
+        if way == "run":
+            workspace.curate(agent)
+        else:
+            sent.append(show(workspace, agent).opening)
+    assert [s for s in sent if MARK in s] and not [s for s in sent if leaks(secret, s)]
 
 
 # -- a script's error, an app's tool, a reply of any type, and forms too short to mask
@@ -876,35 +978,27 @@ def test_an_id_handed_back_over_mcp_or_a_call_is_the_id_itself_though_a_stored_v
 
 
 @pytest.mark.parametrize("name", ["plain", "spaced", "short"])
-def test_a_title_a_curators_model_writes_with_a_stored_value_in_it_makes_no_id_or_title_that_holds_it(
+def test_a_title_a_curators_model_writes_with_a_stored_value_in_it_is_refused_and_makes_no_article(
         tmp_path: Path, name: str) -> None:
-    import re
-
     from pydantic_ai.messages import TextPart
 
     secret = {**SECRETS, "short": "prodkey01"}[name]
     root = first_workspace(tmp_path / "ws")
     (root / "agents" / "things" / "curator.md").write_text(CURATES.replace("held: {}", "query: { from: facts }"))
-
-    named: list[str] = []  # the accepted proposals the curator's next run carries out
+    said: list[str] = []
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if not any(isinstance(m, ModelResponse) for m in messages):
-            return ModelResponse(parts=[ToolCallPart("admit", {"name": f"Juniper {secret}", "reason": "It moved.",
-                                                               "proposals": named})])
+            return ModelResponse(parts=[ToolCallPart("admit", {"name": f"Juniper {secret}", "reason": "It moved."})])
+        said.append(str(messages[-1]))
         return ModelResponse(parts=[TextPart("Done.")])
 
     with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets({"vault": secret}),
                  decider=FakeDecider(), agent_run=PydanticRun(FunctionModel(model)), clock=lambda: DAY) as workspace:
         workspace.curate(workspace.agent("things/curator"))
-        waiting = [p["id"] for p in workspace.call(YOU, "query", {"from": "proposals"})["items"]]
-        workspace.decide(YOU, accept=waiting)
-        named += waiting
-        workspace.curate(workspace.agent("things/curator"))
-        made = [(a.identity.id, a.identity.title) for a in workspace.store.query("things")]
-    slug = re.sub(r"[^a-z0-9]+", "-", secret.lower())
-    assert [title for _, title in made] == [f"Juniper {MARK}"]
-    assert not [id for id, _ in made if any(slug[i:i + 6] in id for i in range(len(slug) - 5))], made
+        rows = workspace.call(YOU, "query", {"from": "proposals"}).get("items", [])
+        made = workspace.store.query("things")
+    assert rows == [] and made == [] and "its name holds a value the secrets store keeps" in said[0], said
 
 
 HELD_IN_ID = [f"Juniper {SECRETS['spaced']}", "Juniper quarzite7_VELLUM9.drifted", f"Juniper {SECRETS['plain']}",
@@ -935,7 +1029,12 @@ def test_an_admit_whose_id_would_hold_a_stored_value_however_slugged_is_refused_
     assert made == [] and rows == [] and "juniper" not in kept.lower()
 
 
-def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("tool", "asked", "refused"), [
+    ("admit", {"name": HELD_IN_ID[1]}, "its name holds"),
+    ("admit", {"name": "Juniper", "keys": {"code": [SECRETS["plain"]]}}, "its code key holds"),
+    ("link", {"article": "things/juniper", "keys": {"code": [SECRETS["plain"]]}}, "its code key holds")])
+def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_or_whose_key_holds_one_is_refused(
+        tmp_path: Path, tool: str, asked: dict[str, Any], refused: str) -> None:
     from pydantic_ai.messages import TextPart
 
     said: list[str] = []
@@ -943,15 +1042,16 @@ def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_r
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if not any(isinstance(m, ModelResponse) for m in messages):
-            return ModelResponse(parts=[ToolCallPart("admit", {"name": HELD_IN_ID[1], "reason": "It moved."})])
+            return ModelResponse(parts=[ToolCallPart(tool, asked | {"reason": "It moved."})])
         said.append(str(messages[-1]))
         return ModelResponse(parts=[TextPart("Done.")])
 
     with Cerebro(root, trusted=True, extraction=FakeExtraction(), secrets=FakeSecrets(SECRETS),
                  decider=FakeDecider(), agent_run=PydanticRun(FunctionModel(model)), clock=lambda: DAY) as workspace:
+        workspace.store.create(Identity("things/juniper", "things", "Juniper", {"code": ["j-1"]}, "archived"))
         workspace.curate(workspace.agent("things/curator"))
         rows = workspace.call(YOU, "query", {"from": "proposals"}).get("items", [])
-    assert rows == [] and "its name holds a value the secrets store keeps" in said[0]
+    assert rows == [] and f"{refused} a value the secrets store keeps" in said[0], said
 
 
 # -- what an error says, with its causes, and replies of every shape

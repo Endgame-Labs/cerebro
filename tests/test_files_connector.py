@@ -140,6 +140,14 @@ def test_the_window_lists_by_each_notes_own_date_and_one_that_ages_out_is_forgot
     assert later.removed == [] and later.records == []  # the file is still there: it only left the window
 
 
+def test_cerebro_today_moves_the_day_the_window_counts_back_from(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CEREBRO_TODAY", "2026-11-17")
+    year_on = FilesConnector(files_source(behind="20d"), root, now=lambda: datetime(2027, 11, 17, tzinfo=UTC),
+                             home=root.parent / "home")
+    assert [r.id for r in every_page(year_on).records] == ["notes/deep/retro.md", "notes/kickoff.md", "notes/review.txt"]
+    assert [r.id for r in year_on.ask("header_values", {"word": "topic"}).records] == ["Apollo"]  # a curator's question
+
+
 def test_an_unchanged_folder_lists_nothing_and_a_moved_file_is_a_new_id_and_a_removed_one(root: Path) -> None:
     connector = make(root)
     cursor = every_page(connector).cursor

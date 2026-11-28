@@ -48,15 +48,15 @@ You can ask your agent to keep notes, or let it decide. When a session connects,
 
 ## Find notes
 
-`query` reads notes like any other records:
+`browse_notes` lists a folder, and `query` reads notes like any other records:
 
 | To | Ask |
 |---|---|
-| Browse like a folder | `query { "from": "note", "collection": "notes" }` |
+| Browse like a folder | `browse_notes { "collection": "notes" }` |
 | Read every note, newest first | `query { "from": "note" }` |
 | Find a note by its title | `query { "from": "note", "collection": "notes/projects/atlas", "title": "Export plan" }` |
 
-Browsing shows each folder one level down, with how many notes it holds and when the newest was written, and the five newest notes under `recent`.
+Browsing shows the notes in the folder without their text, each folder one level down with how many notes it holds and when the newest was written, and the five newest notes under `recent`.
 
 ## The article
 
@@ -65,8 +65,8 @@ On the next pass, each note becomes facts, and the `projects/standing` agent wri
 ## Good to know
 
 - **The note is the source of truth.** To fix a fact that came from a note, write a new version of the note.
-- **Clients on your machine share notes.** A note written from Claude Desktop can be revised or taken back from Claude Code. A client with its own token keeps its own notes.
-- **Claude Desktop may show an old list.** It reads the five newest notes once when it starts, so a later chat there sees new notes only through `query { "from": "note" }`.
+- **Clients on your machine share notes.** A note written from Claude Desktop can be revised or deleted from Claude Code. A client with its own token revises only the notes it wrote, and any client can delete any note.
+- **Claude Desktop may show an old list.** It reads the five newest notes once when it starts, so in a later chat there it may miss a new note or list a deleted one: `browse_notes` gives the list as it stands.
 - **Note text is data.** Agents read a note as a record of the work, never as instructions.
-- **To delete a note,** `retract` it by its `record` id, such as `note_07508d68728b`.
-- **A version written in the same second as your retract is retracted too.** Wait a second before you write the note again.
+- **To delete a note,** `delete_note` it by its id, as `delete_note { "id": "2026-11-20-export-plan" }`. No listing or query of notes shows it again, and the article drops its facts on its next run.
+- **A deleted note is not erased.** The workspace still holds its words, as it holds every record, and writing them again makes a new note with a new id.

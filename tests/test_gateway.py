@@ -55,8 +55,9 @@ NOW = datetime(2026, 11, 18, 9, tzinfo=UTC)
 
 class Gateway:
     """What every model call sent, as the stand-in gateway records it, answered as `status` says: 0 for the
-    scripted replies, else that status, with a body that echoes the secret header it was sent across character 500,
-    where the facts layer cuts the body it puts in its error."""
+    scripted replies, else that status, with a body that echoes the secret header it was sent across character 300,
+    where a decision's error cuts the reply, and across character 500, where the facts layer cuts the body it puts in
+    its error."""
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, dict[str, str]]] = []
@@ -67,9 +68,9 @@ class Gateway:
         self.sent.append((url, headers))
         data = json.loads(body or b"{}")
         if self.status:
-            said = '{"error": {"message": "refused, as sent: '
-            pad = "x" * (500 - len(said) - len(VALUE) // 2)
-            return self.status, {"error": {"message": f"refused, as sent: {pad}{headers.get('x-example-key')}"}}
+            said, key = '{"error": {"message": "refused, as sent: ', headers.get("x-example-key")
+            pad = "x" * (300 - len(said) - len(VALUE) // 2)
+            return self.status, {"error": {"message": f"refused, as sent: {pad}{key}{'x' * (200 - len(VALUE))}{key}"}}
         if url.endswith("/embeddings"):
             return 200, {"data": [{"index": i, "embedding": _vector(t)} for i, t in enumerate(data["input"])],
                          "usage": {"prompt_tokens": 10}}
@@ -183,29 +184,33 @@ def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_
         assert str(status) in said and VALUE[:8] not in said and VALUE[-8:] not in said, said
         todo = "payment is due at the provider" if status == 402 else "check providers in settings.yaml"
         tail = {"decision": f": {todo}", "facts layer": f": {todo}; the record is tried again next pass"}
-        assert road not in tail or said.endswith(tail[road]), said
+        assert road not in tail or said.partition(". The reply said: ")[0].endswith(tail[road]), said
         assert workspace.gateway.said.startswith(f"Model calls stopped: {HOST} refused a ")
         assert f"HTTP {status} at 09:00 UTC. Nothing more starts this pass: {todo}, and" in workspace.gateway.said
         with pytest.raises(CallRefused):
             workspace.ledger.check("compilation", NOW)
 
 
-@pytest.mark.parametrize(("road", "said"), [
-    ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check the model id and the request"),
-    ("facts layer", ": check the model id and the request; the record is tried again next pass"),
+@pytest.mark.parametrize(("road", "status", "said"), [
+    ("decision", 400, (f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check the model id and the request. The "
+                       f'reply said: {{"error": {{"message": "refused, as sent: {"x" * 247}[secret]xxxx… (483 characters)')),
+    ("facts layer", 400, ": check the model id and the request; the record is tried again next pass"),
+    ("facts layer", 301, ": check providers in settings.yaml, then the next pass tries again"),
+    ("facts layer", 307, ": check providers in settings.yaml, then the next pass tries again"),
 ])
-def test_a_400_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(
-        tmp_path: Path, gateway: Gateway, road: str, said: str) -> None:
+def test_a_400_or_a_redirect_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(
+        tmp_path: Path, gateway: Gateway, road: str, status: int, said: str) -> None:
     """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, a
-    decision's failure on one that does not name the gateway or that sends the person to its settings, and a facts
-    layer's that sends the person to the key."""
+    decision's failure on one that does not name the gateway, that sends the person to its settings or that leaves
+    out the first 300 characters of the reply, a facts layer's that sends the person to the key, and a facts
+    layer's redirect read as the model's answer."""
     call, _, _ = ROADS[road]
-    gateway.status = 400
+    gateway.status = status
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
         with pytest.raises(CerebroError) as failed:
             call(workspace)
         line = str(failed.value)
-        assert len(gateway.sent) == 1 and "HTTP 400" in line and line.endswith(said), line
+        assert len(gateway.sent) == 1 and f"HTTP {status}" in line and line.endswith(said), line
         gateway.status = 0
         workspace.ledger.check("compilation", NOW)
         call(workspace)

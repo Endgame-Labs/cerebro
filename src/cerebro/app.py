@@ -25,7 +25,7 @@ import sys
 import threading
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping
-from dataclasses import fields, is_dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Self
 from urllib.parse import unquote, urlsplit
@@ -38,7 +38,7 @@ from .apps import App, Exposed, bind, check_apps, collect
 from .article import pending
 from .budget import Held, Ledger, Metered
 from .caller import Caller
-from .clock import Clock, system_clock
+from .clock import Clock, pinned, system_clock
 from .compile import Compiled, _workspace, compile_article
 from .connector import Ask, Connector, Listing, Offer, Ours, Record, RecordNotFound, masking, one_line
 from .connectors import CONNECTORS
@@ -91,6 +91,7 @@ from .run import (
     RewriteFailed,
     Rewriter,
     Run,
+    ids_kept,
     masked,
     masked_error,
 )
@@ -395,6 +396,7 @@ class Cerebro:
                  trusted: bool | None = None):
         project = load(root, trusted=trusted)
         self.clock = clock or system_clock
+        pinned(self.clock())  # a CEREBRO_TODAY that is no date is refused as the workspace opens
         self.root = project.root
         self.settings = project.settings
         self.models = project.models
@@ -628,17 +630,10 @@ class Cerebro:
         return mask
 
     def masked(self, value: Any) -> Any:
-        """A result with every string in it, in its records and lists too, masked of each value read from the
-        secrets store, as each surface shows it."""
-        if isinstance(value, str):
-            return self.mask(value)
-        if isinstance(value, list):
-            return [self.masked(item) for item in value]
-        if isinstance(value, dict):
-            return {key: self.masked(item) for key, item in value.items()}
-        if is_dataclass(value) and not isinstance(value, type):
-            return replace(value, **{f.name: self.masked(getattr(value, f.name)) for f in fields(value) if f.init})
-        return value
+        """A result with every string in it, at any depth, masked of every value the secrets store holds, read in this
+        process or not, as MCP masks a reply: a value saved after it was kept is masked too. The engine's own ids
+        are left as they are, as `ids_kept` says."""
+        return masked(value, ids_kept(value, self.mask_every()))
 
     def _mask_run(self, run: Run) -> None:
         """Mask every value the secrets store holds in a run's note and transcript, in place."""
@@ -730,13 +725,15 @@ class Cerebro:
         return [self.mask_every()(line) for line in runner.ready_by_hand(self, agent, articles)]
 
     def compile(self, agent: Agent, this: str | None = None, scheduled: bool = False, only: str = "",
-                hold: Callable[[list[str]], str] | None = None, by_hand: bool = False) -> Compiled:
+                hold: Callable[[list[str]], str] | None = None, by_hand: bool = False,
+                taken_back: bool = False) -> Compiled:
         """Run one agent on `this`, the article it writes, if anything it reads has moved or the run is scheduled.
         `by_hand` is a person's ask, as `compile --article`: it runs what moved, a failed run's wait or not.
         `compile.targets` lists the articles an agent writes. Its runs' transcripts and its lines come masked. With
-        no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, as
-        `compile_article` takes it. A run that lands, or that ran and wrote nothing, moves the article's clock, by hand
-        or in a pass; one that fails does not. What grounding did on it is counted in its `grounding`."""
+        no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, and `taken_back`
+        says the article cites what a caller took back, as `compile_article` takes them. A run that lands, or that ran
+        and wrote nothing, moves the article's clock, by hand or in a pass; one that fails does not. What grounding did
+        on it is counted in its `grounding`."""
         self.files_read()
         self.need_key(agent)
         self.refresh_mask()
@@ -752,7 +749,8 @@ class Cerebro:
                                            scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
                                            zone=self.zone, starter=self.start_script, sources=self.connectors,
                                            descriptions=descriptions(self.settings), only=only, hold=hold,
-                                           by_hand=by_hand, min_grounding=min_grounding(self.settings))
+                                           by_hand=by_hand, min_grounding=min_grounding(self.settings),
+                                           taken_back=taken_back)
         finally:
             TALLY.reset(counting)
         compiled.grounding = dict(tally)
@@ -860,7 +858,8 @@ class Cerebro:
         if spec is not None and PROVIDERS[spec.provider].decision_url:
             key = self.model_key(spec)
             if key():
-                return HttpDecider(spec, key=key, route=self.gateway.route(spec.provider))
+                return HttpDecider(spec, key=key, route=self.gateway.route(spec.provider),
+                                   mask=lambda text: self.mask_every()(text))
             why = (f"models.decision has no key: {spec.key_name} is not in the secrets store and {spec.variable} is "
                    "not set")
         else:
@@ -1109,7 +1108,7 @@ class Cerebro:
         sends them: `query` takes `from` and field keys, and `tell` takes `as`. Gives the operation's data as an
         outside agent gets it, as `reply.outside` shapes it. An operation the workspace does not offer raises
         `NotImplementedError` with one line that says so."""
-        return outside(self._call(caller, name, args))
+        return outside(self.masked(self._call(caller, name, args)))
 
     def _call(self, caller: Caller, name: str, args: dict[str, Any]) -> Any:
         from pydantic import ValidationError  # pydantic and the MCP layer load only once a tool is called

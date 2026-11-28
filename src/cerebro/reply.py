@@ -117,9 +117,7 @@ def outside(result: Any) -> Any:
     if isinstance(result, QueryResult):
         return pruned({"source": result.source, "count": result.count, "ordered_by": result.ordered_by,
                        "best_first": result.best_first, "warnings": result.warnings, "read_as": result.read_as,
-                       "items": [_item(i, result.stale, result.ties) for i in result.items],
-                       "collections": result.collections,
-                       "recent": [_item(r, result.stale) for r in result.recent]})
+                       "items": [_item(i, result.stale, result.ties) for i in result.items]})
     if isinstance(result, DecideResult):
         return pruned({"answers": result.answers, "notes": result.notes})
     return pruned(asdict(result) if is_dataclass(result) and not isinstance(result, type) else result)

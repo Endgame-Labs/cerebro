@@ -80,6 +80,11 @@ def test_init_status_trust_and_forget_on_a_small_workspace_never_say_brain(tmp_p
     said += [run("status", "--workspace", str(root)), run("trust", str(root)), run("serve", "--once", "--workspace",
                                                                                      str(root))]
     said += [run("init", str(root)), run("trust", str(tmp_path)), run("secrets", "list", "--workspace", str(root))]
+    (root / "sources" / "warehouse.yaml").write_text("kind: database\nurl: sqlite:warehouse.sqlite\n")
+    (root / "warehouse.sqlite").write_bytes(b"")
+    said += [run("sources", "check", "warehouse", "--workspace", str(root))]
+    (root / "warehouse.sqlite").write_text("North sold 1000.\n")
+    said += [run("sources", "check", "warehouse", "--workspace", str(root))]
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     said += [run("forget", str(root), "--yes"), run("forget")]
     for result in said:
@@ -197,8 +202,12 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
             too_big = await client.call_tool("note", {"text": "x" * 60_000})
             return [empty, client.instructions, kept, too_big,
                     await client.call_tool("query", {"from": "note"}),
-                    await client.call_tool("query", {"from": "note", "collection": "notes"}),
-                    await client.call_tool("query", {"from": "note", "collection": "nowhere"})]
+                    await client.call_tool("browse_notes", {"collection": "notes"}),
+                    await client.call_tool("browse_notes", {"collection": "nowhere"}),
+                    {tool.name: tool.description for tool in (await client.list_tools()).tools},
+                    await client.call_tool("delete_note", {"id": kept.structured_content["id"]}),
+                    await client.call_tool("delete_note", {"id": kept.structured_content["id"]}),
+                    await client.call_tool("delete_note", {"id": "nowhere"})]
 
     async def again() -> str | None:
         async with Client(workspace.mcp_server()) as client:
@@ -214,7 +223,9 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
         workspace.close()
     assert said[0] and "notes yet" in said[0] and "newest notes" in said[-3]
     assert said[3].is_error and "50 KiB" in said[3].content[0].text
-    assert "read_as" in said[4].structured_content and "listed one level" in said[5].content[0].text
+    assert "read_as" in said[4].structured_content and said[5].structured_content["recent"]
+    assert said[6].structured_content["warnings"] and "delete_note" in said[7]
+    assert said[8].structured_content["deleted"] and said[9].is_error and said[10].is_error
     assert said[-2]["warnings"] and said[-1]["warnings"]
     for item in said:
         text = item if isinstance(item, (str, dict)) else (item.content[0].text, item.structured_content)

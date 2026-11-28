@@ -701,10 +701,10 @@ def _value_text(value: Any) -> str:
 
 def field_rows(record: Record) -> list[dict[str, str]]:
     """The rows of a record's fields document: one a field that holds a value, keyed by the field's name, with the
-    record's name, the field's name in words, and its value in words. No row holds the record's time, so the same
-    fields at a new time are the same document, and cost nothing: a field fact is dated when it was learned. A field
-    whose value is the record's name itself is left out: every row names the record by it already, and "The name of
-    Alder is Alder." says nothing."""
+    record's name, the field's name in words, and its value in words. No row holds the record's time: the document is
+    dated by it, or by now while it is ahead, and the same fields at a new time give no new fact. A field whose value
+    is the record's name itself is left out: every row names the record by it already, and "The name of Alder is
+    Alder." says nothing."""
     name = _as_data(record_name(record))
     rows = []
     for key, value in record.fields.items():
@@ -833,7 +833,7 @@ def _keyed() -> Any:
 # -- each model call: its tries, its time and what it spends --------------------------------------------------------
 
 class ModelUnreachable(CerebroError, RuntimeError):
-    """A model call of the facts layer failed every try it is given."""
+    """A model call of the facts layer failed every try it is given, or was answered with a redirect."""
 
 
 class _Bounded(httpx.BaseTransport):
@@ -864,6 +864,11 @@ class _Bounded(httpx.BaseTransport):
             raise
         if self.gateway is not None:
             self.gateway.refused_at(str(request.url), response.status_code, "facts layer")
+        if 300 <= response.status_code < 400:  # Factoid would read the redirect's body as the model's answer
+            response.close()
+            raise ModelUnreachable(f"the facts layer's model at {request.url.host} answered with a redirect (HTTP "
+                                   f"{response.status_code}), which is not followed so the key stays with its host: "
+                                   "check providers in settings.yaml, then the next pass tries again")
         if response.status_code >= 400 and self.mask is not None:
             said = self.mask(response.read().decode("utf-8", "replace")).encode()
             kept = [(k, v) for k, v in response.headers.items() if k.lower() not in ("content-encoding", "content-length")]
@@ -1132,7 +1137,9 @@ class FactoidExtraction(Extraction):
 
     def extract_fields(self, record: Record) -> Extracted:
         rows = field_rows(record)
-        document = _field_document().from_records(rows, uri=f"{_uri(record)}#fields",
+        # a row ahead, such as a meeting to come, is dated now: Factoid ranks a fact low until its time comes
+        metadata = {"source_datetime": min(at, stamp(system_clock()))} if (at := _utc(record.at)) else {}
+        document = _field_document().from_records(rows, metadata=metadata, uri=f"{_uri(record)}#fields",
                                                   title=f"{record_name(record)}, its fields")
 
         def failed(error: Exception) -> str:

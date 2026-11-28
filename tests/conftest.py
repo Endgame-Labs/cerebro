@@ -117,6 +117,9 @@ sys.addaudithook(_guard)
 for _proxy in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
     os.environ.pop(_proxy, None)
 
+# A day a developer pinned for a demo moves no test's dates: a test that wants one sets CEREBRO_TODAY itself.
+os.environ.pop("CEREBRO_TODAY", None)
+
 # The gtm template's agents, as init writes them: the copy bundled with the package, so tests and init read one set.
 GTM = Path(__file__).resolve().parents[1] / "src" / "cerebro" / "templates" / "gtm" / "agents"
 

@@ -270,6 +270,33 @@ def test_one_clock_reaches_the_window_the_run_and_the_ledger(tmp_path: Path) -> 
     assert cerebro.store.rows("spend")[0].data["at"] == "2026-11-17T20:00:00Z"
 
 
+def test_cerebro_today_moves_the_day_windows_the_writer_and_the_judge_read_and_no_stamp(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from cerebro.fakes import FakeDecider
+    from cerebro.held import FIRST_RUN_KEY, first_run_since
+    from cerebro.run import PydanticRun
+
+    (tmp_path / "agents" / "reports").mkdir(parents=True)
+    (tmp_path / "settings.yaml").write_text("timezone: UTC\n")
+    (tmp_path / "agents" / "reports" / "weekly.md").write_text(
+        "---\nevidence:\n  - query: { from: facts, window: last_7_days }\n---\n\n# Output\n\n## Summary\n")
+    monkeypatch.setenv("CEREBRO_TODAY", "2026-11-20")
+    seen: list[str] = []
+    at = datetime(2027, 11, 20, 9, 0, tzinfo=UTC)  # a year on, the note is out of every window
+    note = Record(id="n", source="notes", revision="1", at="2026-11-18", body="A note from that week.")
+    decider = FakeDecider()
+    cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), clock=lambda: at, decider=decider,
+                      connectors=[FakeConnector("notes", [note])],
+                      agent_run=PydanticRun.scripted(lambda p: seen.append(p) or cited(p)))
+    cerebro.agent_run.clock = cerebro.clock
+    assert cerebro.run_once().compiled == ["reports/weekly"]
+    assert "Today is Fri Nov 20, 2026." in seen[0] and "A note from that week." in seen[0] and "2027" not in seen[0]
+    assert [state["today"] for state, _ in decider.asked if "passage" in state] == ["2026-11-20"]
+    assert cerebro.store.rows("spend")[0].data["at"] == "2027-11-20T09:00:00Z"
+    cerebro.store.set_state(FIRST_RUN_KEY, {"status": "discovering", "at": stamp(at)})  # a first run begun now
+    assert first_run_since(cerebro.store) == "2026-11-06"
+
+
 def test_extraction_is_held_to_its_own_cap_and_its_cost_is_kept(tmp_path: Path) -> None:
     (tmp_path / "agents").mkdir()
     (tmp_path / "settings.yaml").write_text("budget:\n  extraction_daily_usd: 0.000000001\n")
@@ -542,6 +569,29 @@ def test_a_near_match_is_judged_through_the_pass_held_to_the_extraction_cap_and_
         "extraction"}
     cerebro, decider, result = judged("0.0000001")  # the extraction spends it, so the judge is not asked
     assert result.extracted == 1 and judge_asked(decider) == [] and cerebro.store.facts_of("things/alder") == []
+
+
+def test_near_matches_that_fail_are_one_line_in_the_pass_and_each_fact_keeps_its_other_links(tmp_path: Path) -> None:
+    from cerebro.models import Decider, DecisionError
+
+    class Down(Decider):
+        def decide(self, state: Any, questions: Any) -> Any:
+            raise DecisionError("rune answered HTTP 400: check the model id and the request")
+
+    notes = FakeConnector("notes", [])
+    cerebro = workspace(tmp_path, extraction=FakeExtraction(), notes=notes)
+    cerebro.decider = Down()
+    cerebro.store.create(Identity("things/alder", "things", "Alder"))
+    cerebro.store.create(Identity("things/birch", "things", "Birch"))
+    cerebro.run_once()  # each article is seen, so no later pass links its facts again by their names alone
+    for id, body in (("n1", "It renewed."), ("n2", "It grew.")):
+        notes.add(Record(id=id, source="notes", revision="1", at="2026-11-10T09:00:00Z", body=body,
+                         keys={"project": ["Birch"]}, fields={"subject": "the Alder deal"}))
+    result = cerebro.run_once()
+    facts = sorted(cerebro.extraction.facts(record=id)[0].id for id in ("n1", "n2"))
+    assert result.failed == {"facts": "linking 2 facts by a near match failed: rune answered HTTP 400: check the "
+                                      "model id and the request"}
+    assert sorted(cerebro.store.facts_of("things/birch")) == facts and cerebro.store.facts_of("things/alder") == []
 
 
 def test_facts_kept_before_their_article_is_born_link_to_it_and_its_first_run_reads_them(tmp_path: Path) -> None:

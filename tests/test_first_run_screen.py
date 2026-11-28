@@ -238,6 +238,21 @@ def test_a_distill_pass_under_way_counts_its_records_done_of_those_it_goes_throu
         "Distilling", "  ✓ parts  2 records • 5 facts  1m 0s", "", "1 of 2 complete • 0 in flight • 1m 10s"]
 
 
+def test_the_footer_counts_the_work_of_the_stage_since_it_opened() -> None:
+    # the build's curators run under Agents with no count, then the late round opens it for its own
+    screen, out, _ = still()
+    screen(Progress("build", "start"))
+    for key in ("parts/curator", "things/curator"):
+        screen(Progress("agents", "start", key))
+        screen(Progress("agents", "end", key, mark="done", text="admitted 1"))
+    screen(Progress("agents", "open", total=1))
+    screen(Progress("agents", "start", "places/curator"))
+    screen(Progress("agents", "end", "places/curator", mark="done", text="proposed 1"))
+    screen(Progress("build", "end"))
+    screen.settle()
+    assert screen_of(out.getvalue()).endswith("1 of 1 complete • 0 in flight • 0s")
+
+
 def test_a_failure_threads_under_its_row_wrapped_at_its_spaces_and_a_line_said_goes_under_the_groups() -> None:
     screen, clock = region(width=40)
     screen(Progress("compile", "open", total=1))
@@ -557,58 +572,43 @@ def test_the_late_list_opens_under_the_builds_region_drawn_a_last_time_with_its_
 
 
 
-def test_inside_init_the_first_approval_takes_the_discovery_round_off_the_screen() -> None:
-    # a block begins once the Ready block gave way, and the approval drops it: what it approved
-    # comes first, one blank line under what stood above the run, and the rows of the round go
-    clock = [0.0]
+def test_inside_init_the_approval_goes_under_the_lists_last_frame_and_leaves_it_whole(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # the list stays where it stood as its last frame, which its own screen prints past the printer
+    import click
+    from click.testing import CliRunner
+
+    from cerebro import cli, first_run
+    from cerebro.app import Cerebro
+    from cerebro.first_run import Listed, Pile
+    from cerebro.tree import Group, Row
+
+    root = tmp_path / "w"
+    assert CliRunner().invoke(cli.main, ["init", str(root), "--daily-usd", "1", "--timezone", "UTC"]).exit_code == 0
+    monkeypatch.setattr(cli, "open_workspace", lambda path: Cerebro(path, trusted=True))
     stream = Terminal()
-    stream.write("✗ No MCP clients installed\n  Install MCP clients later with cerebro init.\n")
     p = Printer(stream, stream, getenv=env(TERM="xterm-256color").get, dark=True, width=lambda: 100,
-                now=lambda: clock[0], tick=3600, height=lambda: 40)
-    screen = FirstRunScreen(p, sources=["notes"], ticking=False, height=lambda: 40, region=True)
-    p.line("")
-    screen(Progress("read", "start"))
-    screen(Progress("check", "end", "notes", mark="done", total=3))
-    screen(Progress("read", "end", total=3))
-    screen(Progress("discover", "open", total=2))
-    for id, coll in (("parts/curator", "parts"), ("things/curator", "things")):
-        screen(Progress("discover", "queue", id, text=coll))
-    screen(Progress("discover", "end", "parts/curator", mark="done", text="2 articles to parts collection"))
-    screen(Progress("discover", "end", "things/curator", mark="failed", text="Discovery for things collection did "
-                    "not finish", why="TimeoutError: no answer"))
-    screen.settle()
-    screen.list_shown(True)  # drawn on its own screen, which cleared it
-    screen(Progress("approve", "start", total=2))
-    screen(Progress("approve", "end", mark="done", text="Admitted 2 articles to parts collection"))
-    assert screen_of(stream.getvalue()) == ("✗ No MCP clients installed\n  Install MCP clients later with cerebro init."
-                                           "\n\n✓ Admitted 2 articles to parts collection  0.0s")
+                now=lambda: 0.0, tick=3600, height=lambda: 40)
+    monkeypatch.setattr(cli, "_first_run_screen", lambda workspace, plain: FirstRunScreen(p, ticking=False,
+                                                                                         height=lambda: 40))
+    frame = "Working set proposal\n\n> [x] Thing\n\n1 of 1 selected\n↑↓ move   ⏎ Approve all\n"
+    monkeypatch.setattr(cli, "_checklist", lambda pile: stream.write(frame))
 
+    def running(workspace: object, *, choose: Any, on: Any, **kwargs: object) -> None:
+        on(Progress("discover", "start", "things/curator", text="things"))
+        on(Progress("discover", "end", "things/curator", mark="done", text="1 article to things collection"))
+        row = Row("p1", "things/curator", "things", "Thing")
+        choose(Pile(lists=[Listed("things/curator", "things", [row])], groups=[Group([row], tick=True)]))
+        on(Progress("approve", "start", total=1))
+        on(Progress("approve", "end", mark="done", text="Admitted 1 article to things collection"))
+        raise KeyboardInterrupt
 
-def test_outside_init_the_round_stays_and_a_single_blank_line_parts_it_from_the_approval() -> None:
-    screen, out, _ = still()
-    screen(Progress("discover", "start", "parts/curator", text="parts"))
-    screen(Progress("discover", "end", "parts/curator", mark="done", text="2 articles to parts collection"))
-    screen.settle()
-    screen.list_shown(True)
-    screen(Progress("approve", "start", total=2))
-    screen(Progress("approve", "end", mark="done", text="Admitted 2 articles to parts collection"))
-    assert screen_of(out.getvalue()) == ("✓ Proposed 2 articles to parts collection  0.0s\n\n"
-                                        "✓ Admitted 2 articles to parts collection  0.0s")
-
-
-def test_the_late_lists_approval_stands_one_blank_line_under_the_regions_last_frame() -> None:
-    screen, out, _ = still()
-    screen(Progress("build", "start"))
-    screen(Progress("compile", "open", total=1))
-    screen(Progress("compile", "end", "parts/gamma", mark="done", text="articles/parts/gamma.md"))
-    screen(Progress("build", "end"))
-    screen.settle()
-    screen.list_shown(True)
-    screen(Progress("approve", "start", total=1))
-    screen(Progress("approve", "end", mark="done", text="Admitted 1 article to parts collection"))
-    assert screen_of(out.getvalue()).endswith("1 of 1 complete • 0 in flight • 0s\n\n"
-                                              "✓ Admitted 1 article to parts collection  0.0s")
-
+    monkeypatch.setattr(first_run, "run", running)
+    monkeypatch.setattr(cli, "_asking", lambda: True)
+    with pytest.raises(click.exceptions.Exit):
+        click.Context(cli.serve).invoke(cli.serve, root=root, once=True, port=None, host=None, allowed=(),
+                                        under_init=True)
+    assert f"things collection  0.0s\n\n{frame}\n✓ Admitted 1 article" in screen_of(stream.getvalue())
 
 
 def test_a_curator_of_no_collection_with_nothing_to_propose_keeps_the_bare_line() -> None:
@@ -621,8 +621,7 @@ def test_a_curator_of_no_collection_with_nothing_to_propose_keeps_the_bare_line(
 @pytest.mark.parametrize(("curators", "line"), [
     (1, "One more list: a curator that could not propose before the build proposes now."),
     (2, "One more list: curators that could not propose before the build propose now.")])
-def test_a_late_list_is_announced_under_the_finished_region_and_the_line_goes_with_the_list(
-        curators: int, line: str) -> None:
+def test_a_late_list_is_announced_under_the_finished_region(curators: int, line: str) -> None:
     screen, out, _ = still()
     screen(Progress("build", "start"))
     screen(Progress("compile", "open", total=1))
@@ -631,42 +630,6 @@ def test_a_late_list_is_announced_under_the_finished_region_and_the_line_goes_wi
     screen(Progress("late", "open", total=curators))
     screen.say(line)  # the run says it too, for a screen that prints its lines: this one shows it once
     assert screen_of(out.getvalue()).endswith(f"1 of 1 complete • 0 in flight • 0s\n\n{line}")
-    screen(Progress("arrange", "start", total=1))
-    screen(Progress("arrange", "end", total=1))
-    screen.list_shown(True)  # drawn and cleared by its own screen
-    screen(Progress("approve", "start", total=1))
-    screen(Progress("approve", "end", mark="done", text="Admitted 1 article to parts collection"))
-    shown = screen_of(out.getvalue())
-    assert line not in shown
-    assert shown.endswith("1 of 1 complete • 0 in flight • 0s\n\n✓ Admitted 1 article to parts collection  0.0s")
-
-
-def test_on_a_narrow_terminal_the_late_lists_line_and_the_review_under_it_go_with_the_list_whole() -> None:
-    screen, out, clock = still(width=30)
-    screen(Progress("build", "start"))
-    screen(Progress("build", "end"))
-    screen(Progress("late", "open", total=2))
-    screen(Progress("arrange", "start", total=122))
-    clock[0] = 64.0
-    screen(Progress("arrange", "end", total=122))
-    assert screen_of(out.getvalue()).endswith("✓ Reviewed 122\n  proposals  1m 4s")  # two rows at this width
-    screen.list_shown(True)
-    screen(Progress("approve", "start", total=1))
-    screen(Progress("approve", "end", mark="done", text="Admitted 1 article"))
-    assert screen_of(out.getvalue()).endswith("nothing to run\n\n✓ Admitted 1 article  0.0s")
-
-
-@pytest.mark.parametrize(("width", "rows"), [(20, 6), (80, 2)])
-def test_the_late_lists_approval_erases_every_screen_row_its_line_and_the_review_took(width: int, rows: int) -> None:
-    screen, out, _ = still(width=width)
-    screen(Progress("build", "start"))
-    screen(Progress("build", "end"))
-    screen(Progress("late", "open", total=2))
-    screen(Progress("arrange", "start", total=1))
-    screen(Progress("arrange", "end", total=1))
-    screen.list_shown(True)
-    screen(Progress("approve", "start", total=1))
-    assert f"\r\x1b[{rows}A\x1b[J" in out.getvalue()
 
 
 def test_off_a_live_screen_the_run_says_the_line_just_before_the_late_list(tmp_path: Path) -> None:

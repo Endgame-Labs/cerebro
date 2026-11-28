@@ -24,6 +24,7 @@ Cerebro is a framework. Sales (the `gtm` template) is one use of it. Nothing in 
 
 The usual way to handle a judgment is a few hundred lines of deterministic code: a classifier, a router, a validator, a wrapper with flags. Here it is usually wrong. One model question, or a line in an agent's own prompt, holds the same complexity for a fraction of a cent, and it bends when the content changes where code breaks.
 
+- **The engine gives just enough structure for the models to run the show.** Do not write code that tries to make a model's run certain. It shows up as internals that are hard to follow, branches a person could not explain, and an option or a message where nothing was the right outcome. It never loosens a hard line below, and a real failure still gets a line a person can act on.
 - **Before you write a helper that classifies, routes, filters, ranks, validates free text or picks among options, ask:** can the agent's prompt decide this, or one question to the judge?
 - **A flag that restates what a prompt decides is wrong.** The prompt alone determines what an agent does with what it is given.
 - **Do not build schemas over free text.** Prompting changes the shape of content, and a rigid structure breaks.
@@ -150,6 +151,7 @@ The docs under `docs/` say how to use Cerebro, not how it is built. They are wri
 - You are writing a parser or a schema for text a model wrote.
 - You are deciding in code something a curator or a writer could be asked.
 - You are protecting against a case you have not seen happen.
+- You are adding a branch, an option or a message that a person would not miss if it were gone.
 - You wrote "section".
 
 ## Keeping this file
