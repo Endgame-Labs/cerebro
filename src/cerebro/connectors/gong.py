@@ -36,6 +36,7 @@ import base64
 import binascii
 import dataclasses
 import hashlib
+import html
 import json
 import time
 import zlib
@@ -262,7 +263,7 @@ def render_call(call: dict[str, Any], transcript: dict[str, Any] | None, ours: O
     and their address. A speaker no party names is `Speaker <id>`, on no side. Each turn
     also says its side, by the same rule as the record's `ours` field (`_side`)."""
     meta = _meta(call)
-    lines = [" ".join(title.split())] if (title := _text(meta.get("title"))) else []
+    lines = [" ".join(title.split())] if (title := html.unescape(_text(meta.get("title")))) else []
     if started := _text(meta.get("started")):
         lines.append(f"Started: {started}")
     parties = [p for p in call.get("parties") or [] if isinstance(p, dict)]
@@ -677,7 +678,7 @@ class GongConnector(Connector):
             fields["calendar_event_id"] = event  # as Gong writes it
             if named := event_key(event, when):  # the event's id as the calendar writes it: one key for both
                 keys["calendar_event_id"] = [named]
-        if title := _text(meta.get("title")):
+        if title := html.unescape(_text(meta.get("title"))):
             fields["title"] = title
         duration = meta.get("duration")
         if when is not None and isinstance(duration, (int, float)) and duration > 0:
