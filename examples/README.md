@@ -39,5 +39,3 @@ The articles land in `articles/`. Each example's README has its own command and 
 | Subagents that compose an article | `incident-ops/` |
 | Articles that link across collections | `lit-review/` |
 | Review before an archive, merge, or split | `lantern-lease/` |
-
-Ten more examples, from a restaurant kitchen to a research ship, are in [Endgame-Labs/cerebro-examples](https://github.com/Endgame-Labs/cerebro-examples).
