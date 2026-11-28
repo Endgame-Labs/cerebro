@@ -65,7 +65,8 @@ class Checked:
     reads them for nothing; `held` the ids it holds, in the order it keeps them, each with its decision, `into` the collection
     each held record lands in, and `let_go` those past the bound. `curators` says, by curator, what `serve --once`
     does with it before it takes records in, for each curator that keeps a collection a held record waits on.
-    `first_run` says whether `serve --once` runs the workspace's first run instead of a pass."""
+    `first_run` says whether `serve --once` runs the workspace's first run instead of a pass. `opened` is the one line
+    a check of a source that lists nothing by design gives, once the check opened it."""
 
     name: str
     since: str
@@ -91,6 +92,7 @@ class Checked:
     warnings: list[str] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
     failure: str = ""
+    opened: str = ""
     mask: Callable[[str], str] = field(default=lambda text: text, repr=False)
 
     def lines(self) -> list[str]:
@@ -104,6 +106,8 @@ class Checked:
         return [id for id in dict.fromkeys(self.take) if str(id) not in out]
 
     def _lines(self) -> list[str]:
+        if self.opened:
+            return [f"notice    {self.opened}"]
         mask = self.mask
         out = [f"notice    {line}" for line in self.notices]
         if not self.failure or self.listed:
@@ -217,7 +221,7 @@ def _since(workspace: Cerebro, name: str, cursor: str | None) -> str:
 
 def refusal(workspace: Cerebro, name: str) -> str:
     """Why `name` cannot be checked, in the line the workspace gave for it when it loaded, or "" when it can."""
-    if name in workspace.connectors and not workspace.connectors[name].lists_nothing:
+    if name in workspace.connectors:
         return ""
     for line in [*workspace.refused, *workspace.notices]:
         if line.startswith((f"sources/{name}.yaml:", f"sources/{name}.yaml ", f"sources/{name}:")):
@@ -228,13 +232,21 @@ def refusal(workspace: Cerebro, name: str) -> str:
 def check(workspace: Cerebro, name: str, *, whole: bool = False, limit: int = 0) -> Checked:
     """List the source `name` from the cursor the last pass kept, or with `whole` from none, to its end, and say what
     the next pass does with each record, as `runner.decide` decides it. Get each record the pass would get, at most
-    `limit` when it is above 0. Reads the store and keeps nothing. Raises `CheckRefused`, masked, for a source the
-    workspace refused or does not list."""
+    `limit` when it is above 0. Reads the store and keeps nothing. A source that lists nothing by design, a database
+    source, is instead opened once, read only, by a query that reads none of its tables. Raises `CheckRefused`,
+    masked, for a source the workspace refused or does not list, or one that does not open."""
     workspace.refresh_mask()
     mask = workspace.mask_every()
     if why := refusal(workspace, name):
         raise CheckRefused(mask(why))
     connector = workspace.connectors[name]
+    if connector.lists_nothing:
+        try:
+            connector.select("select 1")
+        except CerebroError as error:
+            raise CheckRefused(mask(str(error))) from None
+        return Checked(name, "", mask=mask, opened=f"sources/{name}: the database opens, read only, and a pass lists "
+                       "no records from it: an agent reads it with a sql evidence line")
     store = workspace.store
     result = Checked(name, "", whole=whole, cursor=store.state(f"cursor:{name}") is not None, limit=limit, mask=mask,
                      first_run=in_first_run(workspace))
