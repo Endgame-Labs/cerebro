@@ -21,8 +21,8 @@ gives an agent the facts of the notes of one collection and the collections unde
   whole in one reply.
 - **A context agent reads a note's facts, never its text:** the app gives no kind's text to agents.
 - **A session starts with the newest notes.** `session` gives the server's instructions: what notes are for, and
-  the five newest notes, one short line each, quoted as data, then a line for each a retract took back, with the
-  query that gives the list as it stands.
+  the five newest notes, one short line each, quoted as data, with the query that gives the list as it stands.
+  After the list, one line for each of those notes that a retract took back says so.
 - **Note text reaches a model as data, never as instructions,** as all evidence does: the run escapes it where the
   prompt is put together.
 
