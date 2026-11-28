@@ -40,7 +40,7 @@ wheels = [
 
 [[package]]
 name = "cerebro"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -72,7 +72,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = "==8.5.1" },
-    { name = "factoid", specifier = "==0.1.29" },
+    { name = "factoid", specifier = "==0.1.30" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "keyring", specifier = ">=25.7.0" },
     { name = "markdown-it-py", specifier = "==4.3.0" },
@@ -511,7 +511,7 @@ wheels = [
 
 [[package]]
 name = "factoid"
-version = "0.1.29"
+version = "0.1.30"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -520,9 +520,9 @@ dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b0/dd/302f24390b813d432db120398b7484e2d22823033e074b8f9faf6c9ebd2f/factoid-0.1.29.tar.gz", hash = "sha256:4de9ebb7c6c60f2f8e03208f95db1e06e33568b5191e7e200f23accd4dbc9665", size = 219834, upload-time = "2026-11-25T21:07:57.639Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/41/b04ab1c76b68625098be469a20bfcea54d257419da82b8208122302d967b/factoid-0.1.30.tar.gz", hash = "sha256:5fb0cee4b04fe56107c35f46ecd96b9e609f688341d8533d679dc459bb0dae29", size = 222551, upload-time = "2026-11-27T09:20:56.741Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/1b/6fc1cf8d6f3da615ca48de2d14ac34d0b53d94bdb66ca08bd9430f7c0110/factoid-0.1.29-py3-none-any.whl", hash = "sha256:5ba6e5d06ec8a93e2392f4459d3b4657a38f86dd3c0943776a4d1805c7551757", size = 170521, upload-time = "2026-11-25T21:07:56.253Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/1f/d6a895d28c0b6082e9c90c93143fd8bff1d3ae5d9432553631bf84c6a12d/factoid-0.1.30-py3-none-any.whl", hash = "sha256:859754ddd8f592f25ad1acc5840177d6bae97532d03b01783784479e0c497f9d", size = 171777, upload-time = "2026-11-27T09:20:55.539Z" },
 ]
 
 [[package]]

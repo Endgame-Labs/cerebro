@@ -17,6 +17,7 @@ Cerebro is a framework. Sales (the `gtm` template) is one use of it. Nothing in 
 - **The test:** would this code path work unchanged for a research lab, a law practice or a codebase?
 - **Where a domain rule goes:** a template (`src/cerebro/templates/`), the connector that issues a source's own key, or the workspace's files. Never the engine.
 - **No collection is first or main.** Order comes from the data, such as what hangs off what, never from a name.
+- **No collection gates another.** What an article gets depends only on its own keys. Whether another collection holds an article never changes what a source lists for it, what binds to it, what it is shown, or whether it is built. A curator may make one collection wait on another, in its prompt, where a person can change it. The engine and the connectors never do.
 - **This covers comments, docstrings, examples and engine tests.** Use neutral names there (`things`, `parts`, a `parent:` header). Sales words belong in template tests.
 
 ### 2. A model decides. Code guards.
@@ -36,7 +37,7 @@ The usual way to handle a judgment is a few hundred lines of deterministic code:
 - Every model call is checked against a spending cap before it starts. The cap is a soft limit: once it is met nothing new starts, and a run may end over it by the calls already under way. A few cents over is fine. Dollars over is not. Do not build holds, reservations or estimates to make the cap exact.
 - Inputs are append-only. Only a run writes an article.
 - Every HTTP request needs a live token.
-- A curator does not undo what a caller decided until something new about it arrives. A caller's instruction outranks an agent's. A caller is anyone who sends a command, at the command line or over MCP or the JSON API with a live token. A curator, an agent and an app are not callers.
+- A curator does not undo what a caller decided until something new about it arrives. A caller's instruction outranks an agent's. A caller's decision outranks an app's. A caller is anyone who sends a command at the command line, over local MCP, or over the network with a live token. A curator, an agent and an app are not callers.
 - Text from a source reaches a model as data, never as instructions.
 - Fields the system relies on are protected: whatever a model sets there, the system's value always overwrites it. They are the fields that address and name an article, place it in the working set, bind records to it, and record what compile and the sources say of it. Every other field belongs to the agent's own data domain, and the agent is free to set or rewrite it.
 
@@ -61,6 +62,8 @@ Notes is an app. It lives under `apps/notes/` and uses the framework like any ap
 ### 5. Cerebro mints no facts
 
 Every fact comes out of Factoid, from a record. A tell is a record that triage turns into facts and proposals, or neither, each citing it. It writes no field. Front matter has two writers: a curator when it admits an article, and the article's agents. No code decides what a field says.
+
+A person's yes goes to its curator, which carries it out in a run. Code never creates or changes an article from a yes.
 
 ## Words
 

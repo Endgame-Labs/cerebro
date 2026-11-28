@@ -35,10 +35,10 @@ from typing import TYPE_CHECKING, Any
 
 from . import prompts
 from .article import passages
-from .budget import BudgetSpent, Ledger
+from .budget import BudgetSpent, Held, Ledger
 from .clock import Clock, seconds, system_clock
 from .errors import CerebroError
-from .models import Decider, DecisionTooLarge, ModelSpec, TokenCount, YesNo
+from .models import Decider, DecisionTooLarge, ModelSpec, YesNo
 from .search import ARTICLE, FACT, RERANK_TOP, Hit
 
 if TYPE_CHECKING:
@@ -139,10 +139,10 @@ class _Asked:
 class DecisionReranker:
     """The re-rank function on the decision model, as the module's docstring gives it. `store` and `extraction` are
     where it reads the text of a hit: the text under an article's heading from the store, a fact from the facts layer.
-    With a `ledger`, each call is held to the `rerank` cap and recorded, priced on `decision`. `clock` gives the time the
-    ledger reads, and `ticks` the seconds the time bound reads. `mask` masks the words searched and every passage
-    before the model reads them. `masks`, in its place, gives a mask of every value the secrets store holds, built
-    for each call. `calls` and `usage` total what it spent."""
+    With a `ledger`, each call is held to the `rerank` cap try by try and recorded, priced on `decision`, as
+    `budget.Held` holds it. `clock` gives the time the ledger reads, and `ticks` the seconds the time bound reads.
+    `mask` masks the words searched and every passage before the model reads them. `masks`, in its place, gives a mask
+    of every value the secrets store holds, built for each call."""
 
     def __init__(self, decider: Decider, *, store: Store | None = None, extraction: Extraction | None = None,
                  ledger: Ledger | None = None, decision: ModelSpec | None = None, clock: Clock = system_clock,
@@ -154,7 +154,6 @@ class DecisionReranker:
         self.masks = masks
         self.ledger, self.decision, self.clock, self.ticks = ledger, decision, clock, ticks
         self.root, self.top, self.limit, self.entries = root, top, limit, entries
-        self.calls, self.usage = 0, TokenCount()
         self._cache: OrderedDict[str, float] = OrderedDict()
         self._lock = threading.Lock()
 
@@ -223,27 +222,17 @@ class DecisionReranker:
             asked.done.set()
 
     def _ask(self, contract: str, text: str, batch: list[tuple[str, _Passage]], asked: _Asked) -> None:
-        """One decision for `batch`, split in halves while it is too large. Each call is checked against the cap
-        before it starts, and recorded after it."""
+        """One decision for `batch`, split in halves while it is too large, each held to the cap."""
         if asked.stop.is_set() or asked.why:
             return
         ids, mask = [f"p{n}" for n in range(1, len(batch) + 1)], self.masks() if self.masks else self.mask
         state = {"contract": contract, "search": mask(text.strip()),
                  "passages": [{k: mask(v) for k, v in p.wire(id, mask).items()} for id, (_, p) in zip(ids, batch)]}
         questions = {id: YesNo(RERANK_QUESTION.format(id=id)) for id in ids}
-        if self.ledger is not None:
-            self.ledger.check(LAYER, self.clock(), self.decision)
+        held = Held(self.decider, self.ledger, LAYER, self.decision, self.clock, "rerank") \
+            if self.ledger is not None and self.decision is not None else self.decider
         try:
-            decision = self.decider.decide(state, questions)
-            with self._lock:
-                u = decision.usage
-                self.calls += 1
-                self.usage = TokenCount(self.usage.input_tokens + u.input_tokens,
-                                        self.usage.output_tokens + u.output_tokens,
-                                        self.usage.cache_read_tokens + u.cache_read_tokens,
-                                        self.usage.cache_write_tokens + u.cache_write_tokens)
-            if self.ledger is not None and self.decision is not None:
-                self.ledger.record(LAYER, self.clock(), self.decision, decision.usage, "rerank")
+            decision = held.decide(state, questions)
         except DecisionTooLarge:
             if len(batch) < 2:
                 raise

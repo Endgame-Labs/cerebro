@@ -49,8 +49,9 @@ def _curate(w: Workspace, calls: list[tuple[str, dict]], collection: str = "thin
         return done, [e.text for e in done.run.transcript if e.role == "tool"]  # type: ignore[union-attr]
 
 
-def _runs(workspace: Any, agent: str) -> list[Any]:
-    return [r for r in workspace.store.rows("agent-runs") if r.data["agent"] == agent]
+def _runs(workspace: Any, agent: str) -> list[str]:
+    """The runs of `agent`, each once: a run's row is written again as what grounding said of it is kept."""
+    return list(dict.fromkeys(r.data["run"] for r in workspace.store.rows("agent-runs") if r.data["agent"] == agent))
 
 
 def _articles(w: Workspace, collection: str = "things") -> dict[str, str]:
@@ -91,14 +92,18 @@ def test_an_admit_that_names_one_article_and_gives_another_ones_key_never_binds_
         assert _articles(w)[archived] == "archived", replies
 
 
-def test_an_admit_with_keys_of_two_articles_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("keys, said", [  # an alias names no one thing: a domain that differs tells beta apart
+    ({"alias": ["Alfa", "Bet"]}, "bind things/alpha, things/beta"),
+    ({"domain": ["alpha.example"], "alias": ["Bet"]}, ("things/alpha joins the working set again. The key alias Bet "
+                                                       "stays on things/beta"))])
+def test_an_admit_with_keys_of_two_articles_is_refused_unless_a_key_that_names_one_thing_tells_one_apart(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, keys: dict[str, list[str]], said: str) -> None:
     w = Workspace(tmp_path / "w", monkeypatch, "things")
-    for one in (ALPHA, BETA):
-        w.make(one["path"], one["title"], {"domain": [one["domain"]], "alias": [one["alias"]]})
+    for one, status in ((ALPHA, "archived"), (BETA, "active")):  # its curator archived alpha: an admit brings it back
+        w.make(one["path"], one["title"], {"domain": [one["domain"]], "alias": [one["alias"]]}, status)
     _settled(w)
-    _, replies = _curate(w, [("admit", {"name": "things/alpha", "reason": "seen",
-                                                "keys": {"domain": ["alpha.example"], "alias": ["Bet"]}})])
-    assert "bind things/alpha, things/beta" in replies[0], replies
+    _, replies = _curate(w, [("admit", {"name": "things/alpha", "reason": "seen", "keys": keys})])
+    assert said in replies[0], replies
     assert _each_key_binds_one(w) == []
 
 

@@ -97,18 +97,24 @@ def test_a_list_declined_whole_builds_nothing_and_the_next_run_asks_the_curators
         script.calls["things/curator"] = [by_record("T2")]
         again = run(workspace, choose=Choices.starter, say=lambda line: None)
         assert again is not None and script.ran.count("things/curator") > asked  # its curators are asked again
-        assert [row.name for row in again.pile.rows()] == ["Birch Hall"]
+        assert [row.name for row in again.pile.rows() if not row.left_out] == ["Birch Hall"]
         assert not in_first_run(workspace)
 
 
-def test_a_first_run_that_proposes_nothing_says_so_and_names_the_hand_admit(tmp_path: Path) -> None:
+def test_a_first_run_that_proposes_nothing_says_so_names_the_hand_admit_and_no_older_records(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from test_first_run_structure import RECORDS, thing
+
     root = lay_out_workspace(tmp_path)
     script = Script({"things/curator": [], "parts/curator": []})
-    with open_it(root, script) as workspace:
+    older = replace(thing("N1", "Old Note", "t-old"), at="2026-10-01T09:00:00Z", into="")  # bound to no collection
+    with open_it(root, script, [*RECORDS, older]) as workspace:
         out = run(workspace, choose=Choices.starter, say=lambda line: None)
     assert out is not None
     assert "Nothing to propose: the wiki starts empty; add with cerebro admit parts/<name>." in out.lines
     assert not any(line.startswith("Nothing approved") for line in out.lines)
+    assert out.result.older and not any("older record" in line for line in out.result.notices)  # no article to rewrite
 
 
 # -- the curators of a round are asked side by side
@@ -239,8 +245,6 @@ def test_a_held_record_its_curator_neither_proposed_nor_left_out_is_listed_as_no
         assert ("Birch Hall", "not weighed") in [(row.name, row.reason) for row in things.left()]
         assert things.said == "Left out 2: 1 not weighed, 1 not weighed"  # Cerebro's row and the curator's, apart
         assert [row.name for row in things.proposed()] == ["Alder Works"]  # what it proposed is not listed again
-        parts = next(listed for listed in pile.lists if listed.collection == "parts")
-        assert ("Alder Gear", "not weighed") in [(row.name, row.reason) for row in parts.left()]
         assert "    [ ] Birch Hall  things" in lines(pile)
         LocalApproval(workspace).apply(settled(pile, {row.id for row in pile.rows()}))  # admitted if ticked
         assert "things/birch-hall" in carried(workspace)
@@ -326,7 +330,7 @@ def test_a_held_record_sharing_a_header_value_with_a_proposed_one_is_still_on_a_
     def call(id: str, name: str) -> Record:
         return Record(id=id, source="src", revision="1", at="2026-11-10T09:00:00Z",
                       keys={"name": [name], "parent": ["Alder Works"]}, fields={"name": name}, body=f"{name}.",
-                      into="things")
+                      into="things", carried=["parent"])  # a header line, as a files source carries it
 
     records = [*RECORDS, call("C1", "Alder call one"), call("C2", "Alder call two")]
     script = Script({"things/curator": [by_record("C1")], "parts/curator": []})
@@ -338,8 +342,8 @@ def test_a_held_record_sharing_a_header_value_with_a_proposed_one_is_still_on_a_
         assert "Alder call two" in [row.name for row in things.left()]  # on a list, not hidden by the shared parent
 
 
-# -- a held record no row speaks for is listed under the reason an earlier run gave it, else `not weighed`; one person's
-#    records, one name and one address, as one row; each reason under a heading of its own,
+# -- a held record no row speaks for is listed under the reason an earlier run gave it, else `not weighed`; records no
+#    admit takes are a row each, whatever name and address they share; each reason under a heading of its own,
 #    `Left out: <reason> (n)`; and named by its record, never by its file path
 
 
@@ -368,7 +372,7 @@ def test_every_held_record_is_a_row_of_its_own_whatever_name_and_address_it_shar
     with open_it(lay_out_workspace(tmp_path), script, records) as workspace:
         run(workspace, choose=None, say=lambda line: None)
         parts = next(listed for listed in LocalApproval(workspace).pile().lists if listed.collection == "parts")
-        kims = [row for row in parts.left() if row.name == "Kim Vale"]  # the engine folds none into one (rule 1)
+        kims = [row for row in parts.left() if row.name == "Kim Vale"]  # no admit takes them, so each is a row
         assert sorted(row.record["id"] for row in kims) == ["P7", "P8", "P9"]
 
 
@@ -380,7 +384,8 @@ def test_left_out_rows_show_each_with_its_reason_and_a_file_record_by_its_name_n
     from cerebro.first_run import LocalApproval, lines
 
     note = Record(id="local/calls/2026-11-10-cedar-check-in.md", source="src", revision="1",
-                  at="2026-11-10T09:00:00Z", keys={"parent": ["Alder Works"]}, body="A check-in.", into="things")
+                  at="2026-11-10T09:00:00Z", keys={"parent": ["Alder Works"]}, body="A check-in.", into="things",
+                  carried=["parent"])  # a header line, as a files source carries it
     script = Script({"things/curator": [by_record("T1"), ("leave_out", {"record": {"source": "src", "id": "T2"},
                                                                        "reason": "Named once."})],
                      "parts/curator": []})
@@ -627,7 +632,7 @@ def test_a_paused_budget_stops_the_round_which_does_not_count_and_its_curators_a
         with pytest.raises(RoundStopped, match="discovery stopped: BudgetSpent: compilation spent"):
             run(workspace, choose=None, say=lambda line: None)
         session = workspace.store.state(KEY)
-        assert session["rounds"] == 0 and "parts/curator" in session["todo"]  # the round does not count
+        assert "parts/curator" in session["todo"]  # the round does not count
         script.paused = False
         out = run(workspace, choose=None, say=lambda line: None)
         assert out is not None and script.ran.count("parts/curator") >= 2  # asked again on the next run

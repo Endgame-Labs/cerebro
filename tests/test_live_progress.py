@@ -234,10 +234,10 @@ def test_a_pass_hands_its_events_in_order_each_masked_and_draws_nothing_itself(
         ("distill", "open", "", ""), ("distill", "start", "local", ""), ("distill", "count", "local", ""),
         ("distill", "end", "local", "done"),
         ("compile", "open", "", ""), ("compile", "start", "digests/weekly", ""),
-        ("compile", "end", "digests/weekly", "done")]
+        ("compile", "end", "digests/weekly", "done"), ("compile", "note", "digests/weekly", "")]
     assert (events[4].done, events[4].total, events[4].text) == (0, 1, "0 facts")  # how far through, as it goes
     assert events[5].text == "1 record • 2 facts" and events[6].total == 1
-    assert events[-1].text == "articles/digests/weekly.md" and result.compiled == ["digests/weekly"]
+    assert events[-2].text == "articles/digests/weekly.md" and result.compiled == ["digests/weekly"]
     with cli.open_workspace(root) as workspace:
         (root / "local" / "kickoff.md").write_text(NOTE + "\nThe kickoff note changed.\n")
         workspace.mask = lambda line: line.replace("Vega", "****")  # type: ignore[method-assign]

@@ -22,7 +22,9 @@ A curator does not need a step for each record. Once an article has the right ke
 
 ## Writers write from evidence
 
-An article's agents write its text from the evidence their file asks for: facts, records, other articles. Every sentence cites the fact behind it. A sentence that cites nothing, or says more than its facts hold, is rewritten to match them or dropped.
+An article's agents write its text from the evidence their file asks for: facts, records, other articles. Every sentence cites the fact behind it. An editor scores each sentence from 0 to 1 by what its facts mean, in any words, language or style, and the writer sees the scores once while it can still revise.
+
+Grounding never cuts or rewrites what a writer wrote. A sentence that still scores under the floor, `min_grounding`, lands marked with a footnote that says it is not fully backed by the facts it cites. You read the whole article, and see which claims are weak. When you take a fact back, at the command line or through a client over MCP or the JSON API, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
 
 Cerebro hides nothing from a writer. When a fact is old, retired, or from another article, Cerebro labels it and lets the writer judge. What makes a fact relevant is what it says, not where it came from.
 
@@ -51,7 +53,7 @@ An article can be built by several agents, each writing a part. Only the part wh
 
 ## You decide, and curators carry it out
 
-A caller is you, at the command line, or any client that reaches the wiki with a live token. What a caller asks for is decided as it is sent. An admit, archive, merge, split, or link goes to the collection's curator, which carries it out on its next run. An instruction to writers lands at once.
+A caller is you, at the command line, or any client you connect over MCP or the JSON API. What a caller asks for is decided as it is sent. An admit, archive, merge, split, or link goes to the collection's curator, which carries it out on its next run. An instruction to writers lands at once.
 
 A token proves who may call. It does not limit what that caller may decide.
 

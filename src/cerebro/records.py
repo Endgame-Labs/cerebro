@@ -74,17 +74,21 @@ __all__ = [
     "Review",
     "TellResult",
     "decide",
+    "decided_by_caller",
     "extract_told",
+    "finish_retracts",
     "instructions_on",
     "proposal_from",
     "proposals",
     "propose",
     "retract",
+    "retracted_records",
     "review",
     "sentences",
     "settle_told",
     "tell",
     "told_waiting",
+    "was_retracted",
 ]
 
 KINDS = ("article.instruct", "article.admit", "article.link", "article.archive", "article.merge", "article.split",
@@ -389,7 +393,7 @@ def _apply(store: Store, extraction: Extraction | None, proposal: Proposal, at: 
     if kind in APPLIES:
         return apply(store, proposal, at)
     if kind in RETRACTS:
-        withdrew, _ = _take_back(store, extraction, target, at, proposal.id)
+        withdrew, _ = _take_back(store, extraction, proposal)
         return {"at": at, "withdrew": withdrew}, f"Withdrew {', '.join(withdrew)}."
     if kind == "article.instruct":
         if proposal.by.kind == "person":
@@ -421,6 +425,34 @@ UNDO = {"article.admit": "archive it to take it out of the working set again",
         "article.split": "merge the two articles again"}
 
 
+def decided_by_caller(proposal: Proposal) -> bool:
+    """Whether a caller decided `proposal`, and not a curator, an agent or an app."""
+    return (proposal.decided_by or proposal.by).kind == "person"
+
+
+def retracted_records(store: Store) -> dict[str, tuple[str, str]]:
+    """When the latest accepted `record.retract` of each record it names was decided, and when the latest a caller
+    decided was, or "" when no caller decided one, by record id."""
+    found: dict[str, tuple[str, str]] = {}
+    for p in proposals(store, ACCEPTED):
+        if p.kind == "record.retract":
+            latest, by_caller = found.get(p.target, ("", ""))
+            found[p.target] = (max(latest, p.decided_at), max(by_caller, p.decided_at if decided_by_caller(p) else ""))
+    return found
+
+
+def _taken_back(by: Caller, kept: str, latest: str, by_caller: str) -> bool:
+    """Whether a record's retracts take back what `by` kept at `kept`: what was kept at or before the latest of them,
+    and, once a caller retracted the record, all that no caller made, since a caller's decision outranks an app's or
+    an agent's. Times go to the second, so what is kept in a retract's own second is taken back."""
+    return kept <= latest or (bool(by_caller) and by.kind != "person")
+
+
+def was_retracted(record: Record, retracted: dict[str, tuple[str, str]]) -> bool:
+    """Whether the retracts `retracted_records` gives took back this revision of `record`, as `_taken_back` says."""
+    return record.id in retracted and _taken_back(record.by, record.at, *retracted[record.id])  # type: ignore[arg-type]
+
+
 def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str, Caller | None]:
     """What an id names, `record` or `fact`, and who said it, or ("", None) for nothing."""
     if (record := store.record(id)) is not None:
@@ -432,11 +464,12 @@ def _said_by(store: Store, extraction: Extraction | None, id: str) -> tuple[str,
     return "", None
 
 
-def _take_back(store: Store, extraction: Extraction | None, id: str, at: str,
-               filed: str = "") -> tuple[list[str], list[str]]:
-    """Withdraw a record or a fact, and give what was withdrawn and a line for each applied row that stands. A
-    record's facts, and its unapplied rows that cite it, go with it. Raises `NothingStands` when nothing is left."""
-    what, _ = _said_by(store, extraction, id)
+def _take_back(store: Store, extraction: Extraction | None, proposal: Proposal) -> tuple[list[str], list[str]]:
+    """Withdraw the record or the fact an accepted retract names, and give what was withdrawn and a line for each
+    applied row that stands. A record's facts, and its unapplied rows that cite it, go with it. Raises `NothingStands`
+    when nothing is left."""
+    id, at = proposal.target, proposal.decided_at
+    what, by = _said_by(store, extraction, id)
     if what == "fact":
         fact = extraction.facts(ids=[id])[0] if extraction is not None else None
         if fact is None or fact.status not in ("current", "superseded"):
@@ -453,16 +486,18 @@ def _take_back(store: Store, extraction: Extraction | None, id: str, at: str,
             if id in claims and not _lives(claims[id], datetime.fromisoformat(at)):  # its facts are retracted below
                 store.set_state(CLAIMED, {k: v for k, v in claims.items() if k != id})
     withdrew: list[str] = []
-    rows = proposals(store)
-    if not any(p.kind == "record.retract" and p.target == id and p.status == ACCEPTED and p.id != filed
-               for p in rows):
+    taken = retracted_records(store)
+    first_by_caller = decided_by_caller(proposal) and not taken.get(id, ("", ""))[1]  # it holds back later saves
+    if first_by_caller or not was_retracted(store.record(id), taken):  # type: ignore[arg-type]
+        propose(store, proposal)  # filed before its facts are read: a pass that saves them later sees it as it checks
         withdrew.append(id)
     for fact in extraction.facts(record=id, latest=False) if extraction is not None else []:  # every save of it
-        extraction.retract(fact.id)  # type: ignore[union-attr]
-        withdrew.append(fact.id)
+        if _taken_back(by, fact.at, at, at if decided_by_caller(proposal) else ""):  # type: ignore[arg-type]
+            extraction.retract(fact.id)  # type: ignore[union-attr]
+            withdrew.append(fact.id)
     stands: list[str] = []
-    for row in rows:
-        if id not in row.cites or row.id == filed or row.status in (REJECTED, WITHDRAWN) or row.kind in RETRACTS:
+    for row in proposals(store):
+        if id not in row.cites or row.status in (REJECTED, WITHDRAWN) or row.kind in RETRACTS:
             continue
         if row.applied and row.kind in APPLIES:
             stands.append(f"{row.id} {row.kind.partition('.')[2]} of {row.target} was applied and stands: "
@@ -494,9 +529,39 @@ def retract(store: Store, extraction: Extraction | None, caller: Caller, id: str
     row = Proposal(_new_id("p"), "record.retract" if what == "record" else "fact.retract", id, caller, at,
                    cites=[id] if what == "record" else [], reason=reason, status=ACCEPTED, decided_by=caller,
                    decided_at=at, decision_reason=reason)
-    withdrew, stands = _take_back(store, extraction, id, at, row.id)
+    try:
+        withdrew, stands = _take_back(store, extraction, row)
+    except Exception as error:
+        if _proposal(store, row.id) is None:  # nothing was filed, so the error says it all
+            raise
+        raise CerebroError(f"retract: {id} is retracted, but withdrawing what it gave stopped partway: {error}. "
+                           f"Retract {id} again to withdraw the rest.") from error
     propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
     return RetractResult(id, withdrew, row.kind, row.id, stands)
+
+
+def finish_retracts(store: Store, extraction: Extraction, at: str) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Finish each accepted retract of a record or a fact whose take-back stopped partway, as one whose withdrawal
+    raised or whose process ended before it filed what it withdrew: withdraw what still stands of what it took back,
+    and file its row as applied, so no retract stays half done. Gives the facts withdrawn, by the id each retract
+    names, and a line for each whose retract failed again, which the next pass tries again."""
+    withdrawn: dict[str, list[str]] = {}
+    failed: dict[str, str] = {}
+    for row in proposals(store, ACCEPTED):
+        if row.kind not in RETRACTS or row.applied:
+            continue
+        try:
+            standing = {f.id for f in extraction.facts(record=row.target, latest=False)} | {row.target}
+            withdrew, _ = _take_back(store, extraction, row)
+        except NothingStands:
+            withdrew = []
+        except Exception as error:  # noqa: BLE001 - its row stays unapplied, and the rest go on
+            failed[f"retract of {row.target}"] = f"{type(error).__name__}: {error}. The next pass tries again."
+            continue
+        propose(store, replace(row, applied={"at": at, "withdrew": withdrew}))
+        if gone := [id for id in withdrew if id in standing]:
+            withdrawn[row.target] = gone
+    return withdrawn, failed
 
 
 def _take_back_accepted(store: Store, caller: Caller, row: Proposal, reason: str, at: str) -> RetractResult:
@@ -700,10 +765,9 @@ def _quoted(text: str) -> str:
 def _sort(decider: Decider, ledger: Ledger | None, model: ModelSpec, text: str, article: Article | None,
           collection: str, run: str, clock: Clock, root: Path | None = None) -> list[_Part]:
     """Sort a tell sentence by sentence through the decision model, in as few requests as its bounds allow, each
-    checked against the ledger's `SORT_LAYER` before and recorded after. Writes nothing to the store. Raises
-    `_Unsorted` when the cap is spent or a call fails. A workspace at `root` that ejected the `tell-sort` prompt sorts by
-    its own copy."""
-    from .budget import BudgetSpent  # imported here: the ledger reaches the facts layer, which this module names
+    held to the ledger's `SORT_LAYER` as `budget.Held` holds it. Writes nothing to the store. Raises `_Unsorted` when
+    the cap is spent or a call fails. A workspace at `root` that ejected the `tell-sort` prompt sorts by its own copy."""
+    from .budget import BudgetSpent, Held  # imported here: the ledger reaches the facts layer, which this module names
 
     found = [_Part(start, end, text[start:end]) for start, end in sentences(text)]
     unread = found[MAX_PARTS:]
@@ -724,16 +788,13 @@ def _sort(decider: Decider, ledger: Ledger | None, model: ModelSpec, text: str, 
     limit = getattr(decider, "max_questions", None)
     most = (limit() if callable(limit) else 0) // 2 or len(found)
     batches, alone = _batches([size([i]) - base - 2 for i in range(len(found))], base, max(most, 1))
+    decider = decider if ledger is None else Held(decider, ledger, SORT_LAYER, model, clock, run)
     answers: dict[str, Answer] = {}
     for batch in batches:
         try:
-            if ledger is not None:
-                ledger.check(SORT_LAYER, clock(), model)
             decision = decider.decide(state(batch), _questions([ids[i] for i in batch]))
         except (BudgetSpent, DecisionError) as error:
             raise _Unsorted(str(error)) from error
-        if ledger is not None:
-            ledger.record(SORT_LAYER, clock(), model, decision.usage, run)
         answers.update(decision.answers)
     parts: list[_Part] = []
     for i, part in enumerate(found):
@@ -1129,7 +1190,7 @@ def _file(store: Store, extraction: Extraction | None, caller: Caller, kind: str
         proposal = replace(proposal, status=ACCEPTED, decided_by=caller, decided_at=at)
         proposal.applied, note = _apply(store, extraction, proposal, at)
         result.notes.append(f"Filed and accepted {proposal.id}. {note}")
-    propose(store, proposal)
+    propose(store, _landing(extraction, proposal))
     result.proposals.append(proposal.id)
 
 
@@ -1266,7 +1327,9 @@ def _tell_as(store: Store, extraction: Extraction | None, caller: Caller, text: 
         token = _keep(store, record, at)
         _keep_facts(store, extraction, record, at, result, token, clock)
     else:
-        _keep(store, record, at, lambda: _file(store, extraction, caller, str(kind), planned, record, at, result))
+        held = _HeldFacts(extraction) if extraction is not None else None
+        _keep(store, record, at, lambda: _file(store, held, caller, str(kind), planned, record, at, result))
+        _released(store, held)
     return result
 
 
@@ -1316,14 +1379,17 @@ def _tell_sorted(store: Store, extraction: Extraction | None, caller: Caller, te
     result.notes.append(f"Sorted {record.id} sentence by sentence: {_count(len(stated))} to facts, "
                         f"{_count(len(asked))} to proposals, {_count(len(returned))} handed back.")
 
+    held = _HeldFacts(extraction) if extraction is not None else None
+
     def filed() -> None:
         for part, planned in asked:
-            _file(store, extraction, caller, part.kind, planned, record, at, result)
+            _file(store, held, caller, part.kind, planned, record, at, result)
 
     token = _keep(store, record, at, filed)
     if stated:
         _keep_facts(store, extraction, record, at, result, token, clock)
     result.notes += lines
+    _released(store, held)
     return result
 
 
@@ -1341,13 +1407,15 @@ class _Refused(CerebroError):
 
 
 class _HeldFacts:
-    """The facts layer as a decide sees it while it lands: reads go to `inner`, and a fact it withdraws reads as
-    withdrawn and is held in `withdrawn`, to be withdrawn once the store has kept the whole decide, since the store's
-    undo does not reach the facts layer."""
+    """The facts layer as a decide or a tell sees it while its write lands: reads go to `inner`, and a fact it
+    withdraws reads as withdrawn and is held in `withdrawn`, to be withdrawn once the store has kept the whole write,
+    since the store's undo does not reach the facts layer. `rows` holds each retract the write filed, as it is filed
+    once its facts are withdrawn."""
 
     def __init__(self, inner: Any):
         self.inner = inner
         self.withdrawn: list[str] = []
+        self.rows: list[Proposal] = []
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
@@ -1360,6 +1428,39 @@ class _HeldFacts:
 
     def retract(self, fact_id: str) -> None:
         self.withdrawn.append(fact_id)
+
+
+def _landing(extraction: Any, row: Proposal) -> Proposal:
+    """`row` as a write files it: an accepted retract whose facts are held goes in without `applied`, which `_release`
+    files once they are withdrawn, so a pass finishes one that stops between the two."""
+    if isinstance(extraction, _HeldFacts) and row.kind in RETRACTS and row.status == ACCEPTED:
+        extraction.rows.append(row)
+        return replace(row, applied={})
+    return row
+
+
+def _release(store: Store, held: _HeldFacts) -> dict[str, Exception]:
+    """Withdraw the facts `held` holds, now the store has kept the write, and file as applied each retract whose facts
+    all went. Gives each fact the facts layer kept, with its error: its retract waits for a pass to finish."""
+    kept: dict[str, Exception] = {}
+    for fact in held.withdrawn:
+        try:
+            held.inner.retract(fact)
+        except Exception as error:  # noqa: BLE001 - the store kept the write: the rest go on
+            kept[fact] = error
+    for row in held.rows:
+        if not kept.keys() & set(row.applied.get("withdrew", [])):
+            propose(store, row)
+    return kept
+
+
+def _released(store: Store, held: _HeldFacts | None) -> None:
+    """`_release` for a tell, which says so when a fact stayed, as `retract` does."""
+    kept = _release(store, held) if held is not None else {}
+    for fact, error in kept.items():
+        id = next((r.target for r in held.rows if fact in r.applied.get("withdrew", [])), fact)  # type: ignore[union-attr]
+        raise CerebroError(f"retract: {id} is retracted, but withdrawing what it gave stopped partway: {error}. "
+                           f"Retract {id} again to withdraw the rest.") from error
 
 
 def _fault(store: Store, caller: Caller, id: str, row: Proposal | None, root: Path | None,
@@ -1387,7 +1488,7 @@ def _accept(store: Store, extraction: Extraction | None, caller: Caller, decisio
             decided.applied, note = _apply(store, extraction, decided, at)
         except CerebroError as error:
             raise _NotApplied(str(error)) from error
-    propose(store, decided)
+    propose(store, _landing(extraction, decided))
     for p in _cited(store, row):
         propose(store, replace(p, status=ACCEPTED, decided_by=caller, decided_at=at,
                                decision_reason=decision.reason or row.reason, applied=decided.applied))
@@ -1500,16 +1601,13 @@ def _land(store: Store, extraction: Extraction | None, caller: Caller, entries: 
             cause = cause.__context__
         raise CerebroError(f"decide stopped as it landed, and the store kept none of it: {cause}. Nothing was "
                            "applied.") from error
-    for fact in held.withdrawn if held is not None else []:
-        try:
-            extraction.retract(fact)  # type: ignore[union-attr]
-        except Exception as error:  # noqa: BLE001 - the store has kept the decide: say what the facts layer kept
-            by = next((id for id, note in result.notes.items() if result.answers[id] == "decided" and fact in note),
-                      next(iter(result.notes)))
-            said = result.notes[by].replace(f", {fact}", "").replace(f"Withdrew {fact}, ", "Withdrew ")
-            result.notes[by] = said.replace(f" Withdrew {fact}.", "") + (
-                f" The facts layer kept {fact}: {error}. So {fact} still stands, though {by} is accepted: deciding "
-                f"{by} again changes nothing, and the retract tool takes {fact} back.")
+    for fact, error in (_release(store, held) if held is not None else {}).items():  # say what the facts layer kept
+        by = next((id for id, note in result.notes.items() if result.answers[id] == "decided" and fact in note),
+                  next(iter(result.notes)))
+        said = result.notes[by].replace(f", {fact}", "").replace(f"Withdrew {fact}, ", "Withdrew ")
+        result.notes[by] = said.replace(f" Withdrew {fact}.", "") + (
+            f" The facts layer kept {fact}: {error}. So {fact} still stands, though {by} is accepted: deciding "
+            f"{by} again changes nothing, and the retract tool takes {fact} back.")
     return result
 
 

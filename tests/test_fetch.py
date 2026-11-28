@@ -88,8 +88,8 @@ NOTES = {
 def test_a_curator_asks_the_salesforce_stand_in_admits_two_accounts_and_their_records_are_then_in_scope(
         tmp_path: Path) -> None:
     org, store = FakeOrg(seed()), MemoryStore()
-    crm = make(org, accounts=[])
-    crm.accounts = lambda: [v for who in working_set(store) for v in who.keys.get("salesforce_id", [])]
+    crm = make(org)
+    crm.admitted = lambda: [v for who in working_set(store) for v in who.keys.get("salesforce_id", [])]
     acme, globex, task = crm.get(ACME), crm.get(GLOBEX), crm.get(sf_id("00T", 1))
     assert not in_scope(store, acme, curated={"accounts"}) and bound_to(store, task) == []
     asked: list[dict[str, Any]] = []
@@ -139,12 +139,17 @@ def test_a_row_an_article_binds_already_names_it_under_bound(
     store.create(Identity("things/apollo", "things", "Apollo", keys={"topic": ["Apollo"]},
                           admitted_by=Caller("ada", "person")))
     store.create(Identity("things/zephyr", "things", "Zephyr", status="archived", keys={"topic": ["Borealis"]}))
-    store.create(Identity("things/vega", "things", "Vega", admitted_by=Caller("things/curator", "agent")))
+    store.create(Identity("things/vega", "things", "Vega", keys={"domain": ["vega.example"]},
+                          admitted_by=Caller("things/curator", "agent")))
     reply = fetch_tool({"notes": files}, store)(source="notes", question="header_values", params={"word": "topic"})
     assert [(r["name"], r.get("bound"), r.get("archived")) for r in reply["rows"]] == [
         ("Apollo", ["things/apollo"], None), ("Borealis", None, ["things/zephyr"])]  # bring it back, not again
     assert "bound" not in fetch_tool({"notes": files})(source="notes", question="header_values",
                                                        params={"word": "topic"})["rows"][0]
+    card = Record(id="c1", source="board", revision="", keys={"parent": ["Vega"], "domain": ["birch.example"]},
+                  carried=["domain"])  # a party's domain: it tells the card apart from nothing, as landing reads it
+    assert fetch_tool({"board": Answering([card])}, store)(source="board", question="cards")["rows"][0].get(
+        "bound") == ["things/vega"]
 
 
 def test_search_accounts_finds_an_account_by_name_whoever_owns_it() -> None:

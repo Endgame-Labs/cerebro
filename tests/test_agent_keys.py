@@ -176,6 +176,7 @@ REFUSED = [
     ("reports/a.md", "model: { provider: fireworks, model: x, 1: a, z: b }\n", "line 2: model: has '1', which is not a key"),
     ("reports/a.md", "evidence:\n  - script: [scripts/a.sh]\n", "line 3: evidence 1, script takes run, the script's path"),
     ("reports/a.md", "evidence:\n  - facts: {}\n  - script:\n", "line 4: evidence 2, script takes run, the script's path"),
+    ("reports/a.md", "min_grounding: high\n", "line 2: min_grounding is 'high': write a number from 0 to 1"),
 ]
 
 
@@ -393,6 +394,7 @@ def test_a_refused_article_whose_list_does_not_read_is_named_as_refused(tmp_path
 
 @pytest.mark.parametrize(("name", "front", "said"), [
     ("things/curator.md", "target: { from: things }\n", "line 2: a curator keeps the articles"),
+    ("things/curator.md", "heartbeat: [daily]\nmin_grounding: 0.7\n", "line 3: a curator decides which articles exist"),
     ("things/curator.md", "heartbeat: [daily]\nsweep: x\n", "line 3: front matter key sweep is not one"),
     ("reports/a.md", "evidence:\n  - query: { from: things }\n    top: 3\n", "line 4: evidence 1, query: top"),
     ("reports/a.md", "evidence:\n  - articles: [notes]\n    keep: x\n", "line 4: evidence 1, articles: keep"),

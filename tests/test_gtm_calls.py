@@ -15,7 +15,6 @@ from cerebro.compile import compile_article, targets
 from cerebro.connector import Record
 from cerebro.evidence import gather
 from cerebro.fakes import FakeExtraction, MemoryStore, ScriptedRun
-from cerebro.ground import Grounded
 from cerebro.lookup import StoreLookup
 
 ARTICLE = "calls/acme-qbr"
@@ -51,8 +50,7 @@ def test_a_call_holds_the_prep_until_the_calendar_says_it_happened_then_only_the
     def run() -> None:
         assert targets(writer, lookup) == [ARTICLE]
         compile_article(writer, lookup=lookup, store=store, agent_run=ScriptedRun(model), root=tmp_path,
-                        functions={}, agent_tools={}, this=ARTICLE, subagents=list(agents.values()),
-                        grounder=lambda agent, parts, citable, **_: Grounded(parts))
+                        functions={}, agent_tools={}, this=ARTICLE, subagents=list(agents.values()))
 
     event("upcoming", "2026-12-01T09:00:00Z")
     run()

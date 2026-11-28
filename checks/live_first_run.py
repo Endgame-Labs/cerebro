@@ -77,7 +77,9 @@ def stand_in(root: Path) -> Cerebro:
     writer that cites every fact it reads, and a topics curator that reads facts, so it has nothing to read at
     discovery and proposes one topic in the late round."""
     import re
+    from datetime import UTC, datetime, timedelta
 
+    from cerebro.clock import stamp
     from cerebro.connector import Record
     from cerebro.fakes import FakeConnector, FakeExtraction, FakeRewriter, ScriptedRun, every_item_ticked
     from cerebro.run import AgentRun
@@ -85,16 +87,17 @@ def stand_in(root: Path) -> Cerebro:
     names = [("Brightwater Logistics", "brightwater.example"), ("Kestrel Foods", "kestrel.example"),
              ("Tidewater Freight", "tidewater.example"), ("Larkspur Media", "larkspur.example"),
              ("Quillon Supply", "quillon.example")]
-    records = [Record(id=f"r{n}", source="crm", revision="1", at="2026-11-10T09:00:00Z",
+    now = datetime.now(UTC)  # the records of the last days, which a first run reads
+    records = [Record(id=f"r{n}", source="crm", revision="1", at=stamp(now - timedelta(days=7)),
                       keys={"domain": [domain], "name": [name]}, fields={"name": name, "subject": name},
                       body=f"{name} asked for a pilot plan.", into="accounts") for n, (name, domain) in enumerate(names)]
     calls = [("admit", {"record": {"source": "crm", "id": f"r{n}"}, "reason": f"Two calls with {name}.",
                         "group": "you own (crm)"}) for n, (name, _) in enumerate(names[:4])]
     calls.append(("leave_out", {"reason": "vendor", "record": {"source": "crm", "id": "r4"}}))
-    records.append(Record(id="c1", source="crm", revision="1", at="2026-11-14T09:00:00Z",
+    records.append(Record(id="c1", source="crm", revision="1", at=stamp(now - timedelta(days=3)),
                           keys={"account": ["Brightwater Logistics"]}, fields={"subject": "Brightwater security call"},
                           body="Brightwater Logistics asked for SSO.", into="calls"))
-    call = [("admit", {"record": {"source": "crm", "id": "c1"}, "name": "Brightwater security call, 2026-11-14",
+    call = [("admit", {"record": {"source": "crm", "id": "c1"}, "name": "Brightwater security call",
                        "reason": "a call in your notes", "group": "calls in your notes",
                        "fields": {"linked": ["accounts/brightwater-logistics"]}})]
 
@@ -159,7 +162,7 @@ class Openings:
         if agent.role == "curator":
             from datetime import UTC, datetime
 
-            size = tokens(opening(evidence, datetime.now(UTC)))
+            size = tokens(opening(agent, evidence, datetime.now(UTC)))
             self.tokens[agent.id] = max(size, self.tokens.get(agent.id, 0))
         return self.inner.run(agent, evidence, *args, **kwargs)
 

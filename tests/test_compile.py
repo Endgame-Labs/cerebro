@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import replace
@@ -16,7 +17,6 @@ from cerebro.article import Citation, Identity, body
 from cerebro.caller import Caller
 from cerebro.compile import DRAFTS, CompileError, CompileRefused, compile_article, targets
 from cerebro.fakes import FakeExtraction, MemoryStore, ScriptedRun
-from cerebro.ground import Grounded
 from cerebro.lookup import StoreLookup
 from cerebro.run import AgentRun, Run
 from cerebro.workspace import Workspace
@@ -24,12 +24,6 @@ from cerebro.workspace import Workspace
 AGENT = Agent(id="reports/weekly", path=Path("agents/reports/weekly.md"), role="writer", target="reports/weekly",
               prompt="Write it.\n\n# Output\n\n## Summary\n\n## Next", output=["Summary", "Next"],
               evidence=[EvidenceLine("items", {})])
-
-
-def keep(agent: object, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-    """A grounder that keeps every part, for tests of what lands where: test_ground and the end-to-end test
-    ground for real."""
-    return Grounded(dict(parts))
 
 
 def setup(tmp_path: Path) -> tuple[MemoryStore, list[str], list[str], dict]:
@@ -40,7 +34,7 @@ def setup(tmp_path: Path) -> tuple[MemoryStore, list[str], list[str], dict]:
         return [{"id": f"r{n}", "text": text} for n, text in enumerate(items)]
 
     common = {"lookup": StoreLookup(store), "store": store, "root": tmp_path, "functions": {"items": evidence},
-              "agent_tools": {}, "grounder": keep}
+              "agent_tools": {}}
     return store, items, prompts, common
 
 
@@ -128,42 +122,55 @@ def test_a_run_whose_budget_ran_out_lands_the_text_it_handed_in_and_runs_again_n
     assert not again.skipped and body(again.article) == "done [^r0]"  # not marked read: it runs again
 
 
-def test_a_run_whose_every_part_grounding_dropped_wrote_nothing_says_why_and_is_not_run_again(
+def test_a_compile_says_of_each_run_that_its_first_hand_in_landed_after_it_failed_and_why(tmp_path: Path) -> None:
+    from suites.agent_run import held_then_refused
+
+    from cerebro.fakes import FakeDecider
+
+    _, _, _, common = setup(tmp_path)
+    compiled = compile_article(AGENT, agent_run=held_then_refused("## Summary\n\nOne shipped [^r0]."),
+                               decider=FakeDecider({"s1": 0}), **common)
+    assert compiled.run.status == "done" and body(compiled.article).startswith("## Summary\n\nOne shipped [^r0].")
+    [said] = compiled.notes
+    assert said.startswith("it failed after its first hand-in (the provider refused the call") and "401" in said
+    agents, _, _, common = briefs(tmp_path)
+    run = ByAgent({"briefs/subagents/risks": held_then_refused("Risks one [^r0]."),
+                   "briefs/subagents/people": ScriptedRun(lambda p: "People one [^r0]."),
+                   "briefs/article": held_then_refused("## Verdict\n\nAlder holds [^r0].")})
+    composed = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder",
+                               decider=FakeDecider({"s1": 0}), **common)
+    assert sorted(line.split(": it failed after its first hand-in (")[0] for line in composed.notes) == [
+        "briefs/article", "briefs/subagents/risks"]
+
+
+def test_a_passage_over_what_the_judge_reads_in_one_request_lands_unscored_and_the_run_is_done(tmp_path: Path) -> None:
+    from cerebro.models import DEFAULTS, HttpDecider
+
+    store, items, _, common = setup(tmp_path)
+    items[0] = "word " * 6000  # with its fact, the one sentence is over the bound of a decision request
+    decider = HttpDecider(DEFAULTS["decision"], key=lambda: "unused", send=lambda *_: pytest.fail("it was sent"))
+    compiled = compile_article(AGENT, agent_run=ScriptedRun(lambda p: "One shipped [^r0]."), decider=decider, **common)
+    assert compiled.run.status == "done" and body(compiled.article) == "One shipped [^r0]."
+    notes = [r.data for r in store.rows("agent-runs") if r.data.get("run") == compiled.run.id][-1]["notes"]
+    assert any("unscored" in line and "more than the judge reads" in line for line in notes), notes
+
+
+def test_a_sentence_scored_under_min_grounding_lands_whole_with_its_mark_and_the_article_defines_it_once(
         tmp_path: Path) -> None:
-    def drop_all(agent: object, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-        return Grounded({}, [f'{h}: dropped "{t}": it cites nothing' for h, t in parts.items()])
+    from cerebro.article import UNSUPPORTED, markdown
+    from cerebro.fakes import FakeDecider
 
     store, _, _, common = setup(tmp_path)
-    run = ScriptedRun(lambda p: {"Summary": "Brightwater Logistics", "Next": "Kestrel Foods"})
-    compiled = compile_article(AGENT, agent_run=run, **common | {"grounder": drop_all})
-    assert compiled.article is None and compiled.run.status == "wrote nothing"
-    assert compiled.run.note.startswith('grounding dropped everything it handed in: Summary: dropped "Brightwater')
-    latest = [r.data for r in store.rows("agent-runs") if r.data.get("run") == compiled.run.id][-1]
-    assert latest["status"] == "wrote nothing"
-    assert compile_article(AGENT, agent_run=run, **common | {"grounder": drop_all}).skipped  # read: not run again
+    decider = FakeDecider({"s2": 2})  # the second sentence a reframe its facts do not carry, the rest backed
+    text = "One shipped [^r0]. Two moved because one shipped [^r0].\n\n## Next\n\nThree waits [^r0]. Four [^r0]."
+    compiled = compile_article(AGENT, agent_run=ScriptedRun(lambda p: text), decider=decider, **common)
+    assert body(compiled.article) == (f"One shipped [^r0]. Two moved because one shipped [^r0].[^unsupported]\n\n"
+                                      f"## Next\n\nThree waits [^r0]. Four [^r0].[^unsupported]\n\n{UNSUPPORTED}")
+    assert markdown(compiled.article).count("[^unsupported]:") == 1 and compiled.dropped == []
+    assert len(decider.asked) == 2  # one request a passage
+    notes = [r.data for r in store.rows("agent-runs") if r.data.get("run") == compiled.run.id][-1]["notes"]
+    assert '(before the first heading): 0.50 "Two moved because one shipped [^r0].": a reframe' in notes[1]
 
-
-def test_a_part_grounding_drops_does_not_land_and_text_before_any_heading_is_grounded_on_its_own(
-        tmp_path: Path) -> None:
-    from cerebro.compile import BEFORE_ANY
-    from cerebro.ground import Grounded
-
-    asked: list[list[str]] = []
-
-    def drop_next(agent: object, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-        asked.append(list(parts))
-        return Grounded({h: t for h, t in parts.items() if h != "Next"}, ["Next: no claim had evidence"])
-
-    store, _, _, common = setup(tmp_path)
-    run = ScriptedRun(lambda p: "Lead.\n\n## Summary\n\ns\n\n## Next\n\nn\n\n## Summary\n\nagain")
-    compiled = compile_article(AGENT, agent_run=run, **common | {"grounder": drop_next})
-    assert asked == [[BEFORE_ANY, "Summary", "Next", "Summary (2)"]]
-    assert body(store.article("reports/weekly")) == "Lead.\n\n## Summary\n\ns\n\n## Summary\n\nagain"
-    assert compiled.dropped == ["Next: no claim had evidence"]
-    assert [row.data["agent"] for row in store.rows("agent-runs")] == ["reports/weekly"]
-
-
-# -- composers, article agents, query targets, tools ----------------------------------------------------------------
 
 BRIEF = """---
 subagents: [risks, people]
@@ -220,6 +227,35 @@ def briefs(tmp_path: Path, composer: str = BRIEF) -> tuple[dict[str, Any], Memor
     store, items, _, common = setup(tmp_path)
     store.create(Identity("briefs/alder", "briefs", "Alder"))
     return agents, store, items, common
+
+
+def test_a_part_a_composer_hands_in_as_its_subagent_returned_it_keeps_its_scores_with_no_new_judge_call(
+        tmp_path: Path) -> None:
+    from cerebro.fakes import FakeDecider
+
+    agents, _store, _items, common = briefs(tmp_path)
+    decider = FakeDecider({"s1": 0})  # each passage's first sentence made up
+    drafts = {"briefs/subagents/risks": ScriptedRun(lambda p: "Risks one [^r0]."),
+              "briefs/subagents/people": ScriptedRun(lambda p: "People one [^r0].")}
+
+    def composes(prompt: str) -> str:  # its subagents' content as they returned it, marks and all, and a verdict
+        risks = re.search(r"### Risks, from briefs/subagents/risks\n\s*\n\s*(.+)", prompt)
+        return f"## Risks\n\n{risks.group(1).strip()}\n\n## Verdict\n\nAlder holds [^r0]."  # type: ignore[union-attr]
+
+    run = ByAgent({**drafts, "briefs/article": ScriptedRun(composes)})
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider, **common)
+    asked = [[s["sentence"] for s in state["passage"]] for state, _ in decider.asked]
+    assert sorted(asked) == [["Alder holds."], ["People one."], ["Risks one."]]  # Risks
+    # once, as returned
+    assert body(compiled.article) == ("## Risks\n\nRisks one [^r0].[^unsupported]\n\n## Verdict\n\nAlder holds [^r0]."
+                                      "[^unsupported]\n\n[^unsupported]: Not fully backed by the facts it cites.")
+    risks = tmp_path / "agents/briefs/subagents/risks.md"
+    risks.write_text(risks.read_text() + "\nSay more.\n")  # risks alone runs again, returning what it did before
+    decider.asked.clear()
+    agents = workspace(tmp_path, {})
+    compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider, **common,
+                    subagents=list(agents.values()))
+    assert [[s["sentence"] for s in state["passage"]] for state, _ in decider.asked] == [["Risks one."]]
 
 
 def test_an_agent_with_subagents_and_no_instructions_of_its_own_joins_their_content_with_no_model(
@@ -324,6 +360,25 @@ def test_an_agent_with_instructions_of_its_own_runs_after_its_subagents_with_the
     assert stands.ran[-1] == "briefs/article" and compiled.run.status == "wrote nothing"  # drafts
     assert body(common["store"].article("briefs/alder")) == ("## Risks\n\nRisks returned [^r0].\n\n"
                                                              "## People\n\nPeople returned [^r0].")
+
+
+def test_a_writer_of_many_articles_a_composer_and_its_subagents_are_told_the_article_they_write_and_a_curator_none(
+        tmp_path: Path) -> None:
+    from cerebro import prompts
+    from cerebro.run import opening
+
+    agents, store, _items, common = briefs(tmp_path)
+    agents |= workspace(tmp_path, {"things/article.md": part("About")})
+    store.create(Identity("things/elm", "things", "Elm"))
+    seen: dict[str, str] = {}
+    run = ByAgent({id: ScriptedRun(lambda p, id=id: seen.update({id: p}) or "Text [^r0].") for id in (
+        "things/article", "briefs/article", "briefs/subagents/risks", "briefs/subagents/people")})
+    compile_article(agents["things/article"], agent_run=run, this="things/elm", **common)
+    compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
+    assert {id: ("things/elm" if id == "things/article" else "briefs/alder") in told for id, told in seen.items()} == {
+        "things/article": True, "briefs/article": True, "briefs/subagents/risks": True, "briefs/subagents/people": True}
+    curator, now = replace(agents["things/article"], role="curator", target="things"), datetime(2026, 11, 17, tzinfo=UTC)
+    assert opening(curator, [], now) == prompts.fill("evidence", today="Tue Nov 17, 2026", evidence="")  # as it was
 
 
 def drafts_prompt(run: ByAgent, agents: dict[str, Any], common: dict[str, Any]) -> str:
@@ -455,7 +510,6 @@ def test_each_gtm_template_file_that_writes_an_article_compiles(tmp_path: Path) 
 
     from cerebro.evidence import NotBuilt
     from cerebro.fakes import FakeExtraction, MemoryStore
-    from cerebro.ground import Grounded
     from cerebro.lookup import StoreLookup
 
     agents, refused = load_agents(GTM)
@@ -489,8 +543,7 @@ def test_each_gtm_template_file_that_writes_an_article_compiles(tmp_path: Path) 
         for article in targets(agent, lookup)[:1]:
             try:
                 compiled = compile_article(agent, lookup=lookup, store=store, agent_run=run, root=tmp_path,
-                                           functions={}, agent_tools={}, this=article, subagents=agents,
-                                           grounder=lambda agent, parts, citable, **_: Grounded(parts))
+                                           functions={}, agent_tools={}, this=article, subagents=agents)
             except NotBuilt as error:
                 assert f"agents/{agent.id}.md" in str(error)
                 not_built.append(agent.id)
@@ -506,16 +559,6 @@ def test_each_gtm_template_file_that_writes_an_article_compiles(tmp_path: Path) 
     assert not_built == []  # every evidence line the template uses is built
 
 
-def test_a_run_whose_output_is_all_dropped_is_not_run_again_on_the_same_evidence(tmp_path: Path) -> None:
-    from cerebro.ground import Grounded
-
-    _, _, prompts, common = setup(tmp_path)
-    run = ScriptedRun(lambda p: prompts.append(p) or {"Summary": "s"})
-    common["grounder"] = lambda agent, parts, citable, *_: Grounded({}, ["Summary: nothing stood"])
-    assert compile_article(AGENT, agent_run=run, **common).article is None
-    assert compile_article(AGENT, agent_run=run, **common).skipped and len(prompts) == 1
-
-
 def test_a_persons_instruction_reaches_the_writer_at_its_next_run(tmp_path: Path) -> None:
     _, _, prompts, common = setup(tmp_path)
     run = ScriptedRun(lambda p: prompts.append(p) or {"Summary": "s", "Next": "n"})
@@ -525,6 +568,51 @@ def test_a_persons_instruction_reaches_the_writer_at_its_next_run(tmp_path: Path
     assert compile_article(AGENT, agent_run=run, **common).run is not None  # its arrival makes the agent due
     assert "What people asked of you" in prompts[-1] and "instruction from you (person)" in prompts[-1]
     assert "Lead with the risk." in prompts[-1]
+
+
+def test_a_persons_instruction_is_cited_by_its_record_and_an_agents_waiting_ask_lands_shown_as_not_found(
+        tmp_path: Path) -> None:
+    from cerebro.article import markdown
+    from cerebro.records import Proposal, propose
+
+    store, _, _, common = setup(tmp_path)
+    store.create(Identity("reports/weekly", "reports", "Weekly"))
+    told = common["lookup"].tell(Caller("you", "person"), "Lead with the risk.", "reports/weekly", as_="proposal")
+    propose(store, Proposal("prop_agent1", "article.archive", "reports/weekly", Caller("reports/curator", "agent"),
+                            "2026-11-20T00:00:00Z", reason="Weekly lost its owner."))
+
+    def write(prompt: str) -> dict[str, str]:
+        asked = re.search(r"\[\^(\S+?)\] instruction from you", prompt)
+        assert "- [prop_agent1] waiting archive from reports/curator" in prompt  # shown, with no id to cite
+        return {"Summary": f"The risk leads [^{asked.group(1)}]. It lost its owner [^prop_agent1]."}  # type: ignore[union-attr]
+
+    compiled = compile_article(AGENT, agent_run=ScriptedRun(write), **common)
+    [part] = compiled.article.compilations
+    assert [(c.kind, c.id) for c in part.citations] == [("record", told.record)]
+    assert "[^prop_agent1]: not found" in markdown(compiled.article)
+
+
+@pytest.mark.parametrize("role", ["writer", "subagent"])
+def test_an_article_read_by_tool_is_cited_as_found_and_the_judge_reads_its_text(tmp_path: Path, role: str) -> None:
+    from cerebro.article import Compilation, markdown
+    from cerebro.fakes import FakeDecider
+
+    agents = workspace(tmp_path, {"briefs/article.md": BRIEF.replace("[risks, people]", "[risks]"),
+                                  "briefs/subagents/risks.md": part("Risks")})
+    store, _, _, common = setup(tmp_path)
+    store.create(Identity("things/beta", "things", "Beta"))
+    store.write_compilation(Compilation("things/beta", "things/beta", "Beta ships in May.", by="x", whole=True))
+    store.create(Identity("briefs/alder", "briefs", "Alder"))
+    reads = ScriptedRun(lambda p: "Beta ships in May [^things/beta].", calls=[("read", {"ids": ["things/beta"]})])
+    decider = FakeDecider()
+    if role == "writer":
+        compiled = compile_article(AGENT, agent_run=reads, decider=decider, **common)
+    else:
+        run = ByAgent({"briefs/subagents/risks": reads, "briefs/article": ScriptedRun(lambda p: "")})
+        compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", decider=decider,
+                                   **common)
+    assert "Beta ships in May." in decider.asked[0][0]["facts"]["things/beta"]["text"]
+    assert "[^things/beta]: not found" not in markdown(compiled.article)
 
 
 def test_a_composer_stopped_by_the_cap_leaves_the_paid_drafts_standing(tmp_path: Path) -> None:
@@ -575,57 +663,48 @@ def test_an_agents_override_replaces_the_value_its_field_held_its_curators_too(t
     assert level.value == "high" and level.by == Caller(AGENT.id, "agent")
 
 
-def test_grounding_past_the_cap_asks_no_model(tmp_path: Path) -> None:
-    from datetime import UTC, datetime
-
-    from cerebro.budget import BudgetSpent
-    from cerebro.compile import _Grounding
+def test_an_agent_files_min_grounding_takes_the_place_of_the_workspaces_and_the_workspaces_of_the_default(
+        tmp_path: Path) -> None:
+    from cerebro.app import Cerebro
     from cerebro.fakes import FakeDecider
-    from cerebro.ground import ground
-    from cerebro.models import DEFAULTS
 
-    class Spent:
-        def check(self, *args: Any) -> None:
-            raise BudgetSpent("compilation spent its cap")
-
-        def reserve(self, *args: Any) -> None:
-            raise BudgetSpent("compilation spent its cap")
-
-    _, _, _, common = setup(tmp_path)
-    decider = FakeDecider()
-    grounding = _Grounding(ground, "reports/weekly", lookup=common["lookup"], root=tmp_path, ledger=Spent(),
-                           clock=lambda: datetime(2026, 11, 17, tzinfo=UTC), decider=decider,
-                           decision=DEFAULTS["decision"], zone=UTC)
-    grounding(AGENT, {"Summary": "One [^r0]."}, {"r0": Citation("row", "r0", quote="One.")}, [])
-    assert decider.asked == [] and "grounded by the words alone" in grounding.notes[0]
+    (tmp_path / "agents" / "reports").mkdir(parents=True)
+    text = "One shipped [^r0]."
+    for floor, settings, own, marked in ((0.6, "{}\n", "", False), (0.9, "min_grounding: 0.9\n", "", True),
+                                         (0.9, "min_grounding: 0.9\n", "min_grounding: 0.7\n", False)):
+        (tmp_path / "settings.yaml").write_text(settings)
+        (tmp_path / "agents" / "reports" / "weekly.md").write_text(
+            f"---\nheartbeat: [change]\n{own}---\n\nWrite it.\n\n# Output\n\n## Summary\n")
+        with Cerebro(tmp_path, store=MemoryStore(), decider=FakeDecider({"s1": 3}), trusted=True,
+                     agent_run=ScriptedRun(lambda p: text)) as workspace:  # a fair reading: 0.8
+            compiled = workspace.compile(workspace.agent("reports/weekly"))
+        assert ("[^unsupported]" in body(compiled.article)) == marked, (floor, own)
 
 
-def test_grounding_reads_more_than_twenty_cited_facts_or_links_in_more_than_one_call(tmp_path: Path) -> None:
+def test_grounding_reads_more_than_twenty_cited_facts_in_more_than_one_call(tmp_path: Path) -> None:
     from cerebro.compile import _Grounding
-    from cerebro.ground import ground
     from cerebro.lookup import MAX_READ
 
     _, _, _, common = setup(tmp_path)
-    grounding = _Grounding(ground, "reports/weekly", lookup=common["lookup"], root=tmp_path, ledger=None,
-                           clock=lambda: datetime(2026, 11, 17, tzinfo=UTC), decider=None, decision=None, zone=UTC)
+    grounding = _Grounding("reports/weekly", lookup=common["lookup"], root=tmp_path, ledger=None,
+                           clock=lambda: datetime(2026, 11, 17, tzinfo=UTC), decider=None, decision=None, zone=UTC,
+                           floor=0.6)
     many = [f"fact_{n:02d}" for n in range(MAX_READ + 1)]
-    assert grounding.stale(dict.fromkeys(many)) == {}
-    links = " ".join(f"[a{n}](../people/p{n}.md)" for n in range(MAX_READ + 1))
-    assert grounding.written({"People": links}) == set()
+    assert grounding.stale(dict.fromkeys(many)) == {}  # type: ignore[arg-type]
+
 
 def _held_grounding(tmp_path: Path, decider: Any, cap: float) -> tuple[Any, Any]:
     from datetime import UTC, datetime
 
     from cerebro.budget import Caps, Ledger
     from cerebro.compile import _Grounding
-    from cerebro.ground import ground
     from cerebro.models import DEFAULTS
 
     _, _, _, common = setup(tmp_path)
     ledger = Ledger(MemoryStore(), Caps(compilation=cap))
-    grounding = _Grounding(ground, "reports/weekly", lookup=common["lookup"], root=tmp_path, ledger=ledger,
+    grounding = _Grounding("reports/weekly", lookup=common["lookup"], root=tmp_path, ledger=ledger,
                            clock=lambda: datetime(2026, 11, 17, tzinfo=UTC), decider=decider,
-                           decision=DEFAULTS["decision"], zone=UTC)
+                           decision=DEFAULTS["decision"], zone=UTC, floor=0.6)
     return grounding, ledger
 
 
@@ -645,36 +724,23 @@ class _CostlyThenFails:
         return Decision(FakeDecider().decide(state, questions).answers, "fake", TokenCount(1_000_000, 0))
 
 
-TWO_COMPILATIONS = {"One": "Beta shipped [^r0].", "Two": "Gamma slipped [^r1]."}
-TWO_CITED = {"r0": Citation("row", "r0", quote="Beta shipped."), "r1": Citation("row", "r1", quote="Gamma slipped.")}
+TWO_PASSAGES = "## One\n\nBeta shipped [^r0].\n\n## Two\n\nGamma slipped [^r1]."
 
 
-def test_grounding_records_each_judge_call_as_it_returns_so_a_later_call_that_raises_loses_none(
+def test_grounding_records_each_judge_call_as_it_returns_so_a_later_call_that_fails_loses_none(
         tmp_path: Path) -> None:
-    from cerebro.models import DecisionError
-
     grounding, ledger = _held_grounding(tmp_path, _CostlyThenFails(), cap=100.0)
-    with pytest.raises(DecisionError):
-        grounding(AGENT, TWO_COMPILATIONS, TWO_CITED, [])
+    editor = grounding.editor(AGENT, list)
+    assert editor.marked(TWO_PASSAGES) == TWO_PASSAGES
     assert ledger.spent(datetime(2026, 11, 17, tzinfo=UTC), "compilation") == pytest.approx(0.042)
-
-
-def test_grounding_checks_the_cap_before_each_judge_call_and_goes_by_the_words_once_it_is_spent(
-        tmp_path: Path) -> None:
-    decider = _CostlyThenFails()  # its one call spends past the cap, so the second part asks no model
-    grounding, _ = _held_grounding(tmp_path, decider, cap=0.01)
-    grounded = grounding(AGENT, TWO_COMPILATIONS, TWO_CITED, [])
-    assert decider.calls == 1 and set(grounded.parts) == {"One", "Two"}
-    assert "grounded by the words alone" in grounding.notes[0]
+    assert "unscored" in editor.scores[-1] and "the model went away" in editor.scores[-1]
 
 
 def test_a_run_that_lands_nothing_leaves_the_text_it_wrote_before_as_it_was_though_its_evidence_went(
         tmp_path: Path) -> None:
     from cerebro.compile import KEPT
-    from cerebro.ground import ground
 
     store, items, _, common = setup(tmp_path)
-    common["grounder"] = ground
     items[0] = "one item"
     compile_article(AGENT, agent_run=ScriptedRun(lambda p: {"Summary": "One item [^r0]."}), **common)
     before = store.article("reports/weekly").compilations
@@ -742,102 +808,6 @@ def test_grounding_reads_a_cited_fact_whole_when_it_is_not_linked_to_the_article
     state = next(state for state, _ in decider.asked if state.get("facts"))
     assert state["facts"]["f_1"]["text"] == "The renewal moved to May."
     assert state["facts"]["f_1"]["stated_on"] == "Nov 10, 2026" and state["facts"]["f_1"]["about"] == "Alder"
-
-
-def test_a_repair_is_held_to_the_cap_and_recorded_on_the_writing_model_call_by_call(tmp_path: Path) -> None:
-    import json as _json
-
-    from cerebro.fakes import FakeRewriter
-    from cerebro.models import DEFAULTS
-
-    class Wrong:
-        """Ungrounded the first time each sentence is asked, grounded for a rewrite."""
-
-        def decide(self, state: Any, questions: Any) -> Any:
-            from cerebro.fakes import FakeDecider
-
-            plain = {s["id"]: ("grounded" if "moved" not in s["sentence"] else "unsupported")
-                     for s in state["sentences"]}
-            return FakeDecider(plain).decide(state, questions)
-
-    rewriter = FakeRewriter(lambda r: _json.dumps({"claim": "Beta shipped.", "fact_ids": [r["facts"][0]["id"]]}))
-    grounding, ledger = _held_grounding(tmp_path, Wrong(), cap=100.0)
-    grounding.rewriter, grounding.writer = rewriter, DEFAULTS["compilation"]
-    parts = {"One": "Beta shipped and moved [^r0].", "Two": "Gamma slipped [^r1]."}
-    grounded = grounding(AGENT, parts, TWO_CITED, [])
-    assert grounded.parts["One"] == "Beta shipped [^r0]." and grounded.repaired == 1
-    rows = [r.data for r in ledger.store.rows("spend")]
-    assert [r["run"] for r in rows if r["model"] == "glm-5p3"] == ["repair reports/weekly"]
-    spent, _ = _held_grounding(tmp_path, Wrong(), cap=0.0002)  # the first rewrite spends past it: no second one
-    spent.rewriter, spent.writer = (fresh := FakeRewriter(rewriter.reply)), DEFAULTS["compilation"]
-    held = spent(AGENT, {"One": "Beta shipped and moved [^r0].", "Two": "Gamma slipped and moved [^r1]."}, TWO_CITED,
-                 [])
-    assert len(fresh.asked) == 1 and held.repaired == 0  # a rewrite judged by the words alone never lands
-    assert "grounded by the words alone" in spent.notes[0]
-
-
-class _WrongOnce:
-    """Ungrounded the first time each sentence is asked, grounded for a rewrite."""
-
-    def decide(self, state: Any, questions: Any) -> Any:
-        from cerebro.fakes import FakeDecider
-
-        plain = {s["id"]: ("grounded" if "moved" not in s["sentence"] else "unsupported") for s in state["sentences"]}
-        return FakeDecider(plain).decide(state, questions)
-
-
-def test_repairs_made_side_by_side_cannot_all_pass_the_cap(tmp_path: Path) -> None:
-    import json as _json
-    import time
-
-    from cerebro.fakes import FakeRewriter
-    from cerebro.models import DEFAULTS
-
-    def slow(r: dict[str, Any]) -> str:
-        time.sleep(0.1)  # so the calls overlap, as real ones do
-        return _json.dumps({"claim": "Beta shipped.", "fact_ids": [r["facts"][0]["id"]]})
-
-    cited = {f"r{i}": Citation("row", f"r{i}", quote=f"Item {i} shipped.") for i in range(8)}
-    text = " ".join(f"Item {i} shipped and moved [^r{i}]." for i in range(8))
-    grounding, ledger = _held_grounding(tmp_path, _WrongOnce(), cap=0.0002)
-    grounding.rewriter, grounding.writer = (rewriter := FakeRewriter(slow)), DEFAULTS["compilation"]
-    grounding(AGENT, {"Summary": text}, cited, [])
-    repairs = [r.data for r in ledger.store.rows("spend") if r.data["run"].startswith("repair")]
-    assert len(rewriter.asked) == 1 and len(repairs) == 1
-
-
-def test_a_repair_call_that_fails_after_its_provider_was_asked_still_counts_what_it_read() -> None:
-    from datetime import UTC, datetime
-
-    from cerebro.budget import Caps, Ledger
-    from cerebro.compile import _HeldRewriter
-    from cerebro.ground import RewriteFailed, Rewriter
-    from cerebro.models import DEFAULTS, TokenCount
-
-    class TimesOut(Rewriter):
-        def rewrite(self, system: str, request: str) -> tuple[str, TokenCount]:
-            raise RewriteFailed("the repair call failed: ReadTimeout", TokenCount(input_tokens=5000))
-
-    ledger = Ledger(MemoryStore(), Caps())
-    held = _HeldRewriter(TimesOut(), ledger, DEFAULTS["compilation"], lambda: datetime(2026, 11, 17, tzinfo=UTC), "r")
-    with pytest.raises(RewriteFailed):
-        held.rewrite("system", "request")
-    rows = [r.data for r in ledger.store.rows("spend")]
-    assert len(rows) == 1 and rows[0]["usd"] > 0
-
-
-def test_settings_turn_repair_off_and_refuse_a_value_that_is_not_true_or_false(tmp_path: Path) -> None:
-    from cerebro.app import Cerebro
-    from cerebro.fakes import FakeRewriter
-    from cerebro.project import WorkspaceError
-
-    (tmp_path / "settings.yaml").write_text("compile: { repair: false }\n")
-    workspace_ = Cerebro(tmp_path, store=MemoryStore(), agent_run=ScriptedRun(lambda p: {}),
-                     rewriter=FakeRewriter(lambda r: ""))
-    assert workspace_.rewriter is None
-    (tmp_path / "settings.yaml").write_text("compile: { repair: sometimes }\n")
-    with pytest.raises(WorkspaceError, match="compile.repair"):
-        Cerebro(tmp_path, store=MemoryStore(), agent_run=ScriptedRun(lambda p: {}))
 
 
 def test_a_run_is_held_at_twice_its_agents_last_spend_and_six_side_by_side_still_cannot_pass_the_cap() -> None:
@@ -948,6 +918,7 @@ def test_beside_a_run_under_way_a_cheap_run_starts_on_its_estimate_and_so_does_a
 
 def test_a_stop_part_way_through_landing_leaves_the_article_as_it_was_and_the_next_compile_runs(
         tmp_path: Path) -> None:
+    from cerebro.fakes import FakeDecider
     from cerebro.store import SQLiteStore
 
     class Stopped(BaseException):
@@ -956,19 +927,20 @@ def test_a_stop_part_way_through_landing_leaves_the_article_as_it_was_and_the_ne
     three = replace(AGENT, prompt="x\n\n# Output\n\n## Summary\n\n## Next\n\n## Risks", output=["Summary", "Next", "Risks"])
     two = replace(AGENT, hash="edited")
 
-    def stop_on_again(agent: object, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-        if "Next" in parts:
-            raise Stopped()
-        return Grounded(dict(parts))
+    class StopOnNext(FakeDecider):
+        def decide(self, state: Any, questions: Any) -> Any:
+            if state["heading"] == "Next":
+                raise Stopped()
+            return super().decide(state, questions)
 
     _, items, _, common = setup(tmp_path)
     store = SQLiteStore(tmp_path / "cerebro.db")
     common.update(store=store, lookup=StoreLookup(store))
     compile_article(three, agent_run=ScriptedRun(lambda p: {"Summary": "s1", "Next": "n1", "Risks": "r1"}), **common)
     items.append("two")
-    with pytest.raises(Stopped):  # what it hands in is grounded a heading at a time, and stops part way
+    with pytest.raises(Stopped):  # what it hands in is scored a heading at a time, and stops part way
         compile_article(two, agent_run=ScriptedRun(lambda p: {"Summary": "s2", "Next": "n2"}),
-                        **common | {"grounder": stop_on_again})
+                        decider=StopOnNext(), **common)
     assert body(store.article("reports/weekly")) == "## Summary\n\ns1\n\n## Next\n\nn1\n\n## Risks\n\nr1"
     again = compile_article(two, agent_run=ScriptedRun(lambda p: {"Summary": "s3"}), **common)
     assert not again.skipped and body(store.article("reports/weekly")) == "## Summary\n\ns3"
@@ -1008,7 +980,7 @@ def test_a_summary_whose_heading_no_part_carries_loads_the_first_part_and_says_s
     said = "summary: articles/things/alder.md has no part headed Overview, so its first part loaded in its place"
     assert "Alder renews." in seen[0] and "It holds." not in seen[0]
     assert said in compiled.notes and said in compiled.run.note and compiled.run.status == "done"
-    assert [r.data.get("note") for r in store.rows("agent-runs")] == [said]
+    assert {r.data.get("note") for r in store.rows("agent-runs")} == {said}
 
 
 def _with_material(tmp_path: Path) -> tuple[dict[str, Any], MemoryStore, dict[str, Any], ByAgent]:
@@ -1080,40 +1052,15 @@ def test_material_goes_with_its_article_when_it_is_archived_merged_or_split_or_i
     assert store.state(material_key(survivor)) is None
 
 
-def test_a_heading_the_model_writes_is_not_judged_it_stands_cites_nothing_and_one_that_reads_as_a_claim_goes_alone(
-        tmp_path: Path) -> None:
-    from cerebro.fakes import FakeDecider
-    from cerebro.ground import ground
-
-    store, items, _, common = setup(tmp_path)
-    items[0] = "Alder renewed its contract for two more years."
-    claim, long = "Alder filed for bankruptcy", "Alder fired its whole sales team in March 2026"
-    renewed = "Alder renewed its contract for two more years [^r0]."
-    text = (f"## Alder: Renewal - 2027\n\n{renewed}\n\n## {claim} [^r0]\n\n{renewed}\n\n### {long}\n\n{renewed}\n\n"
-            f"## Where it stands\n\nAlder is a lake.\n\n## [^r0]\n\n{renewed}\n\n## {long}\n\n{renewed}")
-    decider = FakeDecider()
-    compiled = compile_article(AGENT, agent_run=ScriptedRun(lambda p: text), decider=decider,
-                               **common | {"grounder": ground})
-    assert body(store.article("reports/weekly")) == \
-        f"{renewed}\n\n## {claim}\n\n{renewed}\n\n{renewed}\n\n##\n\n{renewed}\n\n{renewed}"
-    assert not [item for state, _ in decider.asked for item in state.get("sentences", []) if claim in str(item)]
-    assert any(f"removed the citation from the heading '{claim}'" in line for line in compiled.dropped)
-    assert any("Where it stands: dropped the part: nothing in it stood" in line for line in compiled.dropped)
-    assert any(f"dropped the heading '{long}': a heading is a few words" in line for line in compiled.dropped)
-    assert any(line.startswith("Alder: Renewal - 2027: dropped the heading: a heading") for line in compiled.dropped)
-
-
 def test_an_underlined_heading_opens_a_part_with_its_text_under_it_and_front_matter_is_no_heading(
         tmp_path: Path) -> None:
     from cerebro.fakes import FakeDecider
-    from cerebro.ground import ground
 
     store, items, _, common = setup(tmp_path)
     items[0] = "Alder renewed its contract for two more years."
     renewed = "Alder renewed its contract for two more years [^r0]."
     text = f"---\nstatus: draft\n---\n\n{renewed}\n\n## Closed\n\n{renewed}\n\nPast due\n===\n\n{renewed}\n\nOpen\n---\n\n{renewed}"
-    compile_article(AGENT, agent_run=ScriptedRun(lambda p: text), decider=FakeDecider(),
-                    **common | {"grounder": ground})
+    compile_article(AGENT, agent_run=ScriptedRun(lambda p: text), decider=FakeDecider(), **common)
     landed = body(store.article("reports/weekly"))
     assert landed.endswith(f"## Closed\n\n{renewed}\n\n## Past due\n\n{renewed}\n\n## Open\n\n{renewed}")
     assert "status" not in landed
@@ -1229,11 +1176,13 @@ def test_content_returned_on_a_pass_that_fails_before_it_lands_lands_next_pass_w
     compile_article(composer, agent_run=run, this="briefs/alder", **common)
     items.append("news")
 
-    def judge_down(*_: object) -> Grounded:
-        raise RuntimeError("the decision model is down")
+    def down(*_: object) -> None:
+        raise RuntimeError("the store is down")
 
-    with pytest.raises(RuntimeError):
-        compile_article(composer, agent_run=run, this="briefs/alder", **common | {"grounder": judge_down})
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(MemoryStore, "write_compilation", down)
+        with pytest.raises(RuntimeError):
+            compile_article(composer, agent_run=run, this="briefs/alder", **common)
     assert body(store.article("briefs/alder")) == "## Risks\n\nR1 [^r0].\n\n## People\n\nP1 [^r0]."
     run.ran.clear()
     compiled = compile_article(composer, agent_run=run, this="briefs/alder", **common)
@@ -1268,28 +1217,22 @@ def test_an_instructed_agent_may_cite_what_a_subagent_that_did_not_run_this_pass
     extraction.extract(Record(id="local/a.md", source="local", revision="1", at="2026-11-10T09:00:00Z",
                               body="Priya Raman leads the Alder renewal."))
     fact = extraction.facts()[0]
-    offered: list[set[str]] = []
-
-    def note(agent: Any, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-        if agent.id == "briefs/article":
-            offered.append(set(citable))
-        return Grounded(dict(parts))
-
-    common |= {"lookup": StoreLookup(store, extraction), "grounder": note}
+    common |= {"lookup": StoreLookup(store, extraction)}
     said: list[str] = []
     runs = {"briefs/subagents/risks": ScriptedRun(lambda p: said.append(p) or f"R{len(said)} [^r0]."),
             "briefs/subagents/people": ScriptedRun(lambda p: f"{fact.text} [^{fact.id}]",
                                                    calls=[("query", {"source": "facts"})]),
             "briefs/article": ScriptedRun(lambda p: f"## Verdict\n\nR [^r0]. {fact.text} [^{fact.id}]")}
-    compile_article(agents["briefs/article"], agent_run=ByAgent(runs), this="briefs/alder", **common)
+    first = compile_article(agents["briefs/article"], agent_run=ByAgent(runs), this="briefs/alder", **common)
     risks = tmp_path / "agents/briefs/subagents/risks.md"
     risks.write_text(risks.read_text() + "\nSay more.\n")  # risks alone runs again
     agents = workspace(tmp_path, {})
     run = ByAgent(runs)
-    compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common,
-                    subagents=list(agents.values()))
+    again = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common,
+                            subagents=list(agents.values()))
     assert run.ran == ["briefs/subagents/risks", "briefs/article"]
-    assert fact.id in offered[0] and fact.id in offered[1]
+    for compiled in (first, again):
+        assert fact.id in [c.id for c in compiled.article.compilations[-1].citations]
 
 
 def test_an_instructed_agent_does_not_run_when_its_subagents_ran_again_and_returned_the_same(tmp_path: Path) -> None:
@@ -1484,15 +1427,10 @@ def test_a_subagent_cut_short_by_its_budget_lands_its_fields_only_with_text_that
         ("override", {"field": "level", "value": "high"})]),
                    "briefs/subagents/people": Short(lambda p: "P [^r0].", calls=[
                        ("override", {"field": "tone", "value": "calm"})])})
-
-    def drop(agent: Any, parts: dict[str, str], *_: Any) -> Grounded:
-        return Grounded({}, ["dropped"]) if agent.id == "briefs/subagents/people" else Grounded(parts)
-
-    common["grounder"] = drop
     compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
-    assert body(compiled.article) == "## Risks\n\nR [^r0]."
+    assert body(compiled.article) == "## Risks\n\nR [^r0].\n\n## People\n\nP [^r0]."
     assert store.article("briefs/alder").properties["level"].value == "high"
-    assert "tone" not in store.article("briefs/alder").properties  # none of its text stood
+    assert store.article("briefs/alder").properties["tone"].value == "calm"
     run.ran.clear()
     compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert sorted(run.ran) == ["briefs/subagents/people", "briefs/subagents/risks"]  # not done reading: not fresh
@@ -1507,24 +1445,21 @@ def test_a_composer_cut_short_by_its_budget_lands_its_fields_only_with_text_that
     agents, store, _items, common = briefs(tmp_path)
     run = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: "R [^r0]."),
                    "briefs/subagents/people": ScriptedRun(lambda p: "P [^r0]."),
-                   "briefs/article": Short(lambda p: "V [^r0].", calls=[
+                   "briefs/article": Short(lambda p: "", calls=[
                        ("override", {"field": "level", "value": "high"})])})
-
-    def drop(agent: Any, parts: dict[str, str], *_: Any) -> Grounded:
-        return Grounded({}, ["dropped"]) if agent.id == "briefs/article" else Grounded(parts)
-
-    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common | {"grounder": drop})
+    compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert compiled.run.status == "budget spent"
     assert body(compiled.article) == "## Risks\n\nR [^r0].\n\n## People\n\nP [^r0]."
-    assert "level" not in store.article("briefs/alder").properties  # none of its text stood
+    assert "level" not in store.article("briefs/alder").properties  # it handed in no text
     run.ran.clear()
+    run.runs["briefs/article"] = Short(lambda p: "V [^r0].", calls=[("override", {"field": "level", "value": "high"})])
     compiled = compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     assert run.ran == ["briefs/article"] and body(compiled.article) == "V [^r0]."  # not done reading: not fresh
     assert store.article("briefs/alder").properties["level"].value == "high"
 
 
-@pytest.mark.parametrize("shape", ["joined", "instructed", "instructed, adds nothing", "instructed, all dropped",
-                                   "joined, a subagent returns nothing", "joined, a subagent's text all dropped",
+@pytest.mark.parametrize("shape", ["joined", "instructed", "instructed, adds nothing",
+                                   "joined, a subagent returns nothing",
                                    "joined, a subagent waits", "instructed, a subagent waits",
                                    "instructed, a subagent fails"])
 def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_article(tmp_path: Path, shape: str) -> None:
@@ -1533,15 +1468,10 @@ def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_artic
 
     runs: dict[str, AgentRun] = {"briefs/subagents/risks": returns("R [^r0]."),
                                  "briefs/subagents/people": returns("P [^r0]."), "briefs/article": returns("V [^r0].")}
-    drop = ""
     if shape == "instructed, adds nothing":
         runs["briefs/article"] = returns("")
-    elif shape == "instructed, all dropped":
-        drop = "briefs/article"
     elif shape == "joined, a subagent returns nothing":
         runs["briefs/subagents/people"] = returns("")
-    elif shape == "joined, a subagent's text all dropped":
-        drop = "briefs/subagents/people"
     elif shape == "instructed, a subagent fails":
         runs["briefs/subagents/people"] = Fails()
     agents = workspace(tmp_path, {"briefs/article.md": JOINED if shape.startswith("joined") else BRIEF,
@@ -1551,11 +1481,7 @@ def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_artic
     store, _, _, common = setup(tmp_path)
     store.create(Identity("briefs/alder", "briefs", "Alder"))
     common["functions"]["nothing"] = list
-
-    def grounder(agent: Any, parts: dict[str, str], citable: dict, *_: object) -> Grounded:
-        return Grounded({}, ["dropped all"]) if agent.id == drop else Grounded(dict(parts))
-
-    common |= {"grounder": grounder, "clock": Ticking()}
+    common |= {"clock": Ticking()}
     run = ByAgent(runs)
     compile_article(agents["briefs/article"], agent_run=run, this="briefs/alder", **common)
     run.ran.clear()
@@ -1568,58 +1494,41 @@ def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_artic
                                sorted(["briefs/subagents/people", "briefs/subagents/risks"] * 4))
 
 
-def test_a_composer_that_adds_nothing_keeps_what_it_composed_when_the_draft_returned_grounds_to_nothing(
-        tmp_path: Path) -> None:
-    def drop_bad(agent: Any, parts: dict[str, str], citable: Any, *_: Any) -> Grounded:
-        keep = {h: t for h, t in parts.items() if "BAD" not in t}
-        return Grounded(keep, dropped=[f"{h}: dropped" for h in parts if h not in keep])
-
-    agents, store, _items, common = briefs(tmp_path)
-    common["grounder"] = drop_bad
-    composer = agents["briefs/article"]
-    first = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: {"Risks": "Risks one [^r0]."}),
-                     "briefs/subagents/people": ScriptedRun(lambda p: {"People": "People one [^r0]."}),
-                     "briefs/article": ScriptedRun(lambda p: "## Verdict\n\nAlder holds [^r0].")})
-    compile_article(composer, agent_run=first, this="briefs/alder", **common)
-    risks = tmp_path / "agents" / "briefs" / "subagents" / "risks.md"
-    risks.write_text(risks.read_text() + "\nSay more.\n")  # only risks is due
-    second = ByAgent({"briefs/subagents/risks": ScriptedRun(lambda p: {"Risks": "BAD claim [^r0]."}),
-                      "briefs/article": ScriptedRun(lambda p: "")})
-    compile_article(composer, agent_run=second, this="briefs/alder", **common)
-    assert second.ran == ["briefs/subagents/risks", "briefs/article"]
-    assert body(store.article("briefs/alder")) == "## Verdict\n\nAlder holds [^r0]."
-
-
-def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote() -> None:
+def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote_but_not_beside_one_that_stands(
+        ) -> None:
     from types import SimpleNamespace
 
-    from cerebro.article import Citation, Compilation, Identity
+    from cerebro.article import Compilation, Identity
     from cerebro.clean import label
     from cerebro.compile import _Grounding, _withdrawn
     from cerebro.facts import Fact
     from cerebro.fakes import MemoryStore
 
-    gone, kept = "f 1<x>", "f_2"
+    gone, kept, beside = "f 1<x>", "f_2", "f_3"
     asked: list[str] = []
 
     class Facts:
-        def facts(self, ids: list[str]) -> list[Fact]:
+        def facts(self, ids: list[str] | None = None, **record: str) -> list[Fact]:
+            if ids is None:
+                return []  # the retracted fact's record holds no fact now
             asked.extend(ids)
             return [Fact(id, "x", "Halden", "note", "2026-11-03", "files", "local/halden.md",
-                         status="retracted" if id == gone else "current") for id in ids]
+                         status="retracted" if id in (gone, beside) else "current") for id in ids]
 
     assert label(gone) != gone
     store = MemoryStore()
     store.create(Identity("things/halden", "things", "Halden"))
-    store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].\nIt has a dock [^{kept}].\n",
-                                by="things/parts", citations=[Citation("fact", gone), Citation("fact", kept)]))
-    grounding = _Grounding(lambda *a: None, "things/halden", lookup=SimpleNamespace(extraction=Facts()),  # type: ignore[arg-type]
+    store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].[^unsupported]\nIt has a dock [^{kept}].\n"
+                                                     f"It grew [^{beside}] [^{kept}].\n", by="things/parts",
+                                citations=[Citation("fact", gone), Citation("fact", kept), Citation("fact", beside)]))
+    grounding = _Grounding("things/halden", lookup=SimpleNamespace(extraction=Facts()),  # type: ignore[arg-type]
                            root=Path("."), ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,
-                           zone=UTC)
+                           zone=UTC, floor=0.6)
     said = _withdrawn(grounding, store, "things/halden", ["things/parts"])
     part = next(s for s in store.article("things/halden").compilations if s.by == "things/parts")
-    assert sorted(asked) == sorted([gone, kept]) and len(said) == 1
-    assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept]
+    assert sorted(asked) == sorted([gone, kept, beside]) and len(said) == 1
+    assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept, beside]
+    assert "It grew" in part.text  # a fact it cites still stands
 
 
 LINKS = "---\nevidence:\n  - items: {}\n  - articles: [this.linked]\n---\n\n# Instructions\n\nDraft it.\n"

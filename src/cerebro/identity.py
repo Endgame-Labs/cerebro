@@ -24,7 +24,12 @@ the closest tie of a fact to an article, and `held_by` the articles of a collect
 
 A record binds the articles that hold a key that names it, and the article an admit made of it. A key its
 connector says it only carries (`Record.carried`), such as its parties' addresses, binds nothing: `bound_to` skips
-it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does.
+it, and `reached` counts it, so it still puts the record in scope and links its facts, as step 1 does. A record that
+shares with an article only its title, or values of keys that name no one thing, as a name, binds it, and links its
+facts to it by steps 1 and 3, only while no key that names one thing tells the two apart, as `_apart` reads it, so
+two things of one name stay two. A fact that gives one of its record's own names, as its subject or a mention, speaks
+of that record's thing, so the name links it by steps 1, 2 and 4 to no article the record is told apart from. A
+mention's key that names one thing still links it.
 
 A record's fields land on its own articles alone, as `own_articles` gives them: those of its own collection, `into`,
 that it is bound to, so a part's stage lands on the part and never on its parent, while its facts link to both.
@@ -32,8 +37,8 @@ that it is bound to, so a part's stage lands on the part and never on its parent
 An article merged into another is followed to its survivor, as the latest `redirect` row of the `merges` log says.
 A link is its own row, so links can be added later without extracting again. Linking never creates an article.
 
-`DecisionJudge` is the judge on a decision model: one request a fact, one yes or no a candidate. It says what each
-call cost, so the caller can keep it in the spend ledger.
+`DecisionJudge` is the judge on a decision model: one request a fact, one yes or no a candidate. A caller holds its
+decider to a cap, and a call refused or failed links nothing by a near match.
 """
 
 from __future__ import annotations
@@ -41,15 +46,15 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
 
 from .article import Identity, fields
+from .budget import BudgetSpent
 from .connector import Ours, Record
-from .facts import Fact
-from .models import Decider, DecisionError, TokenCount, YesNo
+from .facts import Fact, field_name
+from .models import Decider, DecisionError, YesNo
 from .store import MENTIONS, RECORD, SUBJECT, Store, own_key
 
-__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "Judged", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "link", "link_to",
+__all__ = ["ADMITTED_FROM", "MAX_CANDIDATES", "OWN_WEIGHED", "THRESHOLD", "DecisionJudge", "Judge", "admitted_from", "bound_to", "follow", "held_by", "in_working_set", "kept_off", "link", "link_to",
            "linked_keys", "naming_keys", "own_articles", "reached", "redirects", "tied", "working", "would_bind"]
 
 THRESHOLD = 0.7  # the probability a judge must give a candidate
@@ -59,19 +64,10 @@ JUDGE_QUESTION = ("Does `fact` state something about the entity `candidates[{id}
 EDGE = re.compile(r"^[^\w]+|[^\w]+$")
 
 
-@dataclass
-class Judged:
-    """What a judge said: the candidates that passed, by id, and what asking cost, with the model that answered."""
-
-    ids: list[str] = field(default_factory=list)
-    usage: TokenCount = field(default_factory=TokenCount)
-    model: str = ""
-
-
 class Judge:
-    """The seam for a near match: which of the candidate articles, if any, a fact's subject names."""
+    """The seam for a near match: which of the candidate articles, if any, a fact's subject names, by id."""
 
-    def judge(self, fact: Fact, candidates: list[Identity]) -> Judged:
+    def judge(self, fact: Fact, candidates: list[Identity]) -> list[str]:
         raise NotImplementedError
 
 
@@ -83,14 +79,13 @@ class DecisionJudge(Judge):
         self.decider = decider
         self.threshold = threshold
 
-    def judge(self, fact: Fact, candidates: list[Identity]) -> Judged:
+    def judge(self, fact: Fact, candidates: list[Identity]) -> list[str]:
         state = {"fact": fact.text, "subject": fact.subject,
                  "candidates": {c.id: {"name": c.title, "collection": c.collection} for c in candidates}}
         questions = {c.id: YesNo(JUDGE_QUESTION.format(id=c.id)) for c in candidates}
         decision = self.decider.decide(state, questions)
-        passed = [c.id for c in candidates if (answer := decision.answers.get(c.id)) is not None
-                  and answer.yes is not None and answer.yes >= self.threshold]
-        return Judged(passed, decision.usage, decision.model)
+        return [c.id for c in candidates if (answer := decision.answers.get(c.id)) is not None
+                and answer.yes is not None and answer.yes >= self.threshold]
 
 
 def in_working_set(who: Identity) -> bool:
@@ -157,8 +152,9 @@ def naming_keys(record: Record) -> dict[str, list[str]]:
 
 def bound_to(store: Store, record: Record) -> list[str]:
     """The articles a record is bound to: by the keys that name it, then by a value one of them holds that is one
-    article's title. A key the record only carries binds it to nothing, though its facts link
-    by it. Merged articles are followed to their survivors."""
+    article's title, unless it shares no value of a key that names one thing with the article and `_apart` tells the
+    two apart. A key the record only carries binds it to nothing, though its facts link by it. Merged articles are
+    followed to their survivors."""
     return _bound(store, record, naming_keys(record))
 
 
@@ -181,26 +177,64 @@ def admitted_from(store: Store, record: Record) -> list[str]:
 
 
 def _bound(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str]:
-    found = _by_keys(store, keys)
+    found = _keyed(store, record, keys)
     found += [id for id in admitted_from(store, record) if id not in found]
     for name in _header_names(record, keys):
         named = store.named(name)
-        if len(named) == 1 and named[0] not in found and not _namesake(store, record, name, named[0]):
+        if len(named) == 1 and named[0] not in found and not _namesake(store, record, name, named[0]) \
+                and not _apart(store, record, named[0]):
             found.append(named[0])
     moved = redirects(store) if found else {}
     return list(dict.fromkeys(follow(id, moved) for id in found))
 
 
+def _apart(store: Store, record: Record, article: str | Mapping[str, Iterable[object]]) -> bool:
+    """Whether `record` and `article`, an id or the keys of one, are two things whatever name they share, as
+    `curate.same_thing` reads the keys that name the record against the article's by the workspace's weights. A key
+    the record only carries, or one no source declares, tells nothing apart. Keys of each side that they do not share
+    do not either, though `one_thing` reads them as two asks: a name binds a record that contradicts no key the
+    article holds, and two asks are kept two unless a key shows them one, so neither is folded into the other."""
+    from .curate import same_thing, weights_of  # curate reads this module
+
+    return _may_be_apart(store, record) and \
+        same_thing(naming_keys(record), _keys_of(store, article), weights_of(store)) is False
+
+
+def _may_be_apart(store: Store, record: Record) -> bool:
+    """Whether a key that names the record names one thing, one the workspace's weights put above 0: with none,
+    nothing tells the record apart from an article, so no article need be read."""
+    from .curate import weights_of  # curate reads this module
+
+    weights = weights_of(store)
+    return any(weights.get(k, 0) > 0 for k in naming_keys(record))
+
+
+def _keyed(store: Store, record: Record, keys: dict[str, list[str]]) -> list[str]:
+    """The articles `keys` bind, but one they bind only by keys that name no one thing, as a name, that `_apart` tells
+    from the record: a record that shares only its name with an article binds it no more by a key than by its title."""
+    from .curate import weights_of  # curate reads this module
+
+    found, weights = _by_keys(store, keys), weights_of(store)
+    if not found or not _may_be_apart(store, record):
+        return found
+    strong = set(_by_keys(store, {k: vs for k, vs in keys.items() if weights.get(k, 0) > 0}))
+    return [id for id in found if id in strong or not _apart(store, record, id)]
+
+
 def would_bind(store: Store, keys: dict[str, list[object]], title: str, record: Record) -> bool:
     """Whether an article with these keys and this title, once admitted, binds `record`, by the rules `bound_to` reads
     the store by: a key value the record carries, matched without regard to case, or a name it carries that is the
-    title."""
+    title, unless it shares no value of a key that names one thing and `_apart` tells the two apart."""
+    from .curate import weights_of  # curate reads this module
+
     want = {(k, str(v).lower()) for k, values in keys.items() for v in values}
     naming = naming_keys(record)
-    if want & {(k, str(v).lower()) for k, values in naming.items() for v in values}:
+    shared = want & {(k, str(v).lower()) for k, values in naming.items() for v in values}
+    if any(weights_of(store).get(k, 0) > 0 for k, _ in shared):
         return True
-    return bool(title) and any(name.lower() == title.strip().lower() and not _namesake(store, record, name, keys)
-                               for name in _header_names(record, naming))
+    return not _apart(store, record, keys) and (bool(shared) or bool(title) and any(
+        name.lower() == title.strip().lower() and not _namesake(store, record, name, keys)
+        for name in _header_names(record, naming)))
 
 
 def link(store: Store, fact: Fact, record: Record | None = None, at: str = "") -> list[str]:
@@ -218,39 +252,82 @@ def link_ties(store: Store, fact_id: str, made: list[tuple[str, str]], at: str =
 
 
 def ties(store: Store, fact: Fact, record: Record | None = None, judge: Judge | None = None, *,
-         spent: list[Judged] | None = None, among: list[tuple[Identity, list[str]]] | None = None,
-         ) -> list[tuple[str, str]]:
+         among: list[tuple[Identity, list[str]]] | None = None,
+         dropped: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
     """The articles a fact is tied to as the store stands, each with how, without linking. A judge, if given, is asked
-    about a near match of the subject among `near_pool`, or `among` read from it before, and each answer, with what it
-    cost, is added to `spent`."""
-    made: list[tuple[str, str]] = []
+    about a near match of the subject among `near_pool`, or `among` read from it before. A tie by a name, the
+    subject's, a mention's or a judge's near match of the subject, is not made to an article `_apart` tells the
+    record from when that name is one of the record's own, as `_record_names` gives them: the fact speaks of the
+    record's thing. A mention's key that names one thing still ties. `dropped`, when given, gathers each tie that
+    rule does not make."""
+    from .curate import weights_of  # curate reads this module
 
-    def tie(ids: list[str], how: str) -> None:
-        made.extend((id, how) for id in ids if (id, how) not in made)
+    made: list[tuple[str, str]] = []
+    mine, weights = _record_names(record), weights_of(store)
+
+    def tie(ids: list[str], how: str, name: str = "") -> None:
+        own = record if record is not None and name and _tokens(name) in mine else None
+        for id in ids:
+            if own is not None and _apart(store, own, id):
+                if dropped is not None and (id, how) not in dropped:
+                    dropped.append((id, how))
+            elif (id, how) not in made:
+                made.append((id, how))
 
     if record is not None:
-        tie(_by_keys(store, linked_keys(record)), RECORD)  # by every key, those it only carries too
+        tie(_keyed(store, record, linked_keys(record)), RECORD)  # by every key, those it only carries too
         tie(admitted_from(store, record), RECORD)
     for mention in fact.mentions:
-        tie(_by_keys(store, mention.keys), SUBJECT if mention.role == SUBJECT else MENTIONS)
+        how = SUBJECT if mention.role == SUBJECT else MENTIONS
+        strong = {k: vs for k, vs in mention.keys.items() if weights.get(k, 0) > 0}
+        tie(_by_keys(store, strong), how)  # a key that names one thing ties it
+        tie(_by_keys(store, mention.keys), how, mention.text)
     exact = False
     for name, how in _names(fact):
         named = store.named(name) if name else []
         named = [] if len(named) == 1 and _namesake(store, record, name, named[0]) else named
         exact = exact or (name == fact.subject and bool(named))
         if len(named) == 1:
-            tie(named, how)
+            tie(named, how, name)
     listed = _listed_names(record)
     for name in _header_names(record):
         if name in listed and not _names_it(fact, name):
             continue
         named = store.named(name)
-        if len(named) == 1 and not _namesake(store, record, name, named[0]):
+        if len(named) == 1 and not _namesake(store, record, name, named[0]) and not _apart(store, record, named[0]):
             tie(named, RECORD if name not in listed else _subject_how(fact) if _tokens(name) == _tokens(fact.subject)
                 else MENTIONS)
     if judge is not None and fact.subject and not exact:
-        tie(_near(fact, judge, near_pool(store) if among is None else among, spent), _subject_how(fact))
+        tie(_near(fact, judge, near_pool(store) if among is None else among), _subject_how(fact), fact.subject)
     return made
+
+
+def kept_off(store: Store, fact: Fact, record: Record,
+             among: list[tuple[Identity, list[str]]]) -> list[tuple[str, str]]:
+    """The ties the rule in `ties` does not make for a fact as the store stands, each an article and how: each that one
+    of its record's own names finds, by a title, a mention's keys or a near match of the subject among `among`, to an
+    article `_apart` tells the record from. No judge is asked: each near match is read as found, alone."""
+    found: list[tuple[str, str]] = []
+    near = _close(fact, among) if _tokens(fact.subject) in _record_names(record) else []  # another name drops none
+    for pool in [[each] for each in near] or [[]]:
+        ties(store, fact, record, _Found(), among=pool, dropped=found)
+    return found
+
+
+class _Found(Judge):
+    """A near match as a name finds it, whatever a judge would say of it: every candidate passes."""
+
+    def judge(self, fact: Fact, candidates: list[Identity]) -> list[str]:
+        return [candidate.id for candidate in candidates]
+
+
+def _record_names(record: Record | None) -> list[list[str]]:
+    """A record's own names, as words: each value of a `name` key it does not only carry, and the name a field of it
+    gives, as `field_name` reads it."""
+    if record is None:
+        return []
+    return [_tokens(str(name)) for name in [*naming_keys(record).get("name", []), field_name(record)]
+            if _tokens(str(name))]
 
 
 def tied(store: Store, fact_id: str, articles: list[str]) -> str:
@@ -342,20 +419,23 @@ def near_pool(store: Store) -> list[tuple[Identity, list[str]]]:
             for article in store.query(collection) if in_working_set(article.identity)]
 
 
-def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]], spent: list[Judged] | None) -> list[str]:
+def _near(fact: Fact, judge: Judge, among: list[tuple[Identity, list[str]]]) -> list[str]:
     """The one article a near match of the subject names, as the judge settles it, or none."""
-    subject = _tokens(fact.subject)
-    candidates = [who for who, title in among if _holds(subject, title) or _holds(title, subject)]
+    candidates = [who for who, _ in _close(fact, among)]
     if not candidates or len(candidates) > MAX_CANDIDATES:
         return []
     try:
         judged = judge.judge(fact, candidates)
-    except DecisionError:
-        return []  # a judge that fails links nothing by a near match; the fact's other links stand
-    if spent is not None:
-        spent.append(judged)
-    passed = [id for id in judged.ids if id in {c.id for c in candidates}]
+    except (BudgetSpent, DecisionError):
+        return []  # a judge refused at the cap or failed links nothing by a near match; the fact's other links stand
+    passed = [id for id in judged if id in {c.id for c in candidates}]
     return passed if len(passed) == 1 else []
+
+
+def _close(fact: Fact, among: list[tuple[Identity, list[str]]]) -> list[tuple[Identity, list[str]]]:
+    """Those of `among` whose title holds the subject's words, or is held in them: its near matches."""
+    subject = _tokens(fact.subject)
+    return [(who, title) for who, title in among if _holds(subject, title) or _holds(title, subject)]
 
 
 def _listed_names(record: Record | None) -> set[str]:
@@ -394,12 +474,19 @@ def _namesake(store: Store, record: Record | None, name: str, article: str | Map
     given = _own_names(record).get(_fold(name))
     if record is None or given is None:
         return False
-    keys: Mapping[str, Iterable[object]] = article if not isinstance(article, str) else (
-        found.identity.keys if (found := store.article(follow(article, redirects(store)))) is not None else {})
+    keys = _keys_of(store, article)
     side = store.state(f"{OWN_WEIGHED}:{record.source}") or {}
     ours = Ours(tuple(side.get("addresses") or ()), tuple(side.get("domains") or ()))
     held = {str(v).strip().lower() for values in keys.values() for v in values if "@" in str(v)}
     return not any(a in given if given else ours.holds(a) for a in held)
+
+
+def _keys_of(store: Store, article: str | Mapping[str, Iterable[object]]) -> Mapping[str, Iterable[object]]:
+    """The keys of `article` as given, or by its id, those of the article a merge led it to."""
+    if not isinstance(article, str):
+        return article
+    found = store.article(follow(article, redirects(store)))
+    return found.identity.keys if found is not None else {}
 
 
 def _header_names(record: Record | None, keys: dict[str, list[str]] | None = None) -> list[str]:

@@ -16,7 +16,6 @@ from cerebro.agent import Agent, Authority, load_agent
 from cerebro.article import Compilation, Identity, Property
 from cerebro.caller import Caller
 from cerebro.clock import stamp
-from cerebro.compile import _Grounding
 from cerebro.connector import Record
 from cerebro.curate import Curated, in_scope, run_curator
 from cerebro.evidence import gather, render
@@ -842,10 +841,10 @@ def test_an_approved_proposal_the_curator_filed_is_made_at_its_path_and_name(tmp
     [asked] = proposals(store, "waiting")
     decide(store, YOU, accept=[asked.id], clock=lambda: NOW)
     done = curate(store, agent, [("admit", {"name": "Alder", "reason": "asked", "proposals": [asked.id]}),
-                                 ("admit", {"name": "Alder Works", "reason": "asked", "proposals": [asked.id]})],
+                                 ("admit", {"name": "things/alder-works", "reason": "asked", "proposals": [asked.id]})],
                   tmp_path)
     assert said(done)[0] == refusal(f"{asked.id} was approved as Alder Works at things/alder-works: admit it there")
-    assert [a.identity.id for a in store.query("things")] == ["things/alder-works"]
+    assert [(a.identity.id, a.identity.title) for a in store.query("things")] == [("things/alder-works", "Alder Works")]
     curate(store, agent, [("admit", {"name": "Ann", "reason": "a maker"}), ("admit", {"name": "Bob", "reason": "a maker"})],
            tmp_path)
     ann, bob = proposals(store, "waiting")
@@ -854,6 +853,12 @@ def test_an_approved_proposal_the_curator_filed_is_made_at_its_path_and_name(tmp
                   tmp_path)  # one act never carries out an approved admit of another path
     assert said(done)[0] == refusal(f"{bob.id} was approved as Bob at things/bob: admit it there")
     assert row(store, bob.id).applied == {} and store.article("things/ann") is None
+    store.create(Identity("things/elm", "things", "Elm", {}, "archived"))
+    curate(store, agent, [("admit", {"name": "Elm", "reason": "back again"})], tmp_path)
+    [back] = proposals(store, "waiting")
+    decide(store, YOU, accept=[back.id], clock=lambda: NOW)
+    curate(store, agent, [("admit", {"name": "things/elm", "reason": "asked", "proposals": [back.id]})], tmp_path)
+    assert store.article("things/elm").identity.status == "active"  # by its path, an archived one comes back
 
 
 def test_an_accepted_proposal_whose_target_is_gone_or_done_closes_with_no_model(tmp_path: Path) -> None:
@@ -1016,9 +1021,6 @@ def test_a_merged_path_is_followed_by_every_reader_and_a_proposer_is_shown_where
     curate(store, keeper, [("instruct", {"article": "things/alder-works", "text": "Say what it is."})], tmp_path,
            at=hour(3))
     assert [p.target for p in proposals(store) if p.kind == "article.instruct"] == ["things/alder"]
-    grounding = _Grounding(lambda *a: None, "parts/bolt", lookup=lookup, root=tmp_path, ledger=None,
-                           clock=lambda: NOW, decider=None, decision=None, zone=UTC)
-    assert grounding.written({"x": "See [Alder](../things/alder-works.md)."}) == {"things/alder-works"}
     assert held_by(store, "parts/bolt", "things") == ["things/alder"]  # the label on what holds it
     bolt = Group([Row("p_1", "parts/curator", "parts", "Bolt", path="parts/bolt", linked=["things/alder-works"])])
     [top] = tree([bolt], {"things/alder": "Alder"}, redirects(store))  # the first-run tree

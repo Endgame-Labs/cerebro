@@ -53,13 +53,13 @@ def _refused(tmp_path: Path, text: str) -> str:
     ("timezone: UTC\t# the zone\n", ("timezone",), "UTC"),
     ("caps: &c { daily_usd: 5 }\n", None, None),
     (JOBS.replace("effort: low", "effort: ''"), ("models", "extraction", "effort"), None),
-    ("compile: { repair: yes }\n", ("compile", "repair"), True),
+    ("min_grounding: 0.75\n", ("min_grounding",), 0.75),
     ("search: { rerank: off }\n", ("search", "rerank"), False),
 ])
 def test_a_value_that_reads_loads_with_its_value(tmp_path: Path, text: str, path: tuple | None,
                                                          value: object) -> None:
     if path is None:
-        assert _refused(tmp_path, text) == 'settings.yaml: line 1: unknown key "caps"'
+        assert _refused(tmp_path, text) == 'settings.yaml: line 1: unknown key "caps": delete it, or fix its spelling'
         return
     found = _settings(tmp_path, text)
     for key in path:
@@ -94,6 +94,7 @@ def test_a_merge_key_brings_in_the_keys_of_its_map_and_the_keys_beside_it_win(tm
     ("schedule: { sources: 106752d }\n", 1, "schedule.sources: '106752d' is longer than a duration can be"),
     ("schedule: { articles: '' }\nport: x\n", 2, "port is 'x'"),
     ("budget: { <<: 5 }\n", None, "a << merge key takes a map or a list of maps"),
+    ("min_grounding: 2\n", 1, "min_grounding is 2: write a number from 0 to 1, such as 0.6"),
 ])
 def test_a_value_that_does_not_read_is_refused_with_its_line(tmp_path: Path, text: str, line: int | None,
                                                                 says: str) -> None:
@@ -136,7 +137,7 @@ def test_id_and_store_keep_the_value_the_trust_check_reads(tmp_path: Path, text:
     ("port: abc\nbudget: { daily_usd: 5, daily_usd: 6 }\n", 1, "port is 'abc'"),
     ("budget: { daily_usd: 5, daily_usd: 6 }\nport: abc\n", 1, 'the key "daily_usd" is given twice, first on line 1'),
     ("budget: { daily_usd: 0 }\nport: 1\nport: 2\n", 3, 'the key "port" is given twice, first on line 2: keep one'),
-    ("bogus: 1\nport: 1\nport: 2\n", 1, 'unknown key "bogus"'),
+    ("bogus: 1\nport: 1\nport: 2\n", 1, 'unknown key "bogus": delete it, or fix its spelling'),
     ("timezone: UTC\nport: 1\nport: 2\ntimezone: UTC\n", 4, 'the key "timezone" is given twice'),
     ("budget: { daily_usd: 5, daily_usd: 6 }\ncompile: { concurrency: 0 }\n", 2, "compile.concurrency is 0"),
     ("compile: { concurrency: 0 }\nbudget: { daily_usd: 5, daily_usd: 6 }\n", 1, "compile.concurrency is 0"),
@@ -169,12 +170,12 @@ def test_a_list_or_a_map_where_a_value_goes_is_named_at_the_line_of_its_key(
 @pytest.mark.parametrize(("text", "line", "says"), [
     ("timezone: &z UTC\nport: *z\n", 1, "port is 'UTC'"),
     ("compile: &c\n  concurrency: x\nbudget:\n  daily_usd: *c\n", 2, "compile.concurrency is 'x'"),
-    ("caps: &c { concurrency: x }\n", 1, 'unknown key "caps"'),
-    ("x: &a abc\nschedule:\n  sources: *a\n", 1, 'unknown key "x"'),
-    ("budget: &b { daily_usd: 5 }\ncompile: *b\n", 1, 'unknown key "daily_usd"'),
-    ("budget: &b\n  daily_usd: 5\n  first_run_usd: 5\nschedule: *b\n", 2, 'unknown key "daily_usd"'),
-    ("schedule: &s { sources: 15m }\nmodels:\n  extraction: *s\n", 1, 'unknown key "sources"'),
-    ("serve: &v { interval: 30 }\ncompile:\n  <<: *v\n", 1, 'unknown key "interval"'),
+    ("caps: &c { concurrency: x }\n", 1, 'unknown key "caps": delete it, or fix its spelling'),
+    ("x: &a abc\nschedule:\n  sources: *a\n", 1, 'unknown key "x": delete it, or fix its spelling'),
+    ("budget: &b { daily_usd: 5 }\ncompile: *b\n", 1, 'unknown key "daily_usd": delete it, or fix its spelling'),
+    ("budget: &b\n  daily_usd: 5\n  first_run_usd: 5\nschedule: *b\n", 2, 'unknown key "daily_usd": delete it, or fix its spelling'),
+    ("schedule: &s { sources: 15m }\nmodels:\n  extraction: *s\n", 1, 'unknown key "sources": delete it, or fix its spelling'),
+    ("serve: &v { interval: 30 }\ncompile:\n  <<: *v\n", 1, 'unknown key "interval": delete it, or fix its spelling'),
 ])
 def test_a_value_reached_through_an_alias_is_named_at_its_anchor(tmp_path: Path, text: str, line: int,
                                                                  says: str) -> None:
@@ -279,8 +280,8 @@ def test_a_file_that_reads_loads_with_its_value(tmp_path: Path, text: str, path:
     ("schedule:\n  sources: &d soon\nid: *d\n", 2, "schedule.sources: 'soon'"),
     ("models:\n  extraction:\n    provider:\n      - a\n", 4, "models.extraction"),
     ("models:\n  extraction:\n    model:\n      k: v\n", 4, "models.extraction"),
-    ("2001-13-45: 1\n", 1, 'unknown key "2001-13-45"'),
-    ("budget:\n  2001-02-30: 5\n", 2, 'unknown key "2001-02-30"'),
+    ("2001-13-45: 1\n", 1, 'unknown key "2001-13-45": delete it, or fix its spelling'),
+    ("budget:\n  2001-02-30: 5\n", 2, 'unknown key "2001-02-30": delete it, or fix its spelling'),
 ])
 def test_the_line_is_named_for_a_nested_anchor_a_models_list_and_a_key_that_is_no_date(
         tmp_path: Path, text: str, line: int, says: str) -> None:

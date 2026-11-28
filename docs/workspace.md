@@ -50,9 +50,26 @@ Each model has one job:
 |---|---|
 | `extraction` | Turns your records into facts |
 | `compilation` | Writes articles |
-| `decision` | Checks each sentence against its facts, and answers small yes or no questions |
+| `decision` | Scores each sentence against its facts, and answers small yes or no questions |
 
 Extraction and compilation can also run on OpenAI or Anthropic. Change that job's `provider` and `model`, then keep the key with `cerebro secrets set openai` or `cerebro secrets set anthropic`. The decision job runs on Typesafe or Fireworks.
+
+A model call that times out, hits a rate limit or meets a server error is tried again, 3 times by default. A refused key is never tried again. Extraction also does not try again a call the provider answers with HTTP 408. To change how many times a job's calls are tried again, add `retries` to its model in `settings.yaml`:
+
+```yaml
+models:
+  extraction: { provider: fireworks, model: glm-5p3-flash, effort: low }
+  decision: { provider: typesafe, model: jev-1.13.0, retries: 1 }
+  compilation: { provider: fireworks, model: glm-5p3, effort: high, retries: 5 }
+```
+
+An agent's reply may take 10 minutes to start, as a model that thinks first can be silent. Once it starts, it counts as timed out only when nothing new arrives for a minute, so a long reply that keeps coming finishes.
+
+The decision model scores each sentence an agent writes from 0 to 1. A sentence under 0.6 lands marked as not fully backed by the facts it cites. To change that floor for every agent, set `min_grounding`. An agent's own `min_grounding` takes its place, as [agents](agents.md#how-cerebro-checks-what-an-agent-writes) shows.
+
+```yaml
+min_grounding: 0.7
+```
 
 ### Model calls through a gateway
 
@@ -86,7 +103,7 @@ Cerebro fills three placeholders on each call. A placeholder with nothing to fil
 
 | Placeholder | Holds |
 |---|---|
-| `{call}` | The kind of call: `agent_run`, `decision`, `repair`, `key_proof`, `extraction`, `embedding`, `extraction_decision`, or the name of the prompt a source asks with |
+| `{call}` | The kind of call: `agent_run`, `decision`, `key_proof`, `extraction`, `embedding`, `extraction_decision`, or the name of the prompt a source asks with |
 | `{agent}` | The agent's id, on an agent run only |
 | `{run}` | The run's id, on an agent run only |
 
@@ -96,7 +113,7 @@ Any change to the `providers:` block means you trust the workspace again with `c
 models    fireworks, openai, anthropic, typesafe calls go to http://gateway.example.internal:8769
 ```
 
-If the gateway refuses a call with 400, 401, 402 or 403, the pass stops and says why. The next pass tries again. Your daily caps still apply.
+If the gateway refuses a call with 401, 402 or 403, the pass stops and says why, and the next pass tries again. Any other error fails that call alone. If every call fails with 400, check `base_url` and the headers in `providers:`. Your daily caps still apply.
 
 Other keys you may want, each with its own guide:
 
@@ -106,11 +123,12 @@ Other keys you may want, each with its own guide:
 | `schedule:` | How often sources are checked, and how long an article waits between rewrites | [Runs](runs.md) |
 | `serve:` | Port, host and the names a server is reached by | [Deploy](deploy.md) |
 | `providers:` | A gateway that model calls go through | [Above](#model-calls-through-a-gateway) |
+| `min_grounding:` | The score under which a sentence lands marked as not fully backed | [Agents](agents.md#how-cerebro-checks-what-an-agent-writes) |
 
 A misspelt key stops every command with one line that names it, so a typo never goes unnoticed:
 
 ```text
-Error: settings.yaml: line 8: unknown key "dialy_usd"
+Error: settings.yaml: line 8: unknown key "dialy_usd": delete it, or fix its spelling
 ```
 
 ## workspace.md and profile.md

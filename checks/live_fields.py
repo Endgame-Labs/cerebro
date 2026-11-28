@@ -9,8 +9,8 @@ calls real models and costs some cents, under a daily cap of $3.
 
 It never prints a key. The articles are made as a
 person admits them, bound by each row's id, and the curators are taken out, so what it measures is the writers of
-fields alone: the opportunities agent, told to set a deal's stage, amount, close_date, is_closed, owner and account
-from its facts, and the account overview, told to set close_date from the open deal that closes next.
+fields alone: the opportunities agent, told to set a deal's stage, amount, close_date, is_closed and owner from
+its facts, and the account overview, told to set close_date from the open deal that closes next.
 
 1. A pass, then passes until one runs no agent (at most four): for each field those agents are told to set, the
    value in the source, the value in the article's front matter, and whether they match.
@@ -71,7 +71,7 @@ DEALS = [  # id, name, stage, amount, close date, owner, closed, account
     ["D-4", "Quillon Labs platform", "Closed Won", "120000", "2026-10-30", "Teo Lind", "true", "A-2"],
     ["D-5", "Ostrava Freight rollout", "Qualification", "64000", "2027-01-15", "Ines Barros", "false", "A-3"],
 ]
-SET = ("stage", "amount", "close_date", "owner", "is_closed", "linked")  # what the opportunities agent sets
+SET = ("stage", "amount", "close_date", "owner", "is_closed")  # what the opportunities agent sets
 CHANGES = [("D-1", "stage", "Verbal commit"), ("D-3", "close_date", "2027-01-08")]
 EMPTIED = ("D-5", "owner")
 
@@ -146,10 +146,7 @@ def stand_in(root: Path) -> Cerebro:
             if agent.id == "opportunities/article":
                 read = render(evidence)
                 for name, value in re.findall(r"\] The ([a-z ]+) of [^\n]+? is (.+?)\. \(quote", read):
-                    path = re.search(r"\(([a-z-]+/[a-z0-9-]+)\)$", value)
-                    field = name.replace(" ", "_")  # its account is a link: the one path in linked, as its rule says
-                    calls.append(("override", {"field": "linked", "value": [path[1]]} if field == "account" and path
-                                  else {"field": field, "value": path[1] if path else value}))
+                    calls.append(("override", {"field": name.replace(" ", "_"), "value": value}))
                 for name in re.findall(r"no longer gives the field ([a-z_]+), so this fact no longer stands", read):
                     calls.append(("override", {"field": name, "value": None}))  # as its rule says: drop it
             return ScriptedRun(cited, calls=calls).run(agent, evidence, tools, budget)
@@ -166,8 +163,6 @@ def front(workspace: Cerebro) -> dict[str, dict[str, Any]]:
 
 
 def _same(said: Any, held: Any) -> bool:
-    if isinstance(held, list):  # a list, as linked is, holds the value as one of its items
-        return any(_same(said, item) for item in held)
     return held is not None and str(held).strip().lower() == str(said).strip().lower()
 
 
@@ -175,11 +170,10 @@ def expected(deals: list[list[str]]) -> dict[tuple[str, str], str]:
     """Each field the template's agents are told to set, by article, with the value the source gives it."""
     want: dict[tuple[str, str], str] = {}
     for row in deals:
-        values = dict(zip(("stage", "amount", "close_date", "owner", "is_closed"), row[2:7], strict=True))
+        values = dict(zip(SET, row[2:7], strict=True))
         for field in SET:
-            value = account_path(row[7]) if field == "linked" else values[field]
-            if value:
-                want[(deal_path(row), field)] = value
+            if values[field]:
+                want[(deal_path(row), field)] = values[field]
     for id, _, _ in ACCOUNTS:
         open_dates = sorted(r[4] for r in deals if r[7] == id and r[6] == "false")
         if open_dates:

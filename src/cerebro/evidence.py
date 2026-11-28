@@ -44,6 +44,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
@@ -54,7 +55,7 @@ from .agent import Agent, Budget, EvidenceLine
 from .apps import bind
 from .article import Article, Citation, cut, fields
 from .article import passages as passages_of
-from .budget import BudgetSpent, Ledger
+from .budget import BudgetSpent, Held, Ledger
 from .caller import Caller
 from .clock import Clock, seconds, system_clock
 from .connector import NOBODY, Connector, Record, one_line
@@ -64,7 +65,7 @@ from .facts import FIELD_KIND, Fact, superseded
 from .file import File
 from .identity import follow, held_by, redirects, tied
 from .lookup import Lookup, QueryResult
-from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, TokenCount, YesNo, wire_id
+from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, YesNo, wire_id
 from .records import WAITING, proposal_from
 from .rendered import MARK
 from .shown import shown
@@ -72,7 +73,7 @@ from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, update_sta
 from .window import Span, WindowError, holds, is_window, read_time, span
 from .workspace import Workspace
 
-__all__ = ["BUILTIN", "KEEP_BAR", "KEEP_BARS", "LEFT_OUT", "RUN_SPEND", "DecisionKeepJudge", "Evidence",
+__all__ = ["BUILTIN", "KEEP_BAR", "KEEP_BARS", "LEFT_OUT", "DecisionKeepJudge", "Evidence",
            "EvidenceError", "Finished", "Item", "KeepJudge", "KeepScores", "LastSets", "Launch", "NotBuilt", "Passage",
            "ScriptError", "SqlError", "Starter", "blocks", "choose", "digest", "estimate_tokens", "fingerprint", "gather",
            "gather_failed", "keep_bar", "left_key", "preload", "render", "start"]
@@ -198,13 +199,29 @@ def gather(agent: Agent, lookup: Lookup, functions: dict[str, Callable[..., Any]
     return preload(out, agent.budget)
 
 
+RECENT_DAYS = 14  # a first run and its build read the records of these last days before the first run began
+IN_FIRST_BUILD: ContextVar[bool] = ContextVar("in_first_build", default=False)  # while a first run's build runs
+
+
 def _held(agent: Agent, lookup: Lookup, sources: Mapping[str, Connector], n: int, line: EvidenceLine,
           root: Path | None) -> Evidence:
-    """A held line's entry, with who is on the workspace's own side as the workspace at `root` says, or no one."""
-    from .held import entry  # held imports this module, so it loads at the call
+    """A held line's entry, with who is on the workspace's own side as the workspace at `root` says, or no one. While
+    the workspace's first run is open, and while its build runs, it lists the records of the last `RECENT_DAYS` days
+    before the first run began, and counts the older ones: the runs after it list them."""
+    from .held import before_cut, entry, first_run_open, first_run_since  # held imports this module: it loads here
     from .project import read_ours
     ours = read_ours(root) if root is not None else NOBODY
-    return entry(agent, getattr(lookup, "store", None), list(sources), n, line, ours)
+    store = getattr(lookup, "store", None)
+    out = entry(agent, store, list(sources), n, line, ours)
+    if not (first_run_open(store) or IN_FIRST_BUILD.get()):
+        return out
+    since = first_run_since(store)
+    kept = [item for item in out.items if not before_cut(item.at, since)]
+    if older := len(out.items) - len(kept):
+        out.items = kept
+        out.notes.append(f"{older} held records from before {since} are not listed on the first run: the runs after "
+                         "it list them")
+    return out
 
 
 def _ordered(filters: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
@@ -366,13 +383,11 @@ TITLE_CAP = 120  # the characters of a title a fact's label shows
 
 def _item(thing: Any) -> Item:
     if isinstance(thing, Fact):
-        from .ground import quote_for  # grounding imports this module, so its helper loads at the call
-        quote = quote_for(thing)
-        text = f"- [^{thing.id}] {thing.text}" + (f' (quote: "{quote}", {thing.record})' if quote else "")
-        if thing.status == "superseded":  # history only: compile keeps it out of any claim of what holds now
+        from .ground import citation_of, quote_line  # grounding imports this module, so its helpers load at the call
+        text = f"- [^{thing.id}] {thing.text}" + quote_line(thing)
+        if thing.status == "superseded":  # history only, which the judge holds to what was
             text += f" [{superseded(thing)}]"
-        return Item(f"fact:{thing.id}", text, [Citation("fact", thing.id, thing.record, quote)], thing.at,
-                    thing.record)
+        return Item(f"fact:{thing.id}", text, [citation_of(thing)], thing.at, thing.record)
     if isinstance(thing, Article):
         id = thing.identity.id
         text = f"- [^{id}] {thing.identity.title}: {json.dumps(_front(thing), sort_keys=True, default=str)}"
@@ -517,9 +532,9 @@ class DecisionKeepJudge(KeepJudge):
     """The keep judge on the decision model: many passages to a call, a yes or no for each, its probability of yes
     the passage's score. A passage two entries share is asked about once. Its `bar` is the one `keep_bar` gives its
     decision model, and its words are the bundled prompt `keep-judge`, or the workspace's own copy at
-    `prompts/keep-judge.md` under `root`. `calls` and `usage` total what it spent. With a `ledger`, each call is
-    checked against the compilation cap before it starts and recorded after it, priced on `decision`: with the cap
-    spent, it scores nothing, and the entry loads whole with the note that says why.
+    `prompts/keep-judge.md` under `root`. With a `ledger`, each call is held to the compilation cap as `budget.Held`
+    holds it, priced on `decision`: with the cap spent, it scores nothing, and the entry loads whole with the note
+    that says why.
 
     With a `store`, each score is cached in its state by the decision model, the instruction and the judge's words,
     and by the passage's article, heading and text. So a passage whose text has not moved is not scored again for
@@ -537,11 +552,10 @@ class DecisionKeepJudge(KeepJudge):
                  ledger: Ledger | None = None, decision: ModelSpec | None = None, root: Path | None = None,
                  again: bool = True):
         self.again = again
-        self.decider, self.store, self.clock = decider, store, clock
-        self.ledger, self.decision, self.root = ledger, decision, root
-        self.calls, self.usage = 0, TokenCount()
+        self.store, self.clock, self.decision, self.root = store, clock, decision, root
+        self.decider = decider if ledger is None or decision is None else \
+            Held(decider, ledger, "compilation", decision, clock, "keep judge")
         self.bar = keep_bar(decision)
-        self._lock = threading.Lock()
 
     def score(self, instruction: str, passages: list[Passage], bar: float | None = None) -> KeepScores:
         bar = self.bar if bar is None else bar
@@ -605,7 +619,7 @@ class DecisionKeepJudge(KeepJudge):
             {"id": id, "article": p.article, "heading": p.heading,
              "text": scrub(p.text).encode()[:KEEP_PASSAGE_BYTES].decode("utf-8", "ignore")} for id, p in zip(ids, batch)]}
         try:
-            decision = self._decide(state, {id: YesNo(KEEP_QUESTION.format(id=id)) for id in ids})
+            decision = self.decider.decide(state, {id: YesNo(KEEP_QUESTION.format(id=id)) for id in ids})
         except BudgetSpent as error:
             out.wait = str(error)
             return [None] * len(batch)
@@ -629,23 +643,6 @@ class DecisionKeepJudge(KeepJudge):
             else:
                 scores.append(float(yes))
         return scores
-
-    def _decide(self, state: dict[str, Any], questions: dict[str, YesNo]) -> Any:
-        """One call, checked against the compilation cap before it starts, as compile's held decider is, and
-        recorded after it."""
-        if self.ledger is not None:
-            self.ledger.check("compilation", self.clock(), self.decision)
-        decision = self.decider.decide(state, questions)
-        with self._lock:
-            u = decision.usage
-            self.calls += 1
-            self.usage = TokenCount(self.usage.input_tokens + u.input_tokens,
-                                    self.usage.output_tokens + u.output_tokens,
-                                    self.usage.cache_read_tokens + u.cache_read_tokens,
-                                    self.usage.cache_write_tokens + u.cache_write_tokens)
-        if self.ledger is not None and self.decision is not None:
-            self.ledger.record("compilation", self.clock(), self.decision, decision.usage, "keep judge")
-        return decision
 
 
 def blocks(body: str) -> list[str]:
@@ -1016,8 +1013,6 @@ def _spawn(launch: Launch, keeper: bool) -> subprocess.Popen[bytes]:
 
 # -- the gatherer: a method for each kind of line
 
-# What a run's grounding and repair calls are kept under in the spend log, before its agent's id.
-RUN_SPEND = ("ground", "repair")
 READ_AT_ONCE = 20  # the most articles one read asks for
 SUMMARY_NOTE = "summary:"  # how a line that says a summary fell back to an article's first part opens
 
@@ -1075,7 +1070,7 @@ class _Gatherer:
             return row.get("agent") in self.writers
         if source == "spend":
             run = str(row.get("run") or "")
-            return run in self.runs() or run in {f"{kind} {w}" for kind in RUN_SPEND for w in self.writers}
+            return run in self.runs()
         if source == "merges":
             return row.get("by") in self.writers
         if source == "proposals":
@@ -1627,12 +1622,15 @@ class _Gatherer:
             rows: Rows = select(query)
         except CerebroError as error:
             raise SqlError(f"{self.name}: evidence {n}, sql {name}: {error}") from None
+        from .ground import bounded_quote  # grounding imports this module, so its helper loads at the call
+
+        key = hashlib.sha256(source.folded(query).encode()).hexdigest()[:8]
         query = " ".join(query.split())
         entry = Evidence(f"Sql {name}, the rows of {query}", spelled=f"sql {name}: {query}")
         for i, row in enumerate(rows.rows, 1):
-            cid = f"sql:{name}:{i}"
-            entry.items.append(Item(cid, f"- [^{cid}] {row_text(rows.columns, row)}",
-                                    [Citation("record", cid, f"sql:{name}")]))
+            cid, text = f"sql:{name}:{key}:{i}", row_text(rows.columns, row)
+            entry.items.append(Item(cid, f"- [^{cid}] {text}",
+                                    [Citation("record", cid, f"sql:{name}", bounded_quote(text))]))
         if rows.more:
             entry.notes.append(f"it gave more than {len(rows.rows)} rows, so the rest were not read: aggregate or "
                                "filter in the query")

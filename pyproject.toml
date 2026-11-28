@@ -1,13 +1,13 @@
 [project]
 name = "cerebro"
-version = "0.1.2"
+version = "0.1.3"
 description = "Builds a wiki from your sources and keeps it current."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "click==8.5.1",
-    "factoid==0.1.29",  # from PyPI, pinned exactly: a release, never the repository's main
+    "factoid==0.1.30",  # from PyPI, pinned exactly: a release, never the repository's main
     "httpx>=0.28.1",
     "keyring>=25.7.0",
     "markdown-it-py==4.3.0",

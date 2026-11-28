@@ -92,7 +92,7 @@ from .caller import LOCAL, Caller
 from .connector import Record, one_line
 from .errors import CerebroError
 from .facts import Fact, superseded
-from .ground import quote_for
+from .ground import citation_of, quote_named
 from .held import FIRST_RUN_KEY, stand_ins
 from .lookup import OPERATIONS, REQUESTS, FindResult, QueryResult, ReadResult
 from .records import Decision
@@ -554,8 +554,9 @@ def _article_line(article: Article) -> str:
 
 
 def _fact_line(fact: Fact) -> str:
-    said = quote_for(fact)
-    quote = f' "{said}"' if said and said != fact.text else ""
+    said = quote_named(fact)
+    own = said == citation_of(fact).quote  # the fact's own words alone: else each record's quoted, another's named
+    quote = (f' "{said}"' if said and said != fact.text else "") if own else f" {said}"
     return f"- {fact.id} [{fact.at}, {fact.record}] {fact.text}{quote}" + (
         "" if fact.status == "current" else f" [{superseded(fact)}]" if fact.status == "superseded"
         else f" [{fact.status}]")

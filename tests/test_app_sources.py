@@ -174,7 +174,7 @@ def test_salesforce_logs_in_through_the_sf_cli_and_reads_the_accounts_the_store_
         workspace.store.create(Identity("accounts/gone", "accounts", "Gone", {"salesforce_id": ["001Hs00000GONE01AAA"]},
                                     status="archived"))
         workspace.store.create(Identity("people/wile", "people", "Wile", {"salesforce_id": ["003Hs00000WILE01AAA"]}))
-        assert crm.accounts() == ["001Hs00000ACME01AAA"]
+        assert crm.admitted() == ["001Hs00000ACME01AAA", "003Hs00000WILE01AAA"]  # every collection's
         fake_sf.write(cli, "nologin")
         with pytest.raises(NotLoggedIn, match="no login for work: run sf org login web --alias work"):
             crm.login()
@@ -217,7 +217,7 @@ def test_every_value_read_from_the_store_is_masked_in_failure_lines_log_rows_and
         result = workspace.run_once()
         assert result.failed["sources/leaky"] == "RuntimeError: refused the token [secret]"
         [run] = result.runs
-        assert run.note.startswith("used [secret]; ") and SECRET not in run.note
+        assert run.note.startswith("used [secret]") and SECRET not in run.note
         assert [(e.text, e.args) for e in run.transcript] == [("", {"headers": ["Bearer [secret]"]}),
                                                              ("echoed [secret]", {})]
         assert workspace.store.append("mcp-requests", {"args": {"q": SECRET}}).data == {"args": {"q": "[secret]"}}
@@ -242,7 +242,7 @@ def test_the_workspace_builds_its_decider_from_the_stored_key_and_says_once_when
     with open_workspace(make_workspace(tmp_path / "bare"), secrets=FakeSecrets({})) as workspace:
         assert workspace.decider is None
         [line] = [n for n in workspace.notices if "models.decision" in n]
-        assert "TYPESAFE_API_KEY is not set" in line and "run without a model" in line
+        assert "TYPESAFE_API_KEY is not set" in line and "grounding scores no sentence" in line
 
 
 # -- sources over MCP

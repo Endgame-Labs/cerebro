@@ -14,6 +14,9 @@ Propose an account when the evidence shows a working relationship: someone on ou
 
 Admit at most 25 new accounts a run.
 
+What clearly matters first: an account with recent activity, an open deal
+that closes soon, or a meeting coming up.
+
 The workspace's own side gets no account article.
 
 Admit by the record a fetch returned whenever one names the account, so its article is born with the fields

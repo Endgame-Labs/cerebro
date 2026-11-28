@@ -4,6 +4,7 @@ evidence:
   - query: { from: calls, start: next_30_days }         # who is on your calendar soon
   - query: { from: opportunities, is_closed: false, order_by: close_date }    # the roles people hold on open deals
   - query: { from: accounts }                           # the accounts kept, so a person is placed at one
+  - query: { from: people }                             # the people kept, each with the account they link to
   - query: { from: mcp-requests, window: last_90_days } # what was asked for, so an article nobody reads shows
   - query: { from: facts, window: last_90_days }       # who the sources name, so a run also admits from the notes and calls already read
   - held: {}                                           # the people your sources hold for this collection
@@ -38,6 +39,8 @@ the first. Admit at most 50 a run.
 
 - on your accounts: ask your CRM for `contacts_on_my_accounts`, the
   contacts on the accounts you own.
+- on the accounts the wiki keeps: ask your CRM for `contacts_of_account`
+  with the salesforce_id of each account article a query from accounts lists.
 - on an open deal: ask your CRM for `contacts_on_open_deals` with owner set
   to company, each with their role and the deal.
 - on the most active accounts: ask your CRM for `most_active` with owner
@@ -61,7 +64,16 @@ the first. Admit at most 50 a run.
   marks so is not on your side: never leave them out as perhaps on it.
 
 Admit each person with fields linked set to a list of the path of the account
-they are placed at.
+they are placed at. When that account has no article and nobody has proposed
+one, propose it beside the person: admit with collection set to accounts, by
+the account's record when a fetch returned it, else by the company's name and
+domain, under the person's group. When a row with articles under bound gives
+an account other than the one that person links to, they have moved: link the
+article to the account article that holds the row's account, and take the old
+one off with unlinked.
+
+What clearly matters first: a person with a role on an open deal, and a
+person on a call coming up.
 
 Admit people only: a company is no person. Each reason names the one account
 this person belongs to, and their role there.

@@ -48,10 +48,10 @@ from urllib.parse import quote
 
 import httpx
 
-from .clock import seconds, stamp, system_clock
+from .clock import stamp, system_clock
 from .connector import Record
 from .errors import CerebroError
-from .models import DEFAULTS, PROVIDERS, ModelSpec
+from .models import DEFAULTS, PROVIDERS, ModelSpec, advice_for
 from .private import make_folder, owner_only, write_file
 from .search import Hit
 
@@ -99,14 +99,16 @@ __all__ = [
 class Quote:
     """Words a fact rests on, as its record gives them, with who said them, when, and on which side of the
     conversation: `yours`, `theirs`, or empty when the record does not say. `passage` is the number of its passage
-    in the record, counted from 1, so two quotes whose numbers follow each other stand next to each other: 0 when
-    not known."""
+    in its record, counted from 1, so two quotes of one record whose numbers follow each other stand next to each
+    other: 0 when not known. `record` is that record, the fact's own or one that stated it again: empty when not
+    known."""
 
     text: str
     speaker: str = ""
     at: str = ""
     side: str = ""
     passage: int = 0
+    record: str = ""
 
 
 @dataclass
@@ -661,11 +663,17 @@ def record_name(record: Record) -> str:
     for value in record.keys.get("name", []):
         if str(value).strip():
             return " ".join(str(value).split())
+    return field_name(record) or title(record)
+
+
+def field_name(record: Record) -> str:
+    """The name a field of a record gives it: its `name`, `title` or `subject` field, the first that holds words, or
+    "" when none does."""
     for key in ("name", "title", "subject"):
         value = record.fields.get(key)
         if isinstance(value, str) and value.strip():
             return " ".join(value.split())
-    return title(record)
+    return ""
 
 
 def _as_data(text: str) -> str:
@@ -824,31 +832,25 @@ def _keyed() -> Any:
 
 # -- each model call: its tries, its time and what it spends --------------------------------------------------------
 
-MODEL_TRIES = 3  # tries of one model call of Factoid's before a pass gives up on it
-MODEL_SECONDS = 120.0  # seconds one model call of Factoid's may take in all, its tries included
-
-
 class ModelUnreachable(CerebroError, RuntimeError):
-    """A model call of the facts layer failed every try it is given, or ran past its time."""
+    """A model call of the facts layer failed every try it is given."""
 
 
 class _Bounded(httpx.BaseTransport):
-    """Factoid's HTTP transport, held to `MODEL_TRIES` tries in a row and `MODEL_SECONDS` in all for one call: past
-    either, it raises an error Factoid does not try again, so a pass always ends. Counted per thread. Once a host of
-    `gateway` refused a call in a way no try mends, no call is sent, as Factoid would try another call of the record.
+    """Factoid's HTTP transport, held to `tries` tries in a row, its extraction model's retries and one: past them, it
+    raises an error Factoid does not try again, so a pass always ends. Counted per thread. Once a host of `gateway`
+    refused a call for its key or for payment due, no call is sent, as Factoid would try another call of the record.
     An error's body is masked whole by `mask` before Factoid cuts it into its error, which no mask could then find."""
 
-    def __init__(self, inner: httpx.BaseTransport, gateway: Gateway | None = None,
+    def __init__(self, inner: httpx.BaseTransport, tries: int, gateway: Gateway | None = None,
                  mask: Callable[[str], str] | None = None):
-        self.inner, self.gateway, self.mask = inner, gateway, mask
+        self.inner, self.tries, self.gateway, self.mask = inner, tries, gateway, mask
         self._local = threading.local()
 
     def _failed(self, why: str) -> None:
-        tries = getattr(self._local, "tries", 0) + 1
-        began = getattr(self._local, "began", None) or seconds()
-        self._local.tries, self._local.began = tries, began
-        if tries >= MODEL_TRIES or seconds() - began > MODEL_SECONDS:
-            self._local.tries, self._local.began = 0, None
+        self._local.tries = tries = getattr(self._local, "tries", 0) + 1
+        if tries >= self.tries:
+            self._local.tries = 0
             raise ModelUnreachable(f"the facts layer's model did not answer after {tries} tries ({why}): check the "
                                    "network and the provider's status, then the next pass tries again")
 
@@ -869,7 +871,7 @@ class _Bounded(httpx.BaseTransport):
         if response.status_code in (429, 500, 502, 503, 504, 529):  # what Factoid tries again
             self._failed(f"HTTP {response.status_code}")
             return response
-        self._local.tries, self._local.began = 0, None
+        self._local.tries = 0
         return response
 
     def close(self) -> None:
@@ -1017,12 +1019,13 @@ class FactoidExtraction(Extraction):
         from factoid import Factoid, Settings
 
         self.root = Path(root)
-        self.speakers = speakers
+        self.speakers, self.gateway = speakers, gateway
         self.classes = list(kinds) if kinds is not None else load_kinds(self.root)
         self._kinds = [kind_name(k) for k in self.classes] or ["fact"]
         self.data = self.root / STATE
         self.origins = _read_origins(self.data / ORIGINS)
-        models = factoid_models(model or DEFAULTS["extraction"], key, gateway)
+        model = model or DEFAULTS["extraction"]
+        models = factoid_models(model, key, gateway)
         settings = type("WorkspaceSettings", (Settings,), {"models": models, "concurrency": 16})
         make_folder(self.data)
         with _lock, owner_only():  # making an app makes it Factoid's active one, and opens its three SQLite files
@@ -1035,9 +1038,10 @@ class FactoidExtraction(Extraction):
         http = getattr(getattr(self.app, "client", None), "_http", None)
         if client is None and isinstance(http, httpx.Client):  # its own client, which a test has not stood in for
             # Factoid tries a failing call 12 times, for minutes
-            http._transport = _Bounded(http._transport, gateway, mask)
-            http._mounts = {pattern: _Bounded(mounted, gateway, mask) if mounted is not None else None  # a proxy's
-                            for pattern, mounted in http._mounts.items()}
+            tries = model.retries + 1
+            http._transport = _Bounded(http._transport, tries, gateway, mask)
+            http._mounts = {pattern: _Bounded(mounted, tries, gateway, mask) if mounted is not None else None
+                            for pattern, mounted in http._mounts.items()}  # a proxy's
             self.app.client.meter = _attributing(self.app.client.meter, self._lock_ahead)
             self.app.client._post = self._checked(self.app.client._post)
 
@@ -1109,7 +1113,13 @@ class FactoidExtraction(Extraction):
         def failed(error: Exception) -> str:
             said = f"record {record.id} of {record.source}: factoid failed: {error}"
             if _factoids_own(error):
-                return f"{said}: check the extraction model and its key; the record is tried again next pass"
+                # Factoid's error carries its status only in its words, ahead of the reply's: `<model>: HTTP <status>:`
+                http = re.match(r"([^/\s]+)/\S+: HTTP (\d{3}):", str(error))
+                if http is None:
+                    return f"{said}: check the extraction model; the record is tried again next pass"
+                via = self.gateway is not None and self.gateway.route(http[1]).base_url
+                advice = advice_for(int(http[2]), None if via else "the extraction model and its key")
+                return f"{said}: {advice.removesuffix(', so try again later')}; the record is tried again next pass"
             return said
 
         with _active(self.app) as app:
@@ -1223,8 +1233,7 @@ class FactoidExtraction(Extraction):
         else:
             with _active(self.app) as app:
                 live = [f for status in LIVE for f in app.list_facts(status=status)]
-                origins = {id: self._origin(id) for id in {f.document_id for f in live}}
-                found = [_fact(f, origins[f.document_id], self._kind(app, f)) for f in live]
+                found = [_fact(f, self._origin, self._kind(app, f)) for f in live]
         found = [f for f in found if _meets(f, source, record, since, kinds)]
         found.sort(key=lambda f: f.at, reverse=True)
         return found if limit is None else found[:limit]
@@ -1266,7 +1275,7 @@ class FactoidExtraction(Extraction):
         """The facts with these ids, whatever their status, in that order. An id Factoid does not hold is left out."""
         with _active(self.app) as app:
             loaded = [f for f in (app.load_fact(id) for id in ids) if f is not None]
-            return [_fact(f, self._origin(f.document_id), self._kind(app, f)) for f in loaded]
+            return [_fact(f, self._origin, self._kind(app, f)) for f in loaded]
 
     def _kind(self, app: Any, fact: Any) -> str:
         """A fact's kind, from its class. A field's fact, or one of a kind the workspace no longer defines, comes back as
@@ -1329,14 +1338,17 @@ class FactoidExtraction(Extraction):
             _write_whole(path, kept)
 
 
-def _fact(fact: Any, origin: tuple[str, str], kind: str) -> Fact:
-    """A Factoid fact as Cerebro's `Fact`, of the kind given. Its time is its record's, or when the
-    record gives none, when it was extracted. A quote has no side, since Factoid does not give one."""
+def _fact(fact: Any, origin: Callable[[str], tuple[str, str]], kind: str) -> Fact:
+    """A Factoid fact as Cerebro's `Fact`, of the kind given. `origin` gives the source and record of a document: the
+    fact's own, and each quote's. Its time is its record's, or when the record gives none, when it was extracted. A
+    quote has no side, since Factoid does not give one."""
     mentions = [Mention(m.text, m.role or "about") for m in fact.mentions]
     subject = next((m.text for m in mentions if m.role == "subject"), mentions[0].text if mentions else "")
+    source, record = origin(fact.document_id)
     return Fact(id=fact.id, text=fact.text, subject=subject, kind=kind,
-                at=_utc(fact.source_datetime or fact.extracted_at), source=origin[0], record=origin[1],
-                quotes=[Quote(q.text, q.speaker or "", _utc(q.said_at), passage=q.passage_n) for q in fact.quotes],
+                at=_utc(fact.source_datetime or fact.extracted_at), source=source, record=record,
+                quotes=[Quote(q.text, q.speaker or "", _utc(q.said_at), passage=q.passage_n,
+                              record=origin(q.document_id)[1]) for q in fact.quotes],
                 mentions=mentions, status="current" if fact.status in LIVE else "retracted",
                 field=str(((getattr(fact, "scores", None) or {}).get("cell") or {}).get("key") or "")
                 if kind == FIELD_KIND else "")

@@ -277,8 +277,10 @@ def test_binds_matches_an_admits_keys_as_the_store_does_without_regard_to_case_a
     (tmp_path / "agents" / "things" / "curator.md").write_text("---\nauthority: { admit: true, archive: true, merge: true, split: true }\nheartbeat: [manual]\n---\nKeep.\n")
     mail = Record(id="m1", source="mail", revision="1", body="Hi.", keys={"domain": ["alder.example"]}, into="things")
     note = Record(id="n1", source="mail", revision="1", body="Hi.", keys={"account": ["Birch Yard"]}, into="things")
+    party = Record(id="p1", source="mail", revision="1", body="Hi.", keys={"domain": ["alder.example"]}, into="things",
+                   carried=["domain"])  # a key it only carries binds nothing, as landing reads it
     with Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), connectors=[
-            FakeConnector("mail", [mail, note])], agent_run=ScriptedRun(lambda prompt: {})) as workspace:
+            FakeConnector("mail", [mail, note, party])], agent_run=ScriptedRun(lambda prompt: {})) as workspace:
         workspace.run_once()
         by_key = SimpleNamespace(proposal=SimpleNamespace(kind="article.admit", target="things/alder", payload={
             "keys": {"domain": ["Alder.example"]}}))
@@ -345,16 +347,27 @@ def test_ids_given_with_commas_are_split_in_every_option(workspace: Workspace) -
     assert north and east
 
 
-def test_accept_from_a_curator_with_nothing_waiting_is_refused_with_exit_1_and_decides_nothing(workspace: Workspace) -> None:
+def test_accept_from_decides_each_curator_on_its_own_and_one_alone_with_nothing_waiting_is_refused(
+        workspace: Workspace) -> None:
     alone = workspace.run("review", "--accept-from", "agents/projects/curator.md")
     assert alone.exit_code == 1
     assert alone.output.splitlines()[-1] == ("Error: no admit from agents/projects/curator.md is awaiting your "
                                             "review, so nothing was decided: cerebro review lists what is")
-    east = second_curator(workspace, "East")
-    mixed = workspace.run("review", "--accept-from", "agents/places/curator.md", "--accept-from",
-                      "agents/projects/curator.md")
-    assert mixed.exit_code == 1 and "no admit from agents/projects/curator.md is awaiting" in mixed.output
-    assert [item["id"] for item in workspace.waiting()] == east  # the other curator's admit waits still
+    assert second_curator(workspace) == []  # a second curator with nothing waiting either
+    both = workspace.run("review", "--accept-from", "agents/projects/curator.md,agents/places/curator.md")
+    assert both.exit_code == 1 and both.output.splitlines()[-1] == (
+        "Error: no admit from agents/projects/curator.md or agents/places/curator.md is awaiting your review, so "
+        "nothing was decided: cerebro review lists what is")
+    skipped = "skipped   no admit from agents/projects/curator.md is awaiting your review"
+    east = second_curator(workspace, "East", "West")
+    as_json = workspace.run("review", "--accept-from", "agents/projects/curator.md", "--accept", east[1], "--json")
+    assert as_json.exit_code == 0 and json.loads(as_json.stdout)["answers"] == {east[1]: "decided"}
+    assert as_json.stderr.splitlines() == [skipped]  # the reply has no key for it, so it is said beside the reply
+    mixed = workspace.run("review", "--accept-from", "agents/projects/curator.md", "--accept-from",
+                          "agents/places/curator.md")
+    assert mixed.exit_code == 0, mixed.output
+    assert mixed.output.splitlines() == [f"Accepted {east[0]}: its curator carries it out on its next run.", skipped]
+    assert workspace.waiting() == []
 
 
 def test_an_id_no_proposal_has_is_refused_naming_a_command_and_saying_nothing_was_applied(workspace: Workspace) -> None:
@@ -700,16 +713,17 @@ def test_the_facts_layer_withdraws_only_once_the_store_has_kept_the_whole_line(w
 
 def test_a_facts_layer_that_refuses_once_the_store_has_kept_the_line_is_named_with_what_it_kept(
         workspace: Workspace, monkeypatch: pytest.MonkeyPatch) -> None:
+    from cerebro.connector import Record as Kept
     from cerebro.facts import FactNotFound
 
     one, two = facts_of(workspace, "Lumen moved to the east wing.", "Harbor closed for a week.")
     (lumen,) = workspace.curate("Lumen")
     retract_by(workspace, "p_retract00001", one)
     retract_by(workspace, "p_retract00002", two)
-    retract = workspace.extraction.retract
+    retract, refused = workspace.extraction.retract, [two]
 
     def refuses_the_second(fact_id: str) -> None:
-        if fact_id == two:
+        if fact_id in refused:
             raise FactNotFound(f"the facts layer is read only: {fact_id} stays")
         retract(fact_id)
 
@@ -723,6 +737,14 @@ def test_a_facts_layer_that_refuses_once_the_store_has_kept_the_line_is_named_wi
          "still stands, though p_retract00002 is accepted: deciding p_retract00002 again changes nothing, and the "
          f"retract tool takes {two} back.")]
     assert dict(state(workspace)[2]) == {one: "retracted", two: "current"} and workspace.waiting() == []
+    note = Kept(id="r_note00000001", source="notes", revision="1", at="2026-11-18T09:00:00Z", body="Harbor reopened.",
+                by=Caller("you", "person"))
+    with Cerebro(workspace.root, extraction=workspace.extraction) as app:
+        app.store.keep(note)
+    refused += [f.id for f in workspace.extraction.extract(note).facts]
+    filed(workspace, Proposal("p_rr0000000001", "record.retract", note.id, Caller("projects/curator", "agent"),
+                              "2026-11-19T09:00:05Z", cites=[note.id], reason="wrong"))
+    assert workspace.run("review", "--accept", "p_rr0000000001").exit_code == 1  # a record's retract left unfinished
 
 
 def test_a_store_that_refuses_a_write_as_the_line_lands_keeps_nothing_of_it(
@@ -814,9 +836,7 @@ def one_by_one(workspace: Workspace, args: list[str]) -> tuple[bool, Any]:
     with Cerebro(workspace.root, extraction=workspace.extraction) as app:
         admits = [r.proposal.id for r in app.review(Caller("you", "person"))
                   if r.proposal.kind == "article.admit" and r.proposal.by.name == "projects/curator"]
-        if "--accept-from" in args or "--reject-from" in args:
-            if not admits:
-                return False, None
+        if "--accept-from" in args or "--reject-from" in args:  # with no admit waiting it adds none to the ids
             if "--accept-from" in args:
                 accept += [id for id in admits if id not in reject and id not in accept]
             else:

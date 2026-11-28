@@ -54,18 +54,19 @@ Done: 2 written.
 When an agent doesn't run, the pass says why, and how to run it anyway:
 
 ```text
-skipped   projects/atlas: nothing it reads has moved since its last write: cerebro agents run projects/atlas runs it again now, whether or not anything moved
+skipped   projects/atlas: nothing it reads has moved since its last run: cerebro agents run projects/atlas runs it again now, whether or not anything moved
 ```
 
 `cerebro status` shows the state of the whole workspace: each source's last check, what the wiki holds, each agent's last run, and what today cost.
 
+When two collections read each other, `cerebro status` shows `compile order: parts <-> things (compiled once per pass, in path order)`. Inside that cycle, articles compile in path order, so a `parts` article can read a `things` article before it's written, and a later pass catches up because what it read has changed.
+
 ## The first run
 
-The first pass on a new workspace with curators writes nothing until you agree. Each curator proposes the articles its collection should hold, and you see them as one tree:
+The first pass on a new workspace with curators writes nothing until you agree. Each curator starts from what your sources hold of the last 14 days, and proposes what clearly matters to its collection. Later passes fill in the rest. You see the proposals as one tree:
 
 ```text
 $ cerebro serve --once
-What do you want to see first? Atlas
 ...
 Working set proposal
 by agents/projects/curator.md, agents/notes/curator.md
@@ -87,11 +88,15 @@ by agents/projects/curator.md, agents/notes/curator.md
 3 of 5 selected
 ```
 
-Before the curators start, the run asks what you want to see first. Answer in your own words, or press Enter to skip. Off a terminal, give it with `--see-first "Atlas"`. Your words put what they name first and tick it. They never hide anything.
+Each line is one article. What an article links to sits under it, by collection. Proposals of the same thing under two names are one line.
 
-Each line is one article. What an article links to sits under it, by collection. Proposals of the same thing under two names are one line. One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
+When an article would take more than one record, a line under its name counts them, as `4 records`. The count is what that article binds when it lands. Two articles that share a key or a name may count the same records. A record that shares only its name with the article is not counted when its `email`, its `domain`, or any key a source weighs above 0 differs from the article's.
 
-Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. Tick one under "Left out" to admit what a curator left out.
+One model call arranges the tree and says what to tick. When the checks refuse one of its joins, those lines stay apart, and a line says why. When it cannot arrange the tree at all, you see the order the curators filed them, with nothing ticked, and a line that says why.
+
+If a curator fails, the run ends with a line that says so, and that curator runs again on a later pass. A curator with nothing to read yet, such as one that reads only facts, proposes nothing at first. It runs once more once the sources are read, and you decide what it proposes then as a late list, the same way.
+
+Tick a line, and everything under it is ticked too. Untick it, and everything under it goes. A line you tick again on its own lands on its own, even when what it sits under stays unticked. Tick one under "Left out" to admit what a curator left out.
 
 Change what is ticked, then approve, or quit to keep nothing. What you leave unticked waits for you. `--yes` takes what the tree ticks, and the run ends by saying what waits:
 
@@ -99,6 +104,14 @@ Change what is ticked, then approve, or quit to keep nothing. What you leave unt
 Done: 15 written.
 9 more are waiting. Run cerebro review, or ask your agent what is waiting.
 ```
+
+What you approve is written once, from the same 14 days and from any older line you tick. When older records wait, a line says how many:
+
+```text
+notice    The wiki starts from the last 14 days. cerebro serve reads 30 older records on its next passes and rewrites the articles they change.
+```
+
+Leave `cerebro serve` running and the wiki fills in.
 
 Your agent can list and decide what waits, as you can. Off a terminal, the whole list waits:
 
@@ -151,6 +164,14 @@ Every model call is checked against its cap before it starts. Past a cap, that j
 ```text
 spent     today $0.007 of $50.00: extraction $0.003, compilation $0.004
 ```
+
+As each run in a pass ends, the pass prints a `ran` line that says what the run cost. Once the [checks](agents.md#how-cerebro-checks-what-an-agent-writes) of its sentences cost anything, that line splits the cost into writing and checks:
+
+```text
+ran       projects/launch: wrote articles/projects/launch.md, $0.0155 (writing $0.0150, checks $0.0005)
+```
+
+The run's row in the `agent-runs` log keeps what the run read and wrote, in tokens, as `input_tokens` and `output_tokens`.
 
 ## When a run fails
 

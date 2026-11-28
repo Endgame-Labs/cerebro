@@ -32,6 +32,7 @@ from cerebro.facts import (
     load_kinds,
 )
 from cerebro.fakes import FakeExtraction
+from cerebro.gateway import Gateway
 from cerebro.models import ModelSpec
 from cerebro.store import SQLiteStore
 
@@ -39,8 +40,8 @@ from cerebro.store import SQLiteStore
 class ScriptedModels:
     """Stands in for Factoid's model client. The extractor makes one fact of each passage it is shown, citing it,
     with the capitalised names in it as mentions, the first one as the subject. The decision model keeps every fact
-    and finds every pair of facts unrelated. It embeds nothing, so Factoid's search is its BM25 half alone. Each
-    call is metered as Factoid's client meters it."""
+    and finds every pair of facts as `pairs` says, unrelated unless a test says otherwise. It embeds nothing, so
+    Factoid's search is its BM25 half alone. Each call is metered as Factoid's client meters it."""
 
     def __init__(self) -> None:
         from factoid.models import Meter
@@ -48,6 +49,7 @@ class ScriptedModels:
         self.models = {"choose": "scripted", "generate": "scripted", "embed": "scripted"}
         self.meter = Meter()
         self.fail: Exception | None = None
+        self.pairs = "unrelated"
         self.seen: list[str] = []  # every prompt and state this client was shown
 
     def generate(self, prompt: str, **_: Any) -> str:
@@ -76,7 +78,7 @@ class ScriptedModels:
             elif isinstance(question, Choice):
                 options = [key for key, _ in question.options]
                 pick = {"expires": "estimated", "lifetime": "a few years"}.get(name) or (
-                    "unrelated" if re.fullmatch(r"F\d+", name) else options[0])
+                    self.pairs if re.fullmatch(r"F\d+", name) else options[0])
                 out[name] = {key: float(key == pick) for key in options}
             else:
                 out[name] = ScoreAnswer(1.0, {0: 0.0, 1: 1.0})
@@ -91,9 +93,10 @@ class ScriptedModels:
         return None
 
 
-def on_factoid(root: Path) -> tuple[FactoidExtraction, ScriptedModels]:
+def on_factoid(root: Path, gateway: Gateway | None = None) -> tuple[FactoidExtraction, ScriptedModels]:
     models = ScriptedModels()
-    return FactoidExtraction(root, ModelSpec("fireworks", "glm-5p3-flash", "low"), client=models), models
+    return FactoidExtraction(root, ModelSpec("fireworks", "glm-5p3-flash", "low"), client=models,
+                             gateway=gateway), models
 
 
 @pytest.fixture(params=["fake", "factoid", "factoid keeping earlier saves"])
@@ -125,7 +128,7 @@ def test_a_factoid_fact_comes_back_with_its_record_subject_quote_and_time(tmp_pa
     assert (fact.text, fact.subject, fact.kind, fact.at) == ("Vega leads the review.", "Vega", "fact",
                                                               "2026-11-01T09:00:00Z")
     assert (fact.source, fact.record, fact.status) == ("notes", "memo-1", "current")
-    assert fact.quotes == [Quote("Vega leads the review.", "", "2026-11-01T09:00:00Z", "", passage=2)]  # its second
+    assert fact.quotes == [Quote("Vega leads the review.", "", "2026-11-01T09:00:00Z", "", 2, "memo-1")]  # its second
     assert fact.mentions == [Mention("Vega", "subject")]
     assert handler.facts(ids=[fact.id]) == [fact]
     handler.close()
@@ -218,12 +221,18 @@ def test_a_chunk_whose_answer_is_cut_off_still_gives_its_records_facts(tmp_path:
     handler.close()
 
 
-def test_a_failed_model_call_fails_the_record_with_a_line_that_names_it(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("status", "advice"), [(401, "check the extraction model and its key"),
+                                                (402, "payment is due at the provider"),
+                                                (408, "the provider is busy or down"),
+                                                (400, "check the model id and the request")])
+def test_a_failed_model_call_fails_the_record_with_a_line_that_names_it(tmp_path: Path, status: int,
+                                                                         advice: str) -> None:
     from factoid.models import ModelError
 
     handler, models = on_factoid(tmp_path)
-    models.fail = ModelError("fireworks/glm-5p3-flash: HTTP 401: unauthorized")
-    with pytest.raises(ExtractionFailed, match="record memo-1 of notes: factoid failed: .*HTTP 401"):
+    models.fail = ModelError(f"fireworks/glm-5p3-flash: HTTP {status}: refused")
+    with pytest.raises(ExtractionFailed, match=f"^record memo-1 of notes: factoid failed: .*HTTP {status}: refused: "
+                                               f"{advice}; the record is tried again next pass$"):
         handler.extract(MEMO)
     handler.close()
 
@@ -502,10 +511,11 @@ def test_the_gtm_template_defines_every_kind_its_agent_files_filter_on(tmp_path:
 
 
 @pytest.mark.parametrize("down", ["refused", 529])
-def test_a_model_call_of_the_facts_layer_gives_up_after_a_few_tries_so_a_pass_always_ends(down: Any) -> None:
+def test_a_model_call_of_the_facts_layer_gives_up_after_its_models_retries_so_a_pass_always_ends(
+        tmp_path: Path, down: Any) -> None:
     import httpx
 
-    from cerebro.facts import MODEL_TRIES, ModelUnreachable, _Bounded
+    from cerebro.facts import ModelUnreachable
 
     class Down(httpx.BaseTransport):
         def handle_request(self, request: httpx.Request) -> httpx.Response:
@@ -513,14 +523,14 @@ def test_a_model_call_of_the_facts_layer_gives_up_after_a_few_tries_so_a_pass_al
                 raise httpx.ConnectError("refused")
             return httpx.Response(down)
 
-    http = httpx.Client(transport=_Bounded(Down()))
-    for _ in range(MODEL_TRIES - 1):  # what Factoid's own loop catches, or is answered, and tries again
-        if down == "refused":
-            with pytest.raises(httpx.ConnectError):
-                http.post("https://api.example/v1")
-        else:
-            assert http.post("https://api.example/v1").status_code == down
-    with pytest.raises(ModelUnreachable, match=f"did not answer after {MODEL_TRIES} tries"):
+    http = FactoidExtraction(tmp_path, ModelSpec("fireworks", "glm-5p3-flash", "low", retries=1)).app.client._http
+    http._transport.inner = Down()
+    if down == "refused":  # what Factoid's own loop catches, or is answered, and tries again
+        with pytest.raises(httpx.ConnectError):
+            http.post("https://api.example/v1")
+    else:
+        assert http.post("https://api.example/v1").status_code == down
+    with pytest.raises(ModelUnreachable, match="did not answer after 2 tries"):
         http.post("https://api.example/v1")
 
 

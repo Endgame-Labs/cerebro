@@ -48,7 +48,7 @@ import posixpath
 import threading
 import uuid
 import weakref
-from collections import Counter, deque
+from collections import deque
 from collections.abc import Callable, Collection, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
@@ -66,10 +66,12 @@ from .budget import (
     BudgetError,
     BudgetSpent,
     Caps,
+    Held,
     HeldForRoom,
     Stopped,
     UnpricedModel,
     read_caps,
+    spend_digits,
     stop_line,
     stopping,
 )
@@ -104,14 +106,23 @@ from .curate import (
     yes_left,
 )
 from .errors import CerebroError
-from .facts import Extracted, ExtractionFailed, Fact, _Hooks, revision_of, saved_revision
-from .ground import LINES as GROUND_LINES
-from .ground import TALLY, counted
-from .held import OWN_WEIGHED, keep_own, pass_first_run, reweigh_own, waits_for_own, weighed
+from .evidence import IN_FIRST_BUILD, RECENT_DAYS
+from .facts import Extracted, ExtractionFailed, Fact, _Hooks, field_name, revision_of, saved_revision
+from .ground import counted
+from .held import (
+    OWN_WEIGHED,
+    before_cut,
+    first_run_since,
+    keep_own,
+    pass_first_run,
+    reweigh_own,
+    waits_for_own,
+    weighed,
+)
 from .identity import (
     DecisionJudge,
-    Judged,
     follow,
+    kept_off,
     link,
     link_ties,
     linked_keys,
@@ -125,7 +136,19 @@ from .identity import (
 from .models import ModelSpec, cost
 from .private import make_file, make_folder
 from .project import read_ours, read_schedule, zone_of
-from .records import RETRY, TOLD, Claimed, extract_told, instructions_on, proposals, settle_told
+from .records import (
+    ACCEPTED,
+    RETRY,
+    TOLD,
+    Claimed,
+    extract_told,
+    finish_retracts,
+    instructions_on,
+    proposals,
+    retracted_records,
+    settle_told,
+    was_retracted,
+)
 from .rendered import descriptions
 from .run import WROTE_NOTHING, Run
 from .source import read_source, span
@@ -148,8 +171,7 @@ class Progress:
     `kind` is open, with the `total` the stage counts, or start or end of the work `key` names. An end's `mark` is
     done, failed, warning, skipped, or for a compile ran, a run that ran and wrote nothing, `text` what its row says
     after its key, `cost` what an agent's run spent, and `why` what went wrong. A check's end carries in `total` how many records it listed, and a
-    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts. A
-    first run's discover `round` starts its round `done` of up to `total`."""
+    distill pass's `count` how many of the `total` records it goes through it is `done` with, `text` its facts."""
 
     stage: str
     kind: str
@@ -176,6 +198,7 @@ class PassResult:
 
     listed: dict[str, int] = field(default_factory=dict)
     from_start: set[str] = field(default_factory=set)  # each source listed with no cursor kept: its whole window
+    older: set[str] = field(default_factory=set)  # each source/id a first run's build held as older than its cut
     read: int = 0
     extracted: int = 0
     retracted: int = 0
@@ -199,10 +222,7 @@ class PassResult:
     crossed: dict[str, dict[str, Any]] = field(default_factory=dict)  # by layer, the crossing its first refusal met
     tried: dict[str, list[str]] = field(default_factory=dict)  # each retry list the pass tried, as it began
     paused: set[str] = field(default_factory=set)  # each source a daily cap stopped reading, at its first model record
-    # what grounding did on each article compiled, by its run's key, counted by kind, and the lines of `warnings` that
-    # say each thing it repaired or dropped, which the run's line in the `agent-runs` log keeps
-    grounding: dict[str, dict[str, int]] = field(default_factory=dict)
-    grounded: set[str] = field(default_factory=set)
+    grounding: dict[str, dict[str, int]] = field(default_factory=dict)  # what grounding did, by the run's key and kind
     cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens
@@ -245,11 +265,12 @@ def _sources_held(workspace: Cerebro, result: PassResult) -> str:
 
 def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = None,
              agents: bool = True, say: Callable[[str], None] | None = None, curators: bool = True,
-             on: Callable[[Progress], None] | None = None) -> PassResult:
+             on: Callable[[Progress], None] | None = None, articles: Collection[str] | None = None) -> PassResult:
     """One pass over `workspace`: list, curate, extract, link, compile, each agent only when it is due. `scheduled`, as
     under `serve`, checks only the sources whose freshness window has passed; otherwise every source is checked now,
     or the one named `only`. With `agents` false, as `distill` runs it, no agent runs. With `curators` false, as the
-    first run builds what a person approved, no curator runs and the writers do."""
+    first run builds what a person approved, no curator runs and the writers do. With `articles`, only those are
+    compiled, and every other one due stays due."""
     result = PassResult(refused=list(workspace.refused), notices=list(workspace.notices), say=say, on=on)
     workspace.gateway.said = ""  # a host's refusal stops one pass: the next tries again
     if agents and workspace.store.state(FIRST_RUN_KEY) is None and left_first_run(workspace.store):
@@ -268,6 +289,8 @@ def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = 
             _curate(workspace, result)
         if not until:
             result.tell("stage     extract: reading what the sources listed into facts, and linking them")
+            if workspace.extraction is not None:
+                _leave_no_retract_half_done(workspace, result)
             _link(workspace, _extract_all(workspace, sources, result) + _extract_kept(workspace, result), result)
             if workspace.lookup.extraction is not None:
                 _retry_told(workspace, result)
@@ -275,7 +298,7 @@ def run_pass(workspace: Cerebro, *, scheduled: bool = False, only: str | None = 
     if workspace.extraction is not None:
         result.notices += workspace.class_notices()
     if agents:
-        _compile(workspace, result, served=scheduled)
+        _compile(workspace, result, served=scheduled, articles=articles)
         session = workspace.store.state(FIRST_RUN_KEY)
         if (not isinstance(session, dict) or session.get("status") == "done") and not _first_waits(workspace):
             pass_first_run(workspace.store, stamp(workspace.clock()))  # nothing of a first run holds it or waits
@@ -698,7 +721,8 @@ def _holder(workspace: Cerebro) -> str:
     """The id this process's leases on `workspace` name: a file under `.cerebro/holders/` it holds locked for as long as
     it runs. The kernel lets the lock go when the process ends, however it ends, so the next start can tell a holder
     that ended from one that runs, in any process or container on this machine. Empty where a file cannot be locked, and
-    a lease of no holder waits until it lapses."""
+    a lease of no holder waits until it lapses. The file is touched each time it is named, so one that is free and was
+    not touched for `LEASE` seconds names no lease that holds, and the next process to make its own file sweeps it."""
     if getattr(workspace, "root", None) is None:
         return ""
     root = str(workspace.root)
@@ -713,33 +737,46 @@ def _holder(workspace: Cerebro) -> str:
                 make_file(folder / f"{id}.lock")
                 held = open(folder / f"{id}.lock", "w")  # noqa: SIM115 - held open, and locked, while the process runs
                 fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                made = os.fstat(held.fileno()).st_mtime
+                for file in folder.glob("*.lock"):
+                    with contextlib.suppress(OSError):  # another process that starts may sweep it first
+                        if file.stat().st_mtime < made - LEASE and _free(file):
+                            file.unlink()
                 _HOLDERS[root] = (id, held)
             except (ImportError, OSError):
                 _HOLDERS[root] = ("", None)
-        return _HOLDERS[root][0]
+        id, held = _HOLDERS[root]
+        if held is not None:
+            with contextlib.suppress(OSError):  # a file that cannot be touched may be swept once its process ends:
+                os.utime(held.fileno())  # its leases then wait until they lapse
+        return id
 
 
 def _gone(workspace: Cerebro, held: dict[str, Any]) -> bool:
     """Whether the process that holds a lease ended without giving it back, as after a second Ctrl-C, a kill or a
     power cut: its holder file is there and its lock is free. A lease of a process that runs, of another machine
-    whose file this one cannot lock, or of no holder, waits until it lapses."""
+    whose file this one cannot lock, or of no holder, waits until it lapses. Only a sweep removes the file, so every
+    lease of a process that ended is taken over this way."""
     holder = held.get("holder")
     if not isinstance(holder, str) or len(holder) != 32 or not holder.isalnum() or holder == _holder(workspace):
         return False
+    return _free(workspace.root / ".cerebro" / "holders" / f"{holder}.lock")
+
+
+def _free(file: os.PathLike[str]) -> bool:
+    """Whether the holder file `file` is there and no process holds its lock."""
     try:
         import fcntl
 
-        file = os.open(workspace.root / ".cerebro" / "holders" / f"{holder}.lock", os.O_RDWR)
+        fd = os.open(file, os.O_RDWR)
     except (ImportError, OSError):
         return False
     try:
-        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         return False  # its process holds it: alive
     finally:
-        os.close(file)
-    with contextlib.suppress(OSError):
-        os.unlink(workspace.root / ".cerebro" / "holders" / f"{holder}.lock")
+        os.close(fd)
     return True
 
 
@@ -1185,19 +1222,22 @@ def _curate(workspace: Cerebro, result: PassResult) -> None:
         result.step("agents", "open", total=len(due))
     with _holding(workspace, [agent for agent, _ in due], result.token):
         _curate_due(workspace, due, result)
-    for agent, _ in due:
-        if ids := first_list(workspace, agent.id):
-            result.warnings.append(first_list_line(agent.id, len(ids)))
+    warned = [first_list_line(agent.id, len(ids)) for agent, _ in due if (ids := first_list(workspace, agent.id))]
+    if warned:  # the line names review --accept-from, which takes what was shown by now
+        from .first_run import stamp_shown  # imported here: the first run builds on this module
+
+        stamp_shown(workspace)
+    result.warnings += warned
 
 
-def run_curators(workspace: Cerebro, agents: list[Agent], result: PassResult, *, changed_only: bool) -> None:
+def run_curators(workspace: Cerebro, agents: list[Agent], result: PassResult) -> None:
     """Run each curator of `agents` in turn, outside a pass's own choice of what is due, holding their leases, as the
-    first run runs them: `changed_only` skips one whose evidence has not moved since its last run. Each turn
+    first run runs them, whether or not its evidence moved. Each turn
     is kept as a pass keeps it, its run on `result` and its heartbeat in the store, so a later pass does not run it
     again before it is due. A run that did not fail is its schedule's run of the period it began in, so a pass the
     same day does not run it again for its schedule."""
     with _holding(workspace, agents, result.token):
-        _curate_due(workspace, [(agent, None) for agent in agents], result, changed_only=changed_only, spends=True)
+        _curate_due(workspace, [(agent, None) for agent in agents], result, changed_only=False, spends=True)
 
 
 def _curate_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassResult,
@@ -1299,6 +1339,7 @@ def _settle_curated(workspace: Cerebro, agent: Agent, curated: Any, why: str, re
 
 TAKE, HOLD, DROP, NOTHING, REFUSE = "take", "hold", "drop", "nothing", "refuse"
 FIRST_HOLD = "the first run holds it until its list is decided"  # why a record is held while the first run is undecided
+OLDER_HOLD = f"the first run's build reads the last {RECENT_DAYS} days: a later pass reads it"
 
 
 @dataclass(frozen=True)
@@ -1315,28 +1356,43 @@ class Decision:
 @dataclass(frozen=True)
 class Ahead:
     """What a pass reads of one source before it decides its records: the ids its listing says are gone, whether the
-    first run holds what was held before, the collections a curator keeps, and the ids held before."""
+    first run holds what was held before, the collections a curator keeps, the ids held before, and, while a first
+    run's build runs, the first day it reads, the records an admit a person accepted names, by source and id, and the
+    articles those admits made."""
 
     gone: Collection[str]
     discovering: bool
     curated: Collection[str]
     first: Collection[str] = ()
+    since: str = ""
+    asked: Collection[tuple[str, str]] = ()
+    approved: Collection[str] = ()
 
 
 def ahead_of(workspace: Cerebro) -> Ahead:
     """What a pass reads once before it decides any record: whether the first run holds what was held before, as it
-    does while a first-run session is stored and not done, and the collections a curator keeps."""
+    does while a first-run session is stored and not done, the collections a curator keeps, and, while a first run's
+    build runs, the first day it reads, the records a person asked for and the articles a person approved."""
     session = workspace.store.state(FIRST_RUN_KEY)
+    since = first_run_since(workspace.store) if IN_FIRST_BUILD.get() else ""
+    yes = [p for p in (proposals(workspace.store, ACCEPTED) if since else [])
+           if p.kind == "article.admit" and p.decided_by is not None and p.decided_by.kind == "person"]
+    asked = {(str(ref.get("source")), str(ref.get("id"))) for p in yes
+             if isinstance(ref := p.payload.get("record"), dict)}
+    approved = {str(p.applied["article"]) for p in yes if p.applied.get("article")}
     return Ahead((), isinstance(session, dict) and session.get("status") != "done",
                  {agent.target for agent in workspace.agents if agent.role == "curator"} | {
-                     id.split("/")[0] for id in refused_ids(workspace.refused) if id.count("/") == 1 and id.endswith("/curator")})
+                     id.split("/")[0] for id in refused_ids(workspace.refused) if id.count("/") == 1 and id.endswith("/curator")},
+                 since=since, asked=asked, approved=approved)
 
 
 def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None) -> Decision:
     """What a pass does with one record, changing nothing. Anything but a record is the id of one the last pass left to try again: dropped
     when its source says it is gone, else got and read. A record listed, or held before, is held while the first run
-    holds it or while it is out of scope, lands only its fields when its source reads it for that or for nothing, and
-    is got and read otherwise. With no `ahead` the record is one the pass got whole: its source reads it for nothing,
+    holds it or while it is out of scope, lands only its fields when its source reads it for that or for nothing,
+    is held while a first run's build runs when it is dated before the first day the build reads, no admit a
+    person accepted names it and it binds no article of its own collection such an admit made, and is got and read
+    otherwise. With no `ahead` the record is one the pass got whole: its source reads it for nothing,
     the extraction cap refuses it, or it is read into facts."""
     if not isinstance(record, Record):
         return Decision(DROP) if ahead is not None and record in ahead.gone else Decision(TAKE)
@@ -1355,6 +1411,9 @@ def decide(workspace: Cerebro, record: Record | Any, ahead: Ahead | None = None)
                         f"no article binds it, so it waits for the curator of {record.into}")
     if record.extract in ("records", "none"):
         return Decision(NOTHING, f"its source extracts it into {record.extract}")
+    if before_cut(record.at, ahead.since) and (record.source, record.id) not in ahead.asked and not (
+            record.into and any(id in ahead.approved for id in own_articles(workspace.store, record))):
+        return Decision(HOLD, OLDER_HOLD)
     return Decision(TAKE)
 
 
@@ -1504,6 +1563,8 @@ def _extract_source(workspace: Cerebro, listed: _Listed, ahead: Ahead, result: P
             decision = decide(workspace, record, ahead)
             if decision.act == HOLD:
                 held[record.id] = replace(record, body=None)
+                if decision.why == OLDER_HOLD:
+                    result.older.add(f"{name}/{record.id}")
                 continue
             held.pop(record.id, None)
             if waits_for_own(workspace.store, record, ahead.curated):  # read, and held for its own collection's curator
@@ -1614,10 +1675,9 @@ def _extract_whole(workspace: Cerebro, record: Record, result: PassResult, lande
 
 def _extract_fields(workspace: Cerebro, name: str, record: Record, result: PassResult,
                     landed: list[tuple[Fact, Record]]) -> bool:
-    """Hand the fields a source gives a record in scope to the facts layer, one fact a field, held to the extraction
-    cap and its cost kept, and add their facts to `landed`. A value that is another record's key, such as a part's
-    parent id, is given as the one other article of the working set it binds, by its title and its path, so its fact
-    names it in words a reader knows. A record that gives no name of its own is named as the one article it binds.
+    """Hand the fields a source gives a record in scope to the facts layer, one fact a field, each value as the
+    source gave it, held to the extraction cap and its cost kept, and add their facts to `landed`. A record that gives
+    no name of its own is named as the one article of its own it binds.
     A failure is reported and gives False, so the record waits for the next pass, and the pass goes on."""
     if workspace.extraction is None:
         return True
@@ -1628,10 +1688,10 @@ def _extract_fields(workspace: Cerebro, name: str, record: Record, result: PassR
             result.failed[f"sources/{name}/{record.id}#fields"] = f"{type(error).__name__}: {error}"
             return False
         return True
-    worded = replace(record, fields={k: _worded(workspace, record, v) for k, v in record.fields.items()})
+    worded = record
     own = own_articles(workspace.store, record)
     if not _gives_a_name(record) and len(own) == 1 and (article := workspace.store.article(own[0])) and article.identity.title:
-        worded.keys = {**record.keys, "name": [article.identity.title]}  # named as its one article is, never by its id
+        worded = replace(record, keys={**record.keys, "name": [article.identity.title]})  # never named by its id
     model, extracted = workspace.models["extraction"], Extracted([])
     try:
         workspace.ledger.check("extraction", workspace.clock(), model)
@@ -1656,41 +1716,15 @@ def _gives_a_name(record: Record) -> bool:
         isinstance(record.fields.get(k), str) and record.fields[k].strip() for k in ("name", "title", "subject"))
 
 
-def _worded(workspace: Cerebro, record: Record, value: Any) -> Any:
-    """A field's value with each item that binds another article of the working set given as that article, as
-    `_worded_one` gives one: a list item by item, and an entry that holds an `email` by that address."""
-    if isinstance(value, list):
-        return [_worded(workspace, record, item) for item in value]
-    if isinstance(value, dict) and isinstance(value.get("email"), str):
-        named = _worded_one(workspace, record, value["email"])
-        return named if named != value["email"] else value
-    return _worded_one(workspace, record, value)
-
-
-def _worded_one(workspace: Cerebro, record: Record, value: Any) -> Any:
-    """A field's value, or the one other article of the working set it binds under one of the record's keys or an
-    `email`, such as a part's parent id or an owner's address: its title, with its path in brackets, so a reader
-    knows it by name and a writer can set a field that links to it."""
-    if not isinstance(value, str) or not value or value == record.id:
-        return value
-    own = set(own_articles(workspace.store, record))
-    found = {follow(id, redirects(workspace.store)) for key in {*record.keys, "email"}
-             for id in workspace.store.bound(key, value)}
-    found = {id for id in found if id not in own and working(workspace.store, id)}
-    if len(found) != 1:
-        return value
-    id = found.pop()
-    article = workspace.store.article(id)
-    return f"{article.identity.title} ({id})" if article is not None and article.identity.title else id
-
-
 KEPT_CURSOR, KEPT_FAILED = own_key("cursor", "kept"), own_key("failed", "kept")  # how far into the store's changes kept records were read
 
 
 def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Record]]:
     """Extract each record an app kept or revised since the last pass, and each that failed before, as a source's
     records are: held to the extraction cap, and tried again next pass when it fails. A revised record is handed over
-    whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded."""
+    whole, so the facts layer replaces what its earlier revision gave, and keeps that as superseded. A revision a
+    retract took back is never extracted, and what it gave while a retract landed, or what a pass that stopped
+    before it checked left, is withdrawn."""
     landed: list[tuple[Fact, Record]] = []
     kinds = {kind for app in workspace.apps for kind in app.kinds}
     if not kinds or workspace.extraction is None:
@@ -1699,10 +1733,15 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
     waiting, handled = [], set()
     fresh = [id for kind, id in changed if kind == "record"]
     result.tried[KEPT_FAILED] = list(workspace.store.state(KEPT_FAILED) or [])
+    taken = retracted_records(workspace.store)
     for id in dict.fromkeys([*result.tried[KEPT_FAILED], *fresh]):
         handled.add(id)
         record = workspace.store.record(id)
         if record is None or record.source not in kinds:
+            continue
+        if was_retracted(record, taken):
+            if not _withdraw_retracted(workspace, record, result):
+                waiting.append(id)
             continue
         if record.extract not in ("records", "none") and "extraction" in result.stopped:  # it checks the ledger
             _waits(result, KEPT_FAILED, id)
@@ -1716,11 +1755,51 @@ def _extract_kept(workspace: Cerebro, result: PassResult) -> list[tuple[Fact, Re
             else:
                 result.failed[f"{record.source}/{id}"] = f"{type(error).__name__}: {error}"
             waiting.append(id)
-    with workspace.store.exclusive():  # only what this pass handled leaves the lists, and the cursor only moves on
+    with workspace.store.exclusive():  # waits for a tell's or a decide's write, so a retract filed in it is read here
+        late = retracted_records(workspace.store) if landed else {}
+        overtaken = {r.id: r for _, r in landed if was_retracted(r, late)}  # a retract landed while it was read
+        for record in overtaken.values():
+            if not _withdraw_retracted(workspace, record, result):
+                waiting.append(record.id)
+        # only what this pass handled leaves the lists, and the cursor only moves on
         update_state(workspace.store, KEPT_CURSOR, lambda now: max(now or 0, later))
         update_state(workspace.store, KEPT_FAILED, lambda now: list(dict.fromkeys(
             [*(id for id in now or [] if id not in handled), *waiting])))
-    return landed
+    result.read -= len(overtaken)
+    result.extracted -= sum(r.id in overtaken for _, r in landed)
+    return [(f, r) for f, r in landed if r.id not in overtaken]
+
+
+def _withdraw_retracted(workspace: Cerebro, record: Record, result: PassResult) -> bool:
+    """Withdraw every fact a record a retract took back still has standing, as the retract's own sweep does, and say
+    so: those a pass read as the retract landed, and those a pass that stopped before it checked left behind. A
+    failure is reported and gives False, so the record waits for the next pass, and the pass goes on."""
+    try:
+        standing = workspace.extraction.facts(record=record.id, latest=False)  # type: ignore[union-attr]
+        for fact in standing:
+            workspace.extraction.retract(fact.id)  # type: ignore[union-attr]
+    except Exception as error:  # noqa: BLE001 - one record's failure is reported, and the rest go on
+        result.failed[f"{record.source}/{record.id}"] = f"{type(error).__name__}: {error}"
+        return False
+    if standing:
+        result.retracted += len(standing)
+        result.notices.append(_retracted_notice(record))
+    return True
+
+
+def _leave_no_retract_half_done(workspace: Cerebro, result: PassResult) -> None:
+    """Finish each retract whose take-back stopped partway, and say what a record's withdrew."""
+    withdrawn, failed = finish_retracts(workspace.store, workspace.extraction,  # type: ignore[arg-type]
+                                        stamp(workspace.clock()))
+    result.failed.update(failed)
+    for id, facts in withdrawn.items():
+        result.retracted += len(facts)
+        if (record := workspace.store.record(id)) is not None:  # a fact's retract names no record
+            result.notices.append(_retracted_notice(record))
+
+
+def _retracted_notice(record: Record) -> str:
+    return f"{record.source}/{record.id}: record {record.id} was retracted, so the facts read from it are withdrawn"
 
 
 def _retry_told(workspace: Cerebro, result: PassResult) -> None:
@@ -1779,8 +1858,9 @@ def _gone_at_source(workspace: Cerebro, name: str, id: str, result: PassResult, 
     """A record its source removed leaves the working set with its own article, archived and kept, unless a caller
     said something of that article, an instruction or its own admit: then it stays, and its identity's `in_source`
     says it is gone there. One whose id is `hidden`, as it holds a stored value, is named without it."""
-    keys = (workspace.store.state(f"keys:{name}") or {}).get(id) or {}
-    owned = {follow(article_id, redirects(workspace.store)) for key in keys for article_id in workspace.store.bound(key, id)}
+    # one never read, as one admitted and gone before a pass reads it, is found by its id under the keys its source issues
+    keys = (workspace.store.state(f"keys:{name}") or {}).get(id) or workspace.connectors[name].IDENTITY_KEYS
+    owned ={follow(article_id, redirects(workspace.store)) for key in keys for article_id in workspace.store.bound(key, id)}
     what = "the record it is bound to, whose id holds a value the secrets store keeps," if hidden else f"{id},"
     for article_id in sorted(p for p in owned if working(workspace.store, p)):
         article = workspace.store.article(article_id)
@@ -1802,22 +1882,32 @@ def _gone_at_source(workspace: Cerebro, name: str, id: str, result: PassResult, 
 
 
 def _keep_keys(workspace: Cerebro, name: str, record: Record | str) -> None:
-    """Keep the keys of a record just extracted, or forget those of a record removed, under `keys:<source>`, so its
-    facts can be linked again when an article is born. A record with no keys keeps nothing. A removed id that is not
-    text, such as a number, is taken by its text, as the store keeps it."""
+    """Keep the keys of a record just extracted, or forget those of a record removed, under `keys:<source>`, the
+    names of those it only carries under `carried:<source>`, and the name a field of it gives under `name:<source>`,
+    so its facts can be linked again when an article is born, as landing linked them. A record with no keys keeps
+    nothing. A removed id that is not text, such as a number, is taken by its text, as the store keeps it."""
     key = f"keys:{name}"
     kept = workspace.store.state(key) or {}
     if not isinstance(record, Record):
         record = str(record)
         if record in kept:
             update_state(workspace.store, key, lambda now: {k: v for k, v in (now or {}).items() if k != record})
-        if record in (workspace.store.state(f"ours:{name}") or {}):
-            update_state(workspace.store, f"ours:{name}", lambda now: {k: v for k, v in (now or {}).items() if k != record})
+        for each in (f"ours:{name}", f"carried:{name}", f"name:{name}"):
+            if record in (workspace.store.state(each) or {}):
+                update_state(workspace.store, each, lambda now: {k: v for k, v in (now or {}).items() if k != record})
         return
     if kept.get(record.id) != (linked_keys(record) or None):
         keys = linked_keys(record) if record.keys else None
         update_state(workspace.store, key, lambda now: {**{k: v for k, v in (now or {}).items() if k != record.id},
                                                     **({record.id: keys} if keys else {})})
+    carried = [k for k in record.carried or () if k in record.keys]
+    if (workspace.store.state(f"carried:{name}") or {}).get(record.id) != (carried or None):
+        update_state(workspace.store, f"carried:{name}", lambda now: {
+            **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: carried} if carried else {})})
+    named = field_name(record)
+    if (workspace.store.state(f"name:{name}") or {}).get(record.id) != (named or None):
+        update_state(workspace.store, f"name:{name}", lambda now: {
+            **{k: v for k, v in (now or {}).items() if k != record.id}, **({record.id: named} if named else {})})
     # the names of the parties on it who are yours, as its source says, kept for the label its facts carry
     names = [str(n) for n in record.fields.get("ours") or [] if str(n).strip()]
     if (workspace.store.state(f"ours:{name}") or {}).get(record.id) != (names or None):
@@ -1831,38 +1921,28 @@ LINKED = own_key("linked", "articles")  # each article every current fact was li
 def _link(workspace: Cerebro, landed: list[tuple[Fact, Record]], result: PassResult) -> None:
     """Link each fact to its articles, in order, on this thread. The ties of up to `compile.concurrency` facts are
     worked out at once, so their judge calls wait side by side. With a decision model, a near match goes to its judge,
-    held to the extraction cap before each fact's ties start and each call's cost kept at the fact's turn, priced on
-    the decision model. The working set is read once for every near match. Results match one fact at a time only
-    while `ties` reads nothing `link_ties` writes, and linking changes no article."""
+    each call held to the extraction cap as `budget.Held` holds it, under the fact's id, priced on the decision
+    model. The working set is read once for every near match. Results match one fact at a time only while `ties`
+    reads nothing `link_ties` writes, and linking changes no article."""
     learned, model = stamp(workspace.clock()), workspace.models["decision"]
     width = max(1, int((workspace.settings.get("compile") or {}).get("concurrency") or 8))
     waiting, among = iter(landed), near_pool(workspace.store) if workspace.decider is not None else []
-    asked: deque[tuple[Fact, list[Judged], Future[list[tuple[str, str]]]]] = deque()
+    asked: deque[tuple[Fact, Future[list[tuple[str, str]]]]] = deque()
 
-    def ask(fact: Fact, record: Record) -> tuple[Fact, list[Judged], Future[list[tuple[str, str]]]]:
-        spent: list[Judged] = []
-        judge = (DecisionJudge(workspace.decider) if workspace.decider is not None
-                 and workspace.ledger.may_spend("extraction", workspace.clock(), model) else None)
-        return fact, spent, pool.submit(ties, workspace.store, fact, record, judge, spent=spent, among=among)
+    def ask(fact: Fact, record: Record) -> tuple[Fact, Future[list[tuple[str, str]]]]:
+        judge = None if workspace.decider is None else DecisionJudge(
+            Held(workspace.decider, workspace.ledger, "extraction", model, workspace.clock, fact.id))
+        return fact, pool.submit(ties, workspace.store, fact, record, judge, among=among)
 
-    def book(fact: Fact, spent: list[Judged], _: Any = None) -> None:
-        for judged in spent:
-            workspace.ledger.record("extraction", workspace.clock(), model, judged.usage, fact.id)
-
-    try:
-        with ThreadPoolExecutor(max_workers=width) as pool:
-            asked.extend(ask(*pair) for pair in islice(waiting, width))
-            while asked:
-                fact, _, made = asked[0]
-                try:
-                    result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
-                except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
-                    result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
-                book(*asked.popleft())
-                asked.extend(ask(*pair) for pair in islice(waiting, 1))
-    finally:  # the pool has let every call end: those whose turn never came are paid for all the same
-        for left in asked:
-            book(*left)
+    with ThreadPoolExecutor(max_workers=width) as pool:
+        asked.extend(ask(*pair) for pair in islice(waiting, width))
+        while asked:
+            fact, made = asked.popleft()
+            try:
+                result.linked += bool(link_ties(workspace.store, fact.id, made.result(), learned))
+            except Exception as error:  # noqa: BLE001 - one fact's failure is reported, and the rest go on
+                result.failed[f"facts/{fact.id}"] = f"{type(error).__name__}: {error}"
+            asked.extend(ask(*pair) for pair in islice(waiting, 1))
     own_facts(workspace, landed)
 
 
@@ -1886,21 +1966,29 @@ def _link_born(workspace: Cerebro, result: PassResult) -> None:
         if p.kind == "article.link" and p.target in changed:
             removed = ((p.applied or {}).get("keys") or {}).get("removed", {})
             taken_off[p.target] |= {(k, v.lower()) for k, vs in removed.items() for v in vs}
-    moved = redirects(workspace.store)
+    moved, among = redirects(workspace.store), near_pool(store) if changed else []
     keys: dict[str, dict[str, dict[str, list[str]]]] = {}
     ours: dict[str, dict[str, list[str]]] = {}  # who each record marks as the workspace's own, which binds no namesake
+    only: dict[str, dict[str, list[str]]] = {}  # the keys each record only carries
+    named: dict[str, dict[str, str]] = {}  # the name a field of each record gives
     learned = stamp(workspace.clock())
     for fact in workspace.extraction.facts():
         if fact.source not in keys:  # a source's records, or an app's kind's
             keys[fact.source] = workspace.store.state(f"keys:{fact.source}") or {}
             ours[fact.source] = workspace.store.state(f"ours:{fact.source}") or {}
-        marked = ours[fact.source].get(fact.record)
+            only[fact.source] = workspace.store.state(f"carried:{fact.source}") or {}
+            named[fact.source] = workspace.store.state(f"name:{fact.source}") or {}
+        marked, own = ours[fact.source].get(fact.record), named[fact.source].get(fact.record)
         record = Record(id=fact.record, source=fact.source, revision="", keys=keys[fact.source].get(fact.record, {}),
-                        fields={"ours": marked} if marked else {})
+                        fields={**({"ours": marked} if marked else {}), **({"name": own} if own else {})},
+                        carried=only[fact.source].get(fact.record, []))
         if changed and fact.source != TOLD:  # a told fact is tied by its target, which no key of its record gives
             for id in changed - set(reached(store, record)):
                 if RECORD in store.ties_of(fact.id).get(id, []):
                     store.unlink(fact.id, [id], RECORD)
+            for id, how in kept_off(store, fact, record, among):
+                if id in changed:  # `link` below ties it again by what still holds, such as a key
+                    store.unlink(fact.id, [id], how)
             carried = {(k, v.lower()) for m in fact.mentions for k, vs in m.keys.items() for v in vs}
             for id in [id for id in changed if taken_off[id] & carried]:  # a judge's tie to it goes too: one row
                 if id not in {tied for tied, _ in ties(store, fact, record)}:
@@ -2128,21 +2216,23 @@ def writers_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, str
     return _due(workspace, [agent for agent in workspace.agents if agent.role != "curator"], result)
 
 
-def _compile(workspace: Cerebro, result: PassResult, served: bool = False) -> None:
-    """Compile each article each due writer writes, one job per article, side by side. `served`, a pass under
-    `serve`, holds each rebuild that new evidence alone asks for to its cooldown; a pass at a person's hand runs
-    everything due."""
+def _compile(workspace: Cerebro, result: PassResult, served: bool = False,
+             articles: Collection[str] | None = None) -> None:
+    """Compile each article each due writer writes, or each of `articles` alone, one job per article, side by side.
+    `served`, a pass under `serve`, holds each rebuild that new evidence alone asks for to its cooldown; a pass at a
+    person's hand runs everything due."""
     _going(workspace)
     due = writers_due(workspace, result)
     with _holding(workspace, [agent for agent, _ in due], result.token):
-        _compile_due(workspace, due, result, served)
+        _compile_due(workspace, due, result, served, articles)
 
 
 def _compile_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassResult,
-                 served: bool = False) -> None:
-    """Compile each article of each due writer, side by side, one collection at a time, then keep each writer's turn
-    as its heartbeat. `served` hands each change's compile the cooldown's hold, as `_hold` gives it."""
-    plan, parts, changes = _plan(workspace, due, result)
+                 served: bool = False, articles: Collection[str] | None = None) -> None:
+    """Compile each article of each due writer, or each of `articles` alone, side by side, one collection at a time,
+    then keep each writer's turn as its heartbeat. `served` hands each change's compile the cooldown's hold, as
+    `_hold` gives it."""
+    plan, parts, changes = _plan(workspace, due, result, articles)
     for agent, _, article in plan:
         if fixed(agent) and workspace.store.article(article) is None:
             birth(workspace.store, agent, article, stamp(workspace.clock()))
@@ -2185,11 +2275,13 @@ def _key(agent: Agent, article: str) -> str:
     return agent.id if article == agent.target else f"{agent.id} on {article}"
 
 
-def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]],
-          result: PassResult) -> tuple[list[tuple[Agent, str | None, str]], set[tuple[str, str]], set[tuple[str, str]]]:
-    """The articles a pass compiles, each with its agent and the schedule word it runs for, in path order; the
-    articles whose next run runs only the parts that did not run; and those an agent on `change` runs for a change
-    while its period is owed. Why a due writer runs on none goes on `result.skipped`."""
+def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassResult,
+          only: Collection[str] | None = None) -> tuple[list[tuple[Agent, str | None, str]], set[tuple[str, str]],
+                                                        set[tuple[str, str]]]:
+    """The articles a pass compiles, each with its agent and the schedule word it runs for, in path order, of `only`
+    alone when given; the articles whose next run runs only the parts that did not run; and those an agent on
+    `change` runs for a change while its period is owed. Why a due writer runs on none goes on `result.skipped`, and
+    one with none of `only` stays due, unsaid."""
     plan: list[tuple[Agent, str | None, str]] = []
     parts: set[tuple[str, str]] = set()
     changes: set[tuple[str, str]] = set()
@@ -2200,6 +2292,9 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]],
             result.failed[agent.id] = f"{type(error).__name__}: {error}"
             result.due.pop(agent.id, None)
             _ran(workspace, agent, word, None, True)
+            continue
+        if only is not None and not (articles := [article for article in articles if article in only]):
+            del result.due[agent.id]
             continue
         if not articles:  # an archived article of its own is left alone, and nothing is wrong
             result.skipped[agent.id] = left_alone(agent, workspace.lookup) or \
@@ -2235,9 +2330,6 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
     the cooldown, and one owed only its `parts` runs only the part marked."""
     key = _key(agent, article)
     result.step("compile", "start", article)
-    tally: Counter[str] = Counter()  # what grounding does while this article compiles, and its lines
-    own: list[str] = []
-    counting, saying = TALLY.set(tally), GROUND_LINES.set(own)
     try:
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
                                  hold=_hold(workspace, agent, article, served) if change else None,
@@ -2255,19 +2347,11 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
         result.tell(f"ran       {key}: failed, {type(error).__name__}: {error}")
         result.step("compile", "end", article, mark="failed", why=f"{agent.id}: {type(error).__name__}: {error}")
         raise
-    finally:
-        TALLY.reset(counting)
-        GROUND_LINES.reset(saying)
-    compiled.grounding = dict(tally)
-    # grounding's own lines of what went, as compile carries them in `dropped` among lines that are not
-    # grounding's, which are said as they come
-    compiled.grounded = [line for line in compiled.dropped if line in own or any(
-        line.endswith(f": {said}") for said in own)]
     result.tell(_compiled_line(workspace, key, compiled))
     result.step("compile", "end", article, **_compiled_step(agent, compiled))
     # what grounding did and what landing made safe, as counts, under the article's row
     safe = made_safe(len(compiled.cleaned)) if compiled.cleaned else ""
-    if said := ", ".join(n for n in (counted(tally), safe) if n):
+    if said := ", ".join(n for n in (counted(compiled.grounding), safe) if n):
         result.step("compile", "note", article, text=said)
     return compiled
 
@@ -2342,10 +2426,9 @@ def _settle_ran(workspace: Cerebro, turn: _Turn, article: str, compiled: Any, cu
     turn.run = turn.run or run
     result.warnings += [f"{key}: {line}" for line in compiled.dropped]  # each line says what went and why
     # each line kept on its run's line, and counted for its end
-    keep_grounding(workspace.store, run, compiled.grounding, [*compiled.grounded, *compiled.cleaned])
+    keep_grounding(workspace.store, run, None, compiled.cleaned)
     if compiled.grounding:
         result.grounding[key] = compiled.grounding
-        result.grounded.update(f"{key}: {line}" for line in compiled.grounded)
     if compiled.cleaned:
         result.cleaned[key] = len(compiled.cleaned)
     result.warnings += [f"{key}: {note}" for note in compiled.notes]
@@ -2474,15 +2557,19 @@ def _run_again(workspace: Cerebro, agent: Agent, article: str, who: list[str]) -
             workspace.store.set_state(f"compiled:{agent.id}:{article}", None)
 
 
-def _usd(workspace: Cerebro, runs: list[Run]) -> str:
-    """What the runs cost on their agents' models, as a line says it."""
+def _usd(workspace: Cerebro, runs: list[Run], checks: float = 0.0) -> str:
+    """What the runs cost on their agents' models, as a line says it, and once grounding's `checks` of their text
+    cost anything, what the writing and the checks each cost, at places where the two add up to the whole."""
     total = 0.0
     for run in runs:
         agent = workspace.agent(run.agent) if hasattr(workspace, "agent") else None
         if agent is not None:
             spec = workspace.model_of(agent)
             total += cost(spec.provider, spec.model, run.usage)
-    return f"${total:.4f}"
+    if not checks:
+        return f"${total:.4f}"
+    digits = spend_digits(total + checks, [total, checks], least=4)
+    return f"${total + checks:.{digits}f} (writing ${total:.{digits}f}, checks ${checks:.{digits}f})"
 
 
 def _shown(compiled: Any) -> Run | None:
@@ -2499,12 +2586,12 @@ def _shown(compiled: Any) -> Run | None:
 
 
 def failure(run: Run, agent: str) -> str:
-    """Why a compile wrote nothing, as its `failed` line says it: the run, its agent when that is not `agent`, and
+    """Why a compile failed, as its `failed` line says it: the run, its agent when that is not `agent`, and
     what it ended with; or for a composed article's run that failed as a whole, which has no run id of its own, why
     and the subagent's run that failed it."""
     if not run.id:
         return run.note
-    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f" wrote nothing: {run.status}"
+    return (f"run {run.id}" + (f" of {run.agent}" if run.agent != agent else "") + f": {run.status}"
             + (f": {run.note}" if run.note else ""))
 
 
@@ -2515,12 +2602,13 @@ def _compiled_line(workspace: Cerebro, key: str, compiled: Any) -> str:
         return f"ran       {key}: skipped, {compiled.waiting or 'nothing it reads has moved'}"
     if compiled.article is not None:
         article = compiled.article.identity.id
-        return f"ran       {key}: wrote articles/{article}.md, {_usd(workspace, runs)}"
+        return f"ran       {key}: wrote articles/{article}.md, {_usd(workspace, runs, compiled.checks)}"
     run = _shown(compiled)
     if run is not None and run.status == WROTE_NOTHING:  # its status is what the line says already: why, once
-        return f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, {_usd(workspace, runs)}"
+        return (f"ran       {key}: wrote nothing: {run.note or 'it handed in nothing'}, "
+                f"{_usd(workspace, runs, compiled.checks)}")
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
-    return f"ran       {key}: wrote nothing, {said}, {_usd(workspace, runs)}"
+    return f"ran       {key}: {said}, {_usd(workspace, runs, compiled.checks)}"
 
 
 def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
@@ -2536,7 +2624,7 @@ def _compiled_step(agent: Agent, compiled: Any) -> dict[str, str]:
         return {"mark": "ran", "text": f"ran and wrote nothing: {run.note or 'it handed in nothing'}"}
     said = "no run" if run is None else run.status + (f": {run.note}" if run.note else "")
     who = agent.id if run is None or run.agent == agent.id else run.agent
-    return {"mark": "failed", "why": f"{who} wrote nothing: {said}"}
+    return {"mark": "failed", "why": f"{who}: {said}"}
 
 
 def _n(n: int, noun: str) -> str:
@@ -2554,7 +2642,7 @@ def unmoved(workspace: Cerebro, agent: Agent, articles: list[str]) -> str:
     again = f"cerebro agents run {agent.id} runs it again now"
     if not any(written(workspace, agent, article) for article in articles):
         return f"nothing it reads has moved since its last run, which wrote nothing: {again}"
-    return f"nothing it reads has moved since its last write: {again}, whether or not anything moved"
+    return f"nothing it reads has moved since its last run: {again}, whether or not anything moved"
 
 
 def _render(workspace: Cerebro, result: PassResult) -> None:
@@ -2608,7 +2696,7 @@ def left_by_hand(workspace: Cerebro, agent: Agent, article: str, compiled: Any, 
     reached fails on its own budget, naming the keys that set it; any other fails. One cut after it handed in text
     landed it. The article's own run that wrote nothing is its caller's line. A held part's compile note goes: its
     `held` line says it once, with when it runs. Each line of what landing made safe is kept on its run's line."""
-    keep_grounding(workspace.store, compiled.run, {}, compiled.cleaned)
+    keep_grounding(workspace.store, compiled.run, None, compiled.cleaned)
     held = _parts_not_run(workspace, agent, article, compiled, result, held_runs(workspace, agent, article))
     compiled.notes[:] = [note for note in compiled.notes if not any(
         note.startswith(HELD_PART.format(who)) for who in held if f"{who} on {article}" in result.held)]

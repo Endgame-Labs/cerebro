@@ -33,11 +33,6 @@ the domains in workspace.md, are your side. Never call this person the contact
 or owner of a deal unless a fact ties them to it. The account having an open
 deal is not that evidence.
 
-When a fact gives this person's account with its path in brackets, set
-linked with override to a list of that one path, without the brackets, such
-as accounts/halcyon-mills, and when your evidence says that fact is
-retired, drop linked with override and a null value.
-
 Every sentence cites a fact. Leave out anything you cannot cite. Do not count
 meetings or emails, and do not restate their title or account from the front
 matter unless it carries a judgment.

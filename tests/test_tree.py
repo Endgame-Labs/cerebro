@@ -11,10 +11,14 @@ from typing import Any, cast
 import pytest
 
 from cerebro.app import Cerebro
+from cerebro.curate import key_weights
 from cerebro.errors import CerebroError
+from cerebro.fakes import MemoryStore
 from cerebro.first_run import Listed, Pile
 from cerebro.shown import shown
 from cerebro.tree import KEPT_GROUPS, KEPT_MORE, KEPT_NAMED, KEPT_TWO, Row, arrange, checked, items, plain, tree
+
+WEIGHTS = key_weights()  # the table every kind of source declares, as a workspace with no source of its own has it
 
 
 def rows() -> list[Row]:
@@ -28,15 +32,15 @@ def rows() -> list[Row]:
 
 
 def test_a_reply_is_taken_as_given_and_only_one_that_is_not_the_json_asked_for_or_orders_nothing_is_refused() -> None:
-    found = items(rows())
+    found = items(rows(), WEIGHTS)
     good = {"same": [["n1", "n2"]], "order": ["n4", "n2", "n3", "n9"], "tick": ["n1", "n4", "n9"]}
-    groups, why = checked(json.dumps(good), found)  # an id no item has is dropped where it appears
+    groups, why = checked(json.dumps(good), found, WEIGHTS)  # an id no item has is dropped where it appears
     assert why == "" and [[r.id for r in g.rows] for g in groups] == [["p_4"], ["p_1", "p_2"], ["p_3"]]
     assert [g.tick for g in groups] == [True, True, False]
     refused = {"the model's reply is not the JSON asked for": "sure, here you go",
                "the model's reply orders no item": {"same": [], "order": [{"id": "n1"}, "n9"], "tick": ["n1"]}}
     for why, reply in refused.items():
-        assert checked(reply if isinstance(reply, str) else json.dumps(reply), found) == (None, why)
+        assert checked(reply if isinstance(reply, str) else json.dumps(reply), found, WEIGHTS) == (None, why)
 
 
 @pytest.mark.parametrize(("same", "order", "tick", "groups", "line"), [
@@ -59,8 +63,19 @@ def test_a_group_the_checks_refuse_stays_separate_items_where_it_stood_and_the_r
              Row("p_6", "things/curator", "things", "Cedar Co", path="things/cedar-co",
                  keys={"domain": ["cedar.example"]})]
     reply = json.dumps({"same": [["n5", "n6"], *same], "order": order, "tick": tick})
-    got, why = arrange(cast(Cerebro, SimpleNamespace(ask_model=lambda *_, **__: reply)), [*rows(), *cedar])
+    got, why = arrange(cast(Cerebro, SimpleNamespace(store=MemoryStore(), ask_model=lambda *_, **__: reply)),
+                       [*rows(), *cedar])
     assert [(" ".join(r.id for r in g.rows), g.tick) for g in got] == groups and why == line
+
+
+def test_two_asks_of_one_path_are_two_items_when_a_key_the_workspace_weighs_tells_them_apart() -> None:
+    store = MemoryStore()
+    store.weights = {"code": 100}  # a key only this workspace's own source declares
+    asks = [Row(f"p_{n}", "parts/curator", "parts", "Unit 7", path="parts/unit-7", keys={"code": [code]})
+            for n, code in ((1, "A1"), (2, "A2"))]
+    reply = json.dumps({"same": [], "order": ["n1", "n2"], "tick": []})
+    got, _ = arrange(cast(Cerebro, SimpleNamespace(store=store, ask_model=lambda *_, **__: reply)), asks)
+    assert [[r.id for r in g.rows] for g in got] == [["p_1"], ["p_2"]]
 
 
 def test_the_line_on_a_group_kept_apart_names_at_most_two_names_each_cut_as_a_row_shows_it() -> None:
@@ -69,36 +84,32 @@ def test_the_line_on_a_group_kept_apart_names_at_most_two_names_each_cut_as_a_ro
     long = [Row(f"p_{n}", "things/curator", "things", "Thing " * 60 + str(n), path=f"things/t{n}",
                 keys={"domain": [f"t{n}.example"]}) for n in range(1, 41)]
     ids = [f"n{n}" for n in range(1, 41)]
-    _, line = checked(json.dumps({"same": [ids], "order": ids, "tick": []}), items(long))
+    _, line = checked(json.dumps({"same": [ids], "order": ids, "tick": []}), items(long, WEIGHTS), WEIGHTS)
     assert line == KEPT_MORE.format(a=shown("Thing " * 59 + "Thing 1", NAME_CAP), n=39)
     twins = [Row(f"p_{n}", "things/curator", "things", "Alder Works", path=f"things/alder-{n}",
                  keys={"domain": [f"alder{n}.example"]}) for n in (1, 2)]
     reply = {"same": [["n1", "n2"]], "order": ["n1"], "tick": []}
-    assert checked(json.dumps(reply), items(twins))[1] == KEPT_NAMED.format(n=2, a="Alder Works")
+    assert checked(json.dumps(reply), items(twins, WEIGHTS), WEIGHTS)[1] == KEPT_NAMED.format(n=2, a="Alder Works")
 
 
 def test_a_group_kept_apart_is_said_once_however_often_the_reply_names_it() -> None:
     rows = [Row(f"p_{n}", "things/curator", "things", name, path=f"things/t{n}", keys={"domain": [f"t{n}.example"]})
             for n, name in ((1, "Alder"), (2, "Birch"))]
     reply = {"same": [["n1", "n2"], ["n2", "n1"]], "order": ["n1", "n2"], "tick": []}
-    assert checked(json.dumps(reply), items(rows))[1] == KEPT_TWO.format(a="Alder", b="Birch")
+    assert checked(json.dumps(reply), items(rows, WEIGHTS), WEIGHTS)[1] == KEPT_TWO.format(a="Alder", b="Birch")
 
 
-def test_a_group_sits_under_the_first_group_or_article_its_linked_names_and_is_ticked_only_with_it() -> None:
-    alder_works, alder, birch, gear = (plain([row])[0] for row in rows())
-    alder.tick = gear.tick = True
+def test_a_group_sits_under_the_first_group_or_article_its_linked_names_and_keeps_its_own_tick() -> None:
+    alder_works, alder, birch, gear = (plain([row], WEIGHTS)[0] for row in rows())
     note = Row("p_5", "parts/curator", "parts", "Shelf note", path="parts/shelf-note", linked=["things/cedar"])
-    shelf = plain([note])[0]
-    shelf.tick = True
+    shelf = plain([note], WEIGHTS)[0]
+    alder.tick, gear.tick = False, True
     tops = tree([alder_works, alder, birch, gear, shelf], {"things/cedar": "Cedar"}, {})
     assert [(t.name, [u.name for u in t.under]) for t in tops] == [
         ("Alder", ["Alder gear"]), ("Cedar", ["Shelf note"]), ("Alder Works", []), ("Birch Hall", [])]
-    assert gear.tick and shelf.tick  # under a ticked group, and under an article of the working set
-    alder.tick, gear.tick = False, True
-    tree([alder, gear], {}, {})
-    assert not gear.tick
+    assert gear.tick  # under a group left unticked
     ring = plain([Row("p_6", "things/curator", "things", "Elm", path="things/elm", linked=["things/oak"]),
-                  Row("p_7", "things/curator", "things", "Oak", path="things/oak", linked=["things/elm"])])
+                  Row("p_7", "things/curator", "things", "Oak", path="things/oak", linked=["things/elm"])], WEIGHTS)
     assert [(t.name, [u.name for u in t.under]) for t in tree(ring, {}, {})] == [("Elm", ["Oak"])]  # each once
 
 
@@ -128,78 +139,19 @@ def test_with_no_model_to_arrange_it_the_list_is_the_plain_tree_in_the_order_fil
     assert [item["name"] for item in asked[0]["items"]] == ["Alder Works", "Birch Yard"]  # every proposal, once
 
 
-def test_the_persons_words_reach_every_curator_of_the_first_run_and_the_call_that_arranges_its_list(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from test_first_run import ADMITS, Script, lay_out_workspace, open_it
-
-    from cerebro.agent import Agent
-    from cerebro.evidence import Evidence
-    from cerebro.fakes import every_item_ticked
-    from cerebro.first_run import Choices, run, see_first
-
-    asked: list[dict[str, Any]] = []
-
-    def ask(self: Cerebro, prompt: str, request: str, job: str = "extraction") -> str:
-        asked.append(json.loads(request))
-        return every_item_ticked(request)
-
-    monkeypatch.setattr(Cerebro, "ask_model", ask)
-    heard: list[str] = []
-
-    class Hearing(Script):
-        def run(self, agent: Agent, evidence: list[Evidence], tools: list[Any], budget: Any) -> Any:
-            heard.extend(line for entry in evidence for line in entry.lines if "wants to see this first" in line)
-            return super().run(agent, evidence, tools, budget)
-
-    with open_it(lay_out_workspace(tmp_path), Hearing({"things/curator": list(ADMITS)})) as workspace:
-        see_first(workspace, "Show me  everything about Birch Yard")
-        run(workspace, choose=Choices.starter)
-    assert heard == ["A caller wants to see this first: Show me everything about Birch Yard"]
-    assert asked[0]["instruction"] == "Show me everything about Birch Yard"
-
-
-def test_the_persons_words_are_kept_with_a_stored_secret_masked(tmp_path: Path) -> None:
-    from test_first_run import NOW, RECORDS, Script, lay_out_workspace
-
-    from cerebro.fakes import FakeConnector, FakeExtraction, FakeSecrets
-    from cerebro.first_run import KEY, see_first
-
-    with Cerebro(lay_out_workspace(tmp_path), agent_run=Script(), extraction=FakeExtraction(), clock=lambda: NOW,
-                 connectors=[FakeConnector("crm", list(RECORDS))], secrets=FakeSecrets({"gong": "gong-secret-77"})) as workspace:
-        see_first(workspace, "Alder first, key gong-secret-77")
-        assert "gong-secret-77" not in json.dumps(workspace.store.state(KEY))
-
-
-def test_ticking_a_line_ticks_what_sits_under_it_and_unticking_it_unticks_all_of_it() -> None:
-    from cerebro.checklist import Model
-    from cerebro.first_run_list import checklist
-
-    found = rows()
-    alder, gear = plain([found[1]])[0], plain([found[3]])[0]
-    pile = Pile([Listed("things/curator", "things", [found[1], found[3]])], groups=tree([alder, gear], {}, {}))
-    lst, of = checklist(pile)
-    model = Model(lst)
-    top, under = of.index(alder), of.index(gear)
-    model._set([under], True)
-    assert model.checked[top] and model.checked[under]
-    model._set([top], False)
-    assert not model.checked[top] and not model.checked[under]
-
-
-def test_a_group_two_deep_is_ticked_only_with_the_group_it_sits_under_and_follows_it_on_the_screen() -> None:
+def test_a_row_ticked_on_its_own_stays_alone_and_unticking_a_row_unticks_what_sits_under_it_however_deep() -> None:
     from cerebro.checklist import Model
     from cerebro.first_run_list import checklist
 
     chain = [Row("p_1", "things/curator", "things", "Cedar", path="things/cedar"),
              Row("p_2", "parts/curator", "parts", "Beam", path="parts/beam", linked=["things/cedar"]),
              Row("p_3", "parts/curator", "bits", "Peg", path="bits/peg", linked=["parts/beam"])]
-    cedar, beam, peg = (plain([row])[0] for row in chain)
-    cedar.tick, beam.tick, peg.tick = True, False, True
+    cedar, beam, peg = (plain([row], WEIGHTS)[0] for row in chain)
     pile = Pile([Listed("things/curator", "things", chain)], groups=tree([cedar, beam, peg], {}, {}))
-    assert not peg.tick  # its own parent is not ticked
     lst, of = checklist(pile)
     model = Model(lst)
     model._set([of.index(peg)], True)
-    assert all(model.checked)
-    model._set([of.index(beam)], False)
-    assert [model.checked[of.index(g)] for g in (cedar, beam, peg)] == [True, False, False]
+    assert [model.checked[of.index(g)] for g in (cedar, beam, peg)] == [False, False, True]
+    model._set([of.index(cedar)], True)
+    model._set([of.index(cedar)], False)
+    assert not any(model.checked)

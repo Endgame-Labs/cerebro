@@ -296,14 +296,15 @@ def test_the_first_runs_checkbox_screen_never_says_brain_page_or_section(tmp_pat
 def test_every_line_the_first_run_and_its_meter_spell_and_a_declined_runs_lines_never_say_brain_page_or_section(
         tmp_path: Path) -> None:
     """What the first run, its list and the meter that cuts a round spell, outside docstrings, and what a run whose
-    list was declined whole says, its next line too, with each curator's own line under its collection, and the
-    line of a writer run that had nothing to cite."""
+    list was declined whole says, its next line too, with each curator's own line under its collection, the count
+    under a row of the held records its admit binds, and the line of a writer run that had nothing to cite."""
     import ast
 
     from test_first_run import ADMITS, Script, lay_out_workspace, open_it
 
     from cerebro.compile import KEPT, KEPT_LAST, NONE_LEFT
     from cerebro.first_run import Listed, Pile, Row, lines, run
+    from cerebro.tree import Group
 
     words = re.compile(r"\b(brain|pages?|sections?)\b", re.IGNORECASE)
     src = Path(__file__).resolve().parents[1] / "src" / "cerebro"
@@ -320,58 +321,16 @@ def test_every_line_the_first_run_and_its_meter_spell_and_a_declined_runs_lines_
     with open_it(lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})) as workspace:
         out = run(workspace, choose=review_rest(workspace))  # declined whole in cerebro review
     assert out is not None and out.next
-    pile = Pile([Listed("things/curator", "things", [Row("left-out:1", "things/curator", "things", "Kim Vale",
-                                                         "Named once.", left_out=True)], said="Left out 1: 1 named once."),
-                 Listed("parts/curator", "parts", [], said="Found nothing to weigh, so nothing was admitted.")])
+    bound = Row("p_1", "things/curator", "things", "Alder Works", "Named twice.",
+                binds=[("local", "a.md"), ("local", "b.md")])
+    pile = Pile([Listed("things/curator", "things", [bound, Row("left-out:1", "things/curator", "things", "Kim Vale",
+                                                                "Named once.", left_out=True)],
+                        said="Left out 1: 1 named once."),
+                 Listed("parts/curator", "parts", [], said="Found nothing to weigh, so nothing was admitted.")],
+                groups=[Group([bound])])
     text = "\n".join([*out.lines, out.next, KEPT, NONE_LEFT, KEPT_LAST, *lines(pile), *lines(Pile(pile.lists, late=True))])
-    assert "Named once." in text and "parts: " not in text
+    assert "Named once." in text and "2 records" in text and "parts: " not in text
     assert not words.search(text), words.findall(text)
-
-
-def presumed_lines() -> list[str]:
-    """Every line a presumed mark puts before a person or a model: each reason grounding drops a marked item for,
-    and the question the judge is asked of a guess."""
-    import json
-
-    from cerebro import ground as grounding
-    from cerebro.agent import Agent
-    from cerebro.article import Citation
-    from cerebro.facts import Fact
-    from cerebro.fakes import FakeDecider
-
-    agent = Agent(id="things/parts", path=Path("agents/things/parts.md"), role="writer", target="things/halden",
-                  prompt="Name who holds each part of the work.\n")
-    facts = {"f_1": Fact("f_1", "Tomas Wren leads the assay team.", "Halden lab", "note", "2026-11-03T10:00:00Z",
-                         "files", "local/halden.md", [])}
-    citable = {"f_1": Citation("fact", "f_1", "local/halden.md", facts["f_1"].text)}
-    item = '- owner: Tomas Wren\n  status: leads the assay team\n  next: a review\n{mark}  fact: "[^f_1]"\n'
-    cases = [
-        ("  presumed: status\n  presumed: false\n", {}), ("  presumed: 3\n", {}), ("  presumed: [status, next]\n", {}),
-        ("  presumed: Status\n", {}), ("  Status: x\n  presumed: status\n", {}), ("  presumed: status\n", {"s1": "unsupported"}),
-        ("  presumed: status\n", {"s1": "contradicted"}), ("  presumed: status\n", {"n1": "denied"}),
-        ("  presumed: status\n", {"n1": "unheld"}), ("  presumed: status\n", {"n1": "open", "n1c1": "link:none"}),
-    ]
-    lines = []
-    for mark, answers in cases:
-        grounded = grounding.ground(agent, {"Part": "```yaml\n" + item.format(mark=mark) + "```\n"}, citable,
-                                    decider=FakeDecider({"s1": "grounded", **answers}), facts=facts, today="2026-11-10")
-        lines += grounded.dropped
-    for body in ('- status: x\n  presumed: status\n  fact: "[^f_1]"\n',
-                 '- owner: Tomas Wren\n  status: runs 4 sites\n  presumed: status\n  fact: "[^f_1]"\n'):
-        lines += grounding.ground(agent, {"Part": "```yaml\n" + body + "```\n"}, citable, decider=FakeDecider(),
-                                  facts=facts, today="2026-11-10").dropped
-    lines.append(grounding._named_why(grounding._Verdict(passes=True, choice="grounded"), "x [^f_1].", ["status"]))
-    lines.append(json.dumps(grounding._aside_question(1, True).wire()))
-    assert sum("presumed" in line for line in lines) >= 13, lines
-    return lines
-
-
-def test_no_line_a_presumed_mark_shows_says_brain_page_section_or_a_sales_word() -> None:
-    words = re.compile(r"\b(brain|pages?|sections?|accounts?|deals?|opportunit(?:y|ies)|contacts?|crm)\b",
-                       re.IGNORECASE)
-    for line in presumed_lines():
-        shown = line.split(": dropped ", 1)[-1].split('": ', 1)[-1] if line.startswith("Part: dropped") else line
-        assert not words.search(shown), shown
 
 
 def test_show_prompt_and_a_dry_run_never_say_brain_or_page_in_their_own_lines(tmp_path: Path,
@@ -444,3 +403,19 @@ def test_the_pending_mark_and_status_block_call_it_an_article_and_never_a_brain_
     source = (Path(__file__).resolve().parents[1] / "src" / "cerebro" / "cli.py").read_text(encoding="utf-8")
     block = source[source.index('if waits := data["pending"]'):source.index('if data["requests"]["total"]')]
     assert "not yet written:" in block and not words.search(block)
+
+
+def test_what_grounding_tells_its_judge_a_writer_a_reader_and_a_runs_log_says_no_brain_page_section_or_sales_word(
+        ) -> None:
+    from cerebro import ground
+    from cerebro.article import NOT_FOUND, UNSUPPORTED
+    from cerebro.fakes import FakeDecider
+
+    editor = ground.Editor(ground.Judge(FakeDecider({"s1": 0, "s2": 2})), lambda ids: {}, heading="Where it stands")
+    told = editor.review("Alder renews in March [^f_1]. Alder signs for ten years.")
+    editor.marked("Alder renews in March [^f_1]. Alder signs for ten years.")
+    lines = [ground.CONTRACT, ground.QUESTION, *ground.LEVELS, told, ground.CITE_BY_ID, *editor.scores, UNSUPPORTED,
+             NOT_FOUND, ground.counted({"marked": 2, "unscored": 1})]
+    words = re.compile(r"\b(brains?|pages?|sections?|accounts?|deals?|opportunit(?:y|ies)|contacts?|crm)\b",
+                       re.IGNORECASE)
+    assert told and len(editor.scores) == 2 and not [line for line in lines if words.search(line)]

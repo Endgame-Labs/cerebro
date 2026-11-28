@@ -6,11 +6,12 @@ the test suite: it calls real models and costs a few cents.
 
 The workspace is a temporary folder made as `cerebro
 init` makes one, with its config folder beside it. The workspace's clock is the real time moved on by hand past the
-agent's cooldown before the revision's pass. It prints each pass, the facts and the article, what the workspace spent,
-then PASS, or FAIL with every reason. It never prints a key. It passes only when:
+agent's cooldown before the revision's pass. It prints each pass, the facts and the article with how many
+sentences grounding marked, what the workspace spent, then PASS, or FAIL with every reason. It never prints a key. It
+passes only when:
 - the note reads back whole at once, before any pass;
-- the pass makes more than one fact of the note, and the article is written, every sentence citing a fact the workspace
-  holds;
+- the pass makes more than one fact of the note, and the article is written, every citation in it a fact the
+  workspace holds;
 - after the note is revised, the old facts are gone from what the workspace serves and none of the new ones repeats
   them, and the article is rewritten from the new facts alone.
 """
@@ -19,7 +20,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -33,9 +33,9 @@ from mcp.types import Implementation
 
 from cerebro import scaffold
 from cerebro.app import Cerebro
-from cerebro.article import cut, passages
+from cerebro.article import MARK, cut, passages
 from cerebro.evidence import CITE
-from cerebro.ground import split_sentences
+from cerebro.ground import unmarked
 from cerebro.runner import PassResult
 
 NOTES = Path(__file__).resolve().parents[1] / "apps" / "notes"
@@ -75,21 +75,9 @@ def show(n: int, result: PassResult) -> None:
         print(f"  warning {line}")
 
 
-def sentences(text: str) -> list[str]:
-    out = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith(("#", "|", ">", "```")):
-            continue
-        line = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", line)
-        line = re.sub(r"([.!?])((?:\s*\[\^[^\]\s]+\])+)", r"\2\1", line)  # a citation after the stop is the sentence's
-        out += [s.text for s in split_sentences(line)]
-    return out
-
-
 def check_article(workspace: Cerebro, when: str, reasons: list[str], only: set[str] | None = None) -> str:
-    """The article's text, after checking it has a compilation and every sentence cites a fact the workspace holds, and,
-    with `only`, cites no fact outside it."""
+    """The article's text, after checking it has a compilation and every citation in it is a fact the workspace holds,
+    and, with `only`, a fact of `only`."""
     article = workspace.store.article(ARTICLE)
     held = {f.id for f in workspace.extraction.facts()}
     if article is None or not article.compilations:
@@ -97,15 +85,12 @@ def check_article(workspace: Cerebro, when: str, reasons: list[str], only: set[s
         return ""
     for compilation in passages(article):
         print(f"## {compilation.heading}\n{compilation.text}\n")
-        for sentence in sentences(compilation.text):
-            cited = CITE.findall(sentence)
-            if not cited:
-                reasons.append(f"{when}: {compilation.heading}: a sentence cites nothing: {sentence!r}")
-            for id in cited:
-                if id not in held:
-                    reasons.append(f"{when}: {compilation.heading}: [^{id}] is no fact the wiki holds")
-                elif only is not None and id not in only:
-                    reasons.append(f"{when}: {compilation.heading}: [^{id}] is not a fact of the note as it stands")
+        for id in CITE.findall(unmarked(compilation.text)):
+            if id not in held:
+                reasons.append(f"{when}: {compilation.heading}: [^{id}] is no fact the wiki holds")
+            elif only is not None and id not in only:
+                reasons.append(f"{when}: {compilation.heading}: [^{id}] is not a fact of the note as it stands")
+    print(f"{when}: grounding marked {sum(s.text.count(MARK) for s in article.compilations)} sentences")
     return "\n".join(s.text for s in article.compilations)
 
 

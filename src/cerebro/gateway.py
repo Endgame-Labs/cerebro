@@ -6,7 +6,8 @@ keeps the provider's own path; with one set, the provider's key is optional, and
 insists on one. A header's value is text, `{ secret: name }`, read from the secrets store when a call is made, or a
 mapping of text values, sent as one JSON object; a provider's mapping is merged over the shared one. `{call}`,
 `{agent}` and `{run}` in a value are filled on each call, and a value whose placeholder has nothing to fill is left
-out. A host that refuses a call with a status in `STOP` stops the pass: no call starts after it until the next.
+out. A host that refuses a call with a status in `STOP`, a refused key or payment due, stops the pass: no call starts
+after it until the next. Any other refusal fails that call alone.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ import httpx
 
 from .budget import CallRefused
 from .errors import CerebroError
-from .models import PROVIDERS
+from .models import PROVIDERS, advice_for
 from .secrets import SecretsError, check_name
 from .shown import shown
 
@@ -31,7 +32,7 @@ __all__ = ["NO_KEY", "SETTINGS_KEYS", "STOP", "Gateway", "ProvidersError", "Rout
            "route_lines"]
 
 NO_KEY = "unused"  # the key sent through a gateway that holds the provider's key itself
-STOP = (400, 401, 402, 403)  # a refusal no try again mends: a header, a path or a key the host does not take
+STOP = (401, 402, 403)  # a refused key or payment due, which every later call meets: a 400 is one bad request
 EXAMPLE = "http://gateway.example.internal:8769"
 PLACES = ("call", "agent", "run")
 TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")  # a header name, as HTTP spells one
@@ -63,7 +64,7 @@ class Route:
     base_url: str = ""
     headers: Mapping[str, str | Secret | Mapping[str, str]] = field(default_factory=dict)
     secret: Callable[[str], str] = _no_secret
-    stop: Callable[[str], None] = lambda said: None
+    stop: Callable[[str, int], None] = lambda said, status: None
 
     def url(self, own: str) -> str:
         """`own`, a URL of the provider's, on this route's host, its path kept."""
@@ -96,7 +97,7 @@ class Route:
         """Whether `status` means stop on this route, a gateway's: the first such refusal stops the pass."""
         if not self.base_url or status not in STOP:
             return False
-        self.stop(f"{self.base_url} refused a {self.provider} {call} call with HTTP {status}")
+        self.stop(f"{self.base_url} refused a {self.provider} {call} call with HTTP {status}", status)
         return True
 
 
@@ -123,10 +124,10 @@ class Gateway:
     def route(self, provider: str) -> Route:
         return self.routes.get(provider) or Route(provider)
 
-    def _refuse(self, said: str) -> None:
+    def _refuse(self, said: str, status: int) -> None:
         at = self.clock().astimezone(self.zone).strftime("%H:%M %Z")
-        self.said = self.said or (f"Model calls stopped: {said} at {at}. Nothing more starts this pass: check "
-                                  "providers in settings.yaml, and the next pass tries again.")
+        self.said = self.said or (f"Model calls stopped: {said} at {at}. Nothing more starts this pass: "
+                                  f"{advice_for(status, None)}, and the next pass tries again.")
 
     def refused_at(self, url: str, status: int, call: str) -> None:
         """Stop the pass when the host of `url`, a route's, refused a call with a status in `STOP`, for a caller that
@@ -137,7 +138,7 @@ class Gateway:
 
         route = next((r for r in self.routes.values() if r.base_url and origin(r.base_url) == origin(url)), None)
         if status in STOP and route is not None:
-            self._refuse(f"{route.base_url} refused a {call} call with HTTP {status}")
+            self._refuse(f"{route.base_url} refused a {call} call with HTTP {status}", status)
 
     def check(self) -> None:
         """Refuse a call once a host refused one this pass, before it starts."""

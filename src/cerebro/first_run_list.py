@@ -44,10 +44,13 @@ def _label(g: Group) -> str:
 
 
 def _lines(g: Group) -> list[str]:
-    """The lines under a group's name: its lead's reason, and who proposed it when more than one proposal did."""
+    """The lines under a group's name: its lead's reason, who proposed it when more than one proposal did, and how
+    many held records its admit binds if it lands alone, when more than one."""
     out = _reason(g.lead.reason) if g.lead else []
     if len(g.rows) > 1:
         out.append(f"{len(g.rows)} proposals, by {', '.join(sorted({_one(r.agent, NAME_CAP) for r in g.rows}))}")
+    if (binds := len({held for row in g.rows for held in row.binds})) > 1:
+        out.append(f"{binds} records")
     return out
 
 
@@ -138,9 +141,8 @@ def checklist(pile: Pile, reject: Callable[[int], None] | None = None) -> tuple[
         return out
 
     def toggled(changed: list[int], on: bool, checked: list[bool]) -> list[bool]:
-        for i in changed:  # what sits under a group lands only with it, however deep
-            for j in above(i) if on else [j for j in range(len(checked)) if i in above(j)]:
-                checked[j] = on
+        if not on:  # unticking a row unticks what sits under it, however deep
+            checked = [c and not any(i in above(j) for i in changed) for j, c in enumerate(checked)]
         return checked
 
     agents = [f"agents/{_one(listed.agent, NAME_CAP)}.md" for listed in pile.lists if listed.rows]

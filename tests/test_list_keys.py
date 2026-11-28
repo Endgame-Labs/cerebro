@@ -36,7 +36,7 @@ def test_the_first_runs_list_moves_with_j_and_k_and_toggles_with_space() -> None
     from cerebro.tree import Row, plain
 
     rows = [Row(f"p_{n}", "things/curator", "things", f"Thing {n}", path=f"things/t{n}") for n in range(3)]
-    lst, _ = checklist(Pile([Listed("things/curator", "things", rows)], groups=[g for g in plain(rows)]))
+    lst, _ = checklist(Pile([Listed("things/curator", "things", rows)], groups=[g for g in plain(rows, {})]))
     app = ChecklistApp(lst)
     before = list(app.view.model.checked)
     assert pressed(app, "l", "j", "j", "k", "space") == [0, 1, 2, 1, 1]  # opened, then moved through its rows

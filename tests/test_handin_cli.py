@@ -19,7 +19,7 @@ from cerebro.compile import Compiled
 from cerebro.fakes import FakeConnector, FakeExtraction, ScriptedRun
 from cerebro.first_run import _merge
 from cerebro.records import proposals
-from cerebro.run import HANDED_NOTHING, WROTE_NOTHING, Run, Usage
+from cerebro.run import WROTE_NOTHING, Run, Usage
 from cerebro.runner import PassResult
 
 WRITER = ("---\nevidence:\n  - query: { from: facts, source: notes }\nheartbeat: [change]\n---\n\n"
@@ -139,6 +139,12 @@ def test_a_run_by_hand_prints_what_grounding_dropped_and_its_notes_as_a_pass_doe
     assert capsys.readouterr().out.splitlines() == [
         "wrote    things/alpha  articles/things/alpha.md",
         'warning  things/article on things/alpha: Summary: dropped "x": it cites nothing']
+    failed = "it failed after its first hand-in (a model error), so the text it handed in lands"
+    cli._by_hand(None, SimpleNamespace(id="things/article"), "things/alpha", Compiled(  # type: ignore[arg-type]
+        run=done, article=SimpleNamespace(identity=SimpleNamespace(id="things/alpha")),  # type: ignore[arg-type]
+        runs=[done], notes=[failed]), [])  # compile --article
+    assert capsys.readouterr().out.splitlines() == ["wrote    things/alpha  articles/things/alpha.md",
+                                                    f"warning  things/alpha: {failed}"]
 
 
 # -- the first run's merge
@@ -148,12 +154,12 @@ def test_a_run_that_ran_again_in_the_second_pass_is_told_by_that_pass_alone() ->
     into = PassResult(ran={"reports/weekly": "nothing new in pass 1"})
     _merge(into, wrote)
     assert into.ran == {} and into.compiled == ["reports/weekly"]
-    into = PassResult(failed={"reports/weekly": "run r1 wrote nothing: failed: in pass 1"})
+    into = PassResult(failed={"reports/weekly": "run r1: failed: in pass 1"})
     _merge(into, PassResult(ran={"reports/weekly": "nothing new in pass 2"}, runs=[_run(WROTE_NOTHING)]))
     assert into.failed == {} and into.ran == {"reports/weekly": "nothing new in pass 2"}
     into = PassResult(ran={"reports/weekly": "nothing new in pass 1"})
-    _merge(into, PassResult(failed={"reports/weekly": "run r2 wrote nothing: failed: in pass 2"}))
-    assert into.ran == {} and into.failed == {"reports/weekly": "run r2 wrote nothing: failed: in pass 2"}
+    _merge(into, PassResult(failed={"reports/weekly": "run r2: failed: in pass 2"}))
+    assert into.ran == {} and into.failed == {"reports/weekly": "run r2: failed: in pass 2"}
     into = PassResult(held={"reports/weekly": "held for room in pass 1"}, failed={"sources/notes/n1": "a read error"})
     _merge(into, PassResult(compiled=["reports/weekly"], runs=[_run("done")]))
     assert into.held == {} and into.failed == {"sources/notes/n1": "a read error"}
@@ -166,7 +172,7 @@ def test_a_run_that_ran_again_in_the_second_pass_is_told_by_that_pass_alone() ->
 
 def test_a_first_run_whose_every_failure_ran_again_and_wrote_nothing_exits_0(
         capsys: pytest.CaptureFixture[str]) -> None:
-    into = PassResult(failed={"reports/weekly": "run r1 wrote nothing: failed: e1"})
+    into = PassResult(failed={"reports/weekly": "run r1: failed: e1"})
     _merge(into, PassResult(ran={"reports/weekly": "n2"}, runs=[_run(WROTE_NOTHING)]))
     cli._print_first_run(SimpleNamespace(applied=[], quit=False, result=into, lines=[], failed=[]))
     out = capsys.readouterr().out.splitlines()
@@ -187,14 +193,15 @@ def test_a_pass_that_ran_one_run_and_failed_another_writing_nothing_exits_0(
         def __exit__(self, *exc: object) -> None:
             return None
 
-    result = PassResult(ran={"reports/b": HANDED_NOTHING}, failed={"reports/c": "run r wrote nothing: failed: e"})
+    result = PassResult(ran={"reports/b": "it said there is nothing to write: nothing new"},
+                        failed={"reports/c": "run r: failed: e"})
     monkeypatch.setattr(cli, "open_workspace", lambda folder: Opened(root=tmp_path, agents=[], files_read=lambda: None,
                                                                   mask_every=lambda: lambda text: text))
     monkeypatch.setattr(first_run, "run", lambda *args, **kwargs: None)
     monkeypatch.setattr(cli, "_pass_once", lambda opened, plain: result)
     told = CliRunner().invoke(main, ["serve", "--once", "--workspace", str(tmp_path)])
     assert told.exit_code == 0, told.output
-    assert "failed    reports/c: run r wrote nothing: failed: e" in told.output.splitlines()
+    assert "failed    reports/c: run r: failed: e" in told.output.splitlines()
     result.ran = {}
     assert CliRunner().invoke(main, ["serve", "--once", "--workspace", str(tmp_path)]).exit_code == 1
 
@@ -214,7 +221,7 @@ def test_agents_run_runs_every_article_names_each_that_failed_and_counts_them(
     told = w.cli("agents", "run", "things/article")
     assert told.exit_code == 1, told.output
     lines = told.stdout.splitlines()
-    assert "failed   things/article on things/alpha: run run_on_alpha wrote nothing: failed: a model error" in lines
+    assert "failed   things/article on things/alpha: run run_on_alpha: failed: a model error" in lines
     assert {"wrote    things/beta  articles/things/beta.md", "wrote    things/gamma  articles/things/gamma.md"} \
         <= set(lines), lines
     assert told.stderr.strip() == "Error: things/article: 1 of 3 runs failed", told.stderr
@@ -226,7 +233,7 @@ def test_a_writer_of_one_article_whose_run_failed_still_says_why_in_its_one_line
     w.failing.add("reports/weekly")
     told = w.cli("agents", "run", "reports/weekly")
     assert told.exit_code == 1
-    assert told.stderr.strip() == "Error: reports/weekly: run run_on_weekly wrote nothing: failed: a model error"
+    assert told.stderr.strip() == "Error: reports/weekly: run run_on_weekly: failed: a model error"
 
 
 def test_a_first_pass_row_stays_when_a_different_agent_wrote_the_same_article_in_the_second_pass() -> None:

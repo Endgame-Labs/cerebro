@@ -35,6 +35,9 @@ def test_init_from_the_gtm_template_lays_down_a_workspace_whose_every_agent_and_
     assert "domains: [example.com]" in (root / "workspace.md").read_text()
     guide = (root / "AGENTS.md").read_text()
     assert "cerebro agents list" in guide
+    lines = guide.splitlines()  # each table's head is followed by its separator row, or it renders as plain text
+    heads = [n for n, line in enumerate(lines) if line.startswith("|") and not lines[n - 1].startswith("|")]
+    assert heads and all(lines[n + 1].replace("|", "").strip(" -:") == "" for n in heads), heads
     assert not (root / ".claude").exists()
     assert (root / ".gitignore").read_text().splitlines() == ["articles/", ".cerebro/"]
     assert done.written[-1] == "settings.yaml" and done.ignored == ["articles/", ".cerebro/"]

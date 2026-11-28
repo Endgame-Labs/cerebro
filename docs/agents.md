@@ -49,6 +49,8 @@ The folder under `agents/` is the collection. The file's name says what the agen
 | `projects/curator.md` | Decides which articles `projects` holds |
 | `projects/subagents/<name>.md` | Writes one part of each article, for the `article.md` beside it |
 
+The title comes from the file's name, so `reports/weekly-briefing.md` writes "Weekly briefing". A new name starts a new article at the new path, and the old one stays until you archive it, which needs a curator: run `cerebro agents new reports/curator`, then `cerebro archive reports/week`.
+
 `cerebro agents new` writes a starting file for each. `cerebro agents list` shows each agent's id, its job and when it runs, and names any file that doesn't load and why:
 
 ```text
@@ -73,6 +75,39 @@ Each line under `evidence:` gathers one thing, in order. The agent cites what it
 | `- files: [workspace.md]` | Files from the workspace, whole |
 | `- sql: { source: warehouse, query: "select kind, count(*) as total from things group by kind" }` | Rows from a [database source](sources.md#query-a-database) |
 | `- script: { run: scripts/usage.py }` | What a script in the workspace prints, in at most 60 seconds. Give it a `#!` first line and run `chmod +x` on it. |
+| `- held: {}` | On a curator, the records your sources hold for its collection, each by its name and keys, never its text |
+
+A record a source sends `into:` a collection is read once it shares a key with an article in any collection that is not archived, even a key it only carries, such as a party's domain. It stays held for its own collection until an article there takes it. Its curator is shown such records only through a `held` line, as `cerebro agents new` writes it:
+
+```yaml
+evidence:
+  - held: {}
+```
+
+An `articles` line can take these options, each on a line under it:
+
+| Option | What it does |
+|---|---|
+| `text_only: true` | Loads each article's front matter and text, without its facts |
+| `keep: "..."` | Loads only the passages of each article that hold what you ask for, as the decision model judges them. It reads text, so put `text_only: true` beside it. |
+| `top: 80` | Loads at most this many of the passages `keep` chose. It needs `keep`. |
+
+```yaml
+evidence:
+  - articles: [projects, teams]
+    text_only: true
+    keep: "What each article is: its name and the line that says what it is."
+    top: 80
+```
+
+`rendered:`, beside `evidence:`, has Cerebro write a part of the article itself, with no model call. It lists every collection that has articles, each linked, so under `Contents` the article reads `- [Projects](../projects/) (12 articles)`:
+
+```yaml
+rendered:
+  Contents: { kind: collections, show: [count] }
+```
+
+`style: headings` gives each collection a heading of its own, `show: [count, description]` adds the line `settings.yaml` gives a collection, and `place: after` puts the part after the agent's own text. It goes on a file that writes its article alone, not on one built from subagents.
 
 In a value, `this` means the article being written. So `articles: this` keeps the facts linked to it. `this.<field>` means the articles a field of it names, such as `this.linked`.
 
@@ -96,6 +131,14 @@ After an agent writes an article, new evidence waits four hours before it rewrit
 heartbeat: { on: [change], cooldown: 30m }
 ```
 
+An agent with nothing new to write can say so, with a reason. Its run wrote nothing, and the article keeps the text it had. The pass prints the reason, and the agent runs again once its evidence moves:
+
+```text
+ran       projects/atlas: wrote nothing: it said there is nothing to write: Nothing new since the last article.
+```
+
+A model that never hands in and gives no reason, even when asked again, fails its run. `cerebro status` lists it, and a later pass tries it again, [after the wait](runs.md#when-a-run-fails). A subagent's run that does this wrote nothing, and its part keeps the text it had.
+
 [Runs](runs.md) explains when things run, and how to cap what they spend.
 
 ## Budget and model
@@ -104,8 +147,10 @@ Each run is capped at 100,000 tokens and 40 tool calls. Raise or lower it per ag
 
 ```yaml
 budget: { tokens_per_run: 200000, tool_calls: 60 }
-model: { provider: fireworks, model: glm-5p3 }   # in place of settings.yaml's compilation model
+model: { provider: fireworks, model: glm-5p3, retries: 5 }   # in place of settings.yaml's compilation model
 ```
+
+`retries` is how many times a model call is tried again after a timeout, a rate limit or a server error. Leave it out and the agent takes the `retries` of the compilation model in `settings.yaml`, or 3.
 
 ## One agent for a whole collection
 
@@ -116,6 +161,7 @@ model: { provider: fireworks, model: glm-5p3 }   # in place of settings.yaml's c
 authority: { admit: false, archive: false, merge: false, split: false }   # what this curator does on its own; a kind set false, or left out, waits for you in cerebro review
 evidence:
   - query: { from: facts, window: last_90_days }   # what the sources say, to admit from
+  - held: {}   # the records your sources hold for projects, newest first
 heartbeat: [manual]   # try it with agents run, then set [change, daily] once it reads well
 ---
 
@@ -130,6 +176,7 @@ gives a clear winner, say so in your last line instead of guessing.
 - **Every curator** can add an article with `admit`, change its keys or links with `link`, give its writers a note with `instruct`, take one out with `archive`, join two with `merge`, and undo a merge with `split`. It asks a source a question with `fetch` where one answers. Each act can name another collection: it waits there as a proposal, for that collection's curator or for you. `cerebro review` counts these in one line instead of listing them, and you can still decide one by its id.
 - **`authority`** says what it may do on its own: `admit`, `archive`, `merge`, and `split`, which turns one article into two. Anything set to `false` waits for you in `cerebro review`.
 - A file with no `authority:` line does none of the four on its own, and a kind the line leaves out is `false`.
+- A curator's first list waits for you, even with `authority: { admit: true }`. Once you decide one of its admits, `authority` applies.
 - A curator never undoes your decision, yes or no, until a new fact or record about it arrives, whatever `authority` says.
 - A curator on `change` is not woken by its own acts, or by a decision you make on what it alone proposed: only by what else changes in what it reads. A record from a source, a tell, another agent's write, or a decision that covers other curators' proposals too, such as approving a first run's list, still wakes it, even while it runs.
 
@@ -213,13 +260,25 @@ In an agent file, `linked: this` finds what links to the article being written, 
 
 ## How Cerebro checks what an agent writes
 
-Before anything lands, Cerebro checks every sentence against the facts it cites. A sentence that cites nothing, or says more than its facts hold, is rewritten once to match them or dropped. Each drop is a line in the run:
+When an agent hands in its text, the decision model scores each sentence from 0 to 1 against the facts it cites. It reads meaning, not wording, so a fair summary, a translation or a quote in another style scores as well as a plain restatement. If any sentence scores under the floor, the agent gets those sentences back once, with each score and why, and hands in again. That text lands whole.
+
+Grounding never cuts a sentence. One that still scores under the floor lands with a footnote, and the article defines it once:
 
 ```text
-warning   projects/atlas: Where it stands: dropped "Nothing yet.": it cites nothing
+Atlas moves to spring because the audit runs late [^fact_01m7p4qga4pxpjkgvf].[^unsupported]
+
+[^unsupported]: Not fully backed by the facts it cites.
 ```
 
-So write prompts that ask for plain, cited statements. A run that writes nothing that holds up leaves the article as it was.
+When you take a fact back, at the command line or through a client over MCP or the JSON API, or a source removes the record, Cerebro takes out the lines whose every cited fact was taken back, from text its writer did not rewrite in that run.
+
+The floor is 0.6. Set `min_grounding` in an agent's front matter to change it for that agent, or in `settings.yaml` for every agent:
+
+```yaml
+min_grounding: 0.8   # this agent's sentences are marked under 0.8
+```
+
+The run counts what it marked, as `grounding projects/atlas: marked 1 sentence not fully backed`. Each sentence's score and why stay on its run's row of the `agent-runs` log, up to 16,000 characters a run, and a last line counts the rest. `query { "from": "agent-runs", "run": "run_4f2a9c1e7b3d" }` reads them. With no decision model, no sentence is scored or marked, and the run says how many it left unscored.
 
 ## Kinds of fact
 
@@ -234,3 +293,5 @@ class Decision(Fact):
 ```
 
 An agent then filters by kind with `classes:`, as `- facts: { classes: [decision] }`. The class `Decision` is the kind `decision`, and `NextStep` would be `next_step`.
+
+A `query` line on facts takes the same list, as `- query: { from: facts, classes: [decision, next_step] }`.

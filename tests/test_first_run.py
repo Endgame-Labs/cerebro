@@ -8,7 +8,7 @@ import uuid
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from click.testing import CliRunner
@@ -76,6 +76,7 @@ class Script(AgentRun):
         self.spend = spend
         self.store: Any = None  # the workspace's, once open: each curator's run carries out the yeses there
         self.ran: list[str] = []
+        self.shown: dict[str, list[str]] = {}  # the keys of the items each agent was last shown
         self.replied = threading.Event()
         self.started = threading.Event()  # another curator's run of the round is under way
 
@@ -95,6 +96,7 @@ class Script(AgentRun):
                 return Run(id=f"run_{uuid.uuid4().hex[:8]}", agent=agent.id, target=agent.target, status="cut",
                            note=str(error))
         self.ran.append(agent.id)
+        self.shown[agent.id] = [item.key for entry in evidence for item in entry.items]
         calls: list[tuple[str, dict[str, Any]]] = []
         if agent.id == "topics/curator":
             if any("fact_" in line for entry in evidence for line in entry.lines):
@@ -136,7 +138,7 @@ def carry_out(store: Any, collection: str) -> list[tuple[str, dict[str, Any]]]:
 
 @pytest.fixture
 def every_curator_weighs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Every curator is asked in every round, one that has nothing to weigh yet too, as a source that answers
+    """Every curator is asked on the first run, one that has nothing to weigh yet too, as a source that answers
     questions makes it, for a test that is not about who has something to weigh."""
     monkeypatch.setattr(FakeConnector, "questions", {"lookup": "a stand-in question"})
 
@@ -235,13 +237,27 @@ def test_the_plain_list_shows_each_article_with_its_reason_and_the_left_out_last
                      "", "0 of 3 selected"]
 
 
+def test_the_plain_list_shows_two_things_that_share_a_name_and_differ_by_a_key_on_two_lines(tmp_path: Path) -> None:
+    class Coded(FakeConnector):
+        IDENTITY_KEYS: ClassVar[dict[str, int]] = {"code": 100}  # a key only this workspace's own source declares
+
+    script = Script({"things/curator": [("admit", {"name": "Unit 7", "keys": {"code": [id]}, "reason": f"Coded {id}."})
+                                        for id in ("A1", "A2")]})
+    with Cerebro(lay_out_workspace(tmp_path), agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
+                 connectors=[Coded("src", [replace(r, source="src") for r in RECORDS])]) as workspace:
+        script.store = workspace.store
+        run(workspace, choose=None)
+        shown = lines(LocalApproval(workspace).pile())
+    assert [line for line in shown if "Unit 7" in line] == ["    [ ] Unit 7  things"] * 2  # two things, two lines
+
+
 def test_a_group_of_more_than_ten_rows_shows_its_first_five() -> None:
     from cerebro.first_run import Listed
     from cerebro.tree import Row
     from cerebro.tree import plain as plain_groups
 
     rows = [Row(f"p_{n}", "things/curator", "things", f"Account {n}", path=f"things/a{n}") for n in range(12)]
-    pile = Pile([Listed("things/curator", "things", rows)], groups=plain_groups(rows))
+    pile = Pile([Listed("things/curator", "things", rows)], groups=plain_groups(rows, {}))
     for g in pile.groups[:3]:
         g.tick = True
     shown = lines(pile)
@@ -277,7 +293,7 @@ def test_every_string_the_plain_list_shows_from_a_workspace_or_a_model_is_escape
     rows = [Row("p_1", f"things/curator{bad}", f"things{bad}", f"Alder{bad}", f"why{bad}", path="things/alder"),
             Row("left-out:1", f"things/curator{bad}", f"things{bad}", f"Initech{bad}", f"vendor{bad}", True)]
     pile = Pile([Listed(f"things/curator{bad}", f"things{bad}", rows, note=f"did not finish{bad}")],
-                stopped=f"Discovery stopped{bad}", groups=plain_groups(rows[:1]), note=f"plain{bad}")
+                stopped=f"Discovery stopped{bad}", groups=plain_groups(rows[:1], {}), note=f"plain{bad}")
     text = "\n".join(lines(pile))
     assert not any(c in text for c in "\x1b\r\x07\u202e")
     assert text.count("\\x1b[2J") == 11  # the agent, each name, collection and reason, both notes, the stop line,
@@ -320,15 +336,6 @@ def test_yes_with_nothing_ticked_says_it_approved_nothing_and_advises_no_yes_aga
     out = done.output.splitlines()
     assert "approved  nothing with --yes: nothing was ticked: the rest wait for cerebro review" in out
     assert not any(line.startswith("waiting") and "--yes" in line for line in out), done.output
-
-
-def test_see_first_past_the_first_run_says_in_one_line_it_was_not_used(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root, script = lay_out_workspace(tmp_path), Script({"things/curator": list(ADMITS)})
-    monkeypatch.setattr(cli, "open_workspace", lambda root: open_it(root, script))
-    CliRunner().invoke(main, ["serve", "--once", "--yes", "--workspace", str(root)])
-    again = CliRunner().invoke(main, ["serve", "--once", "--see-first", "Birch first", "--workspace", str(root)])
-    assert "note      --see-first applies to a workspace's first run only: it was not used" in again.output.splitlines()
 
 
 def test_off_a_terminal_nothing_is_approved_and_the_pass_says_how_many_wait_and_exits_2(
@@ -497,7 +504,7 @@ def test_the_cap_stops_discovery_and_a_run_after_it_stops_again_with_no_model_ca
         out = run(workspace, choose=None, say=say)
         assert out is not None and out.waits and script.ran == ["things/curator"]
         assert "stopped   topics/curator: budget reached for topics collection" in told
-        stop = ("Discovery stopped at its budget after 1 round; topics did not finish: raise budget.first_run_usd in "
+        stop = ("Discovery stopped at its budget; topics did not finish: raise budget.first_run_usd in "
                 "settings.yaml, or narrow what your source files under sources/ read, and run again.")
         assert out.lines[0] == stop and out.lines[1].startswith("the first run's list: 2 admit proposals")
         pile = LocalApproval(workspace).pile()
@@ -550,6 +557,67 @@ def test_a_late_curator_finds_nothing_before_the_first_facts_then_its_list_waits
         assert [listed.agent for listed in out.late.lists] == ["topics/curator"]
         assert out.lines == []  # the screen took the late list too
         assert "topics/renewals" in articles(workspace)  # approved, and the one more pass ran
+
+
+def test_the_late_lists_build_compiles_only_the_articles_it_admitted(tmp_path: Path) -> None:
+    class Moves(Script):  # a record about Alder Works comes in while the late curator runs
+        crm: Any = None
+
+        def run(self, agent: Agent, evidence: list[Evidence], tools: list[Any], budget: Budget) -> Run:
+            if agent.id == "topics/curator" and self.calls.get(agent.id):
+                self.crm.add(account("001D", "Alder Works", "alder.example", at="2026-11-18T08:00:00Z"))
+            return super().run(agent, evidence, tools, budget)
+
+    script = Moves({"things/curator": list(ADMITS), "topics/curator": list(TOPIC)})
+    with open_it(lay_out_workspace(tmp_path, knowledge=True), script) as workspace:
+        script.crm = workspace.connectors["crm"]
+        out = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
+        assert out is not None and out.late is not None and "topics/renewals" in articles(workspace)
+        runs = {row.data["run"] for row in workspace.store.rows("agent-runs")
+                if row.data["agent"] == "things/article" and row.data["target"] == "things/alder-works"}
+        assert len(runs) == 1  # built once: its new record waits for a later pass
+
+
+def test_the_build_reads_the_first_runs_14_days_and_the_rows_a_person_ticks_however_late_and_serve_reads_the_rest(
+        tmp_path: Path) -> None:
+    on_the_cut = account("001E", "Birch Yard", "birch.example", at="2026-11-04T09:00:00Z")  # 14 days before NOW
+    older = account("001O", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z")  # older, of a row a person ticks
+    ticked = account("001D", "Cedar Mill", "cedar.example", at="2026-09-01T09:00:00Z")  # older, and a person ticks it
+    fields = replace(account("001R", "Alder Works", "alder.example", at="2026-10-01T09:00:00Z"), extract="records")
+    own = account("001P", "Pine Row", "pine.example", at="2026-09-01T09:00:00Z")  # older, its curator admits it alone
+    keyed = account("001K", "Elm Court", "elm.example", at="2026-09-01T09:00:00Z")  # older, its row admitted by keys
+    carries = replace(keyed, id="002K", keys={"domain": ["elm.example"]}, carried=["domain"],
+                      fields={"name": "Elm Court visit"})  # of the row's own collection, only carrying its key
+    part = replace(keyed, id="005K", keys={"domain": ["elm.example"]}, into="parts")  # its key names the row
+    logged = replace(part, id="003K", into="")  # of no collection, though its key names the row
+    topic = replace(carries, id="004K", keys={"domain": ["alder.example"], "topic": ["renewals"]}, into="topics",
+                    fields={"name": "Renewals"})  # older, of a row the late list approves
+    by_keys = ("admit", {"name": "Elm Court", "keys": {"domain": ["elm.example"]}, "reason": "A row a source gave.",
+                         "group": "you own (crm)"})
+    late = ("admit", {"name": "Renewals", "keys": {"topic": ["renewals"]}, "reason": "Renewals.", "group": "topics"})
+    script = Script({"things/curator": [*ADMITS, by_keys], "topics/curator": [late]})
+    extraction, clock = FakeExtraction(), [NOW]
+    with Cerebro(lay_out_workspace(tmp_path, knowledge=True), agent_run=script, extraction=extraction,
+                 clock=lambda: clock[0], connectors=[FakeConnector("crm", [*RECORDS, on_the_cut, older, ticked, fields,
+                                                                         own, keyed, carries, part, logged,
+                                                                         topic])]) as workspace:
+        script.store = workspace.store
+        assert run(workspace, choose=None).waits  # off a terminal, the list waits
+        clock[0] = NOW + timedelta(days=8)  # a person decides it a week later
+        pile = LocalApproval(workspace).pile()
+        LocalApproval(workspace).apply(Choices([[row.id] for row in pile.rows() if row.record and row.record["id"] in
+                                                {"001A", "001B", "001D"} or row.name == "Elm Court"]))
+        script.calls["things/curator"] = [("admit", {"record": {"source": "crm", "id": "001P"}, "name": "Pine Row",
+                                                     "reason": "Named in a fetched row."})]
+        out = run(workspace, choose=lambda late: Choices([[row.id] for row in late.rows() if not row.left_out]))
+        assert {f.record for f in extraction.facts()} == {"001A", "001B", "001D", "001E", "001K", "001O", "004K"}
+        held = {key.split(":")[2] for key in script.shown["things/curator"] if key.startswith("held:")}
+        assert held == {"001A", "001B", "001C", "001E"}  # what its curator is shown: the same 14 days
+        assert out.result.notices[-1] == ("The wiki starts from the last 14 days. cerebro serve reads 4 older "
+                                          "records on its next passes and rewrites the articles they change.")
+        clock[0] += timedelta(hours=5)
+        workspace.run_once(scheduled=True)  # a pass of serve once the source is due
+        assert {"001P", "002K", "003K", "005K"} <= {f.record for f in extraction.facts()}
 
 
 def test_off_a_terminal_a_late_list_waits_with_the_line_that_names_the_review_command(tmp_path: Path) -> None:
@@ -686,33 +754,17 @@ def aimed_first_run(tmp_path: Path) -> tuple[Cerebro, Any]:
 
 
 @pytest.mark.usefixtures("every_curator_weighs")  # the visits curator holds no record of its own
-def test_an_admit_into_another_collection_is_counted_under_the_first_runs_list_not_listed(tmp_path: Path) -> None:
+def test_an_admit_into_another_collection_is_a_row_of_that_collections_list_and_is_built_once_ticked(
+        tmp_path: Path) -> None:
+    from cerebro.curate import working_set
+
     workspace, out = aimed_first_run(tmp_path)
     with workspace:
-        pile = LocalApproval(workspace).pile()
-        built = run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
-    assert "Hooli" not in [row.name for row in pile.rows()]
-    assert out is not None and "1 proposal waits with its collection's curator" in out.lines[-2]
-    assert built is not None and "1 proposal waits with its collection's curator" in built.lines[-1]
-
-
-@pytest.mark.usefixtures("every_curator_weighs")  # the visits curator holds no record of its own
-@pytest.mark.parametrize("approve", [True, False])
-def test_a_first_run_list_declined_whole_while_a_curator_holds_a_proposal_ends_and_counts_it(
-        tmp_path: Path, approve: bool) -> None:
-    from cerebro.records import Decision
-
-    workspace, _ = aimed_first_run(tmp_path)
-    with workspace:
-        own = [p.id for p in proposals(workspace.store, "waiting") if p.by.name == "things/curator"]
-        workspace.decide(YOU, reject=[Decision(id, "not ours") for id in own])
-        if approve:  # approving what is left, nothing, declines the list
-            LocalApproval(workspace).apply(Choices())
-            assert workspace.store.state(KEY)["status"] == "declined"
-        else:
-            out = run(workspace, choose=None)
-            assert out is not None and out.lines[-2].startswith("Nothing approved")
-            assert "1 proposal waits with its collection's curator" in out.lines[-1]
+        things = next(listed for listed in LocalApproval(workspace).pile().lists if listed.collection == "things")
+        assert ("Hooli", "visits/curator") in [(row.name, row.agent) for row in things.proposed()]
+        assert out is not None and not any("waits with its collection's curator" in line for line in out.lines)
+        run(workspace, choose=lambda pile: Choices(accept=[[row.id] for row in pile.rows() if not row.left_out]))
+        assert "things/hooli" in [identity.id for identity in working_set(workspace.store)]
 
 
 def test_the_path_of_a_proposal_folded_into_an_accepted_row_under_another_name_leads_to_the_article_it_made(
@@ -798,6 +850,28 @@ def test_review_accept_from_accepts_what_the_list_showed_and_says_how_many_newer
                        "list was shown: run cerebro serve --once to see the list as it stands, or cerebro review")
     with open_it(root, script) as workspace:
         assert [p.id for p in proposals(workspace.store, "waiting")] == ["p_newer000001"]
+
+
+def test_review_accept_from_takes_a_first_list_a_later_pass_filed_as_its_line_says(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root, script, clock = lay_out_workspace(tmp_path, knowledge=True), Script({"things/curator": list(ADMITS)}), [NOW]
+
+    def opened(root: Path) -> Cerebro:
+        workspace = Cerebro(root, agent_run=script, extraction=FakeExtraction(), clock=lambda: clock[0],
+                            connectors=[FakeConnector("crm", list(RECORDS))])
+        script.store = workspace.store
+        return workspace
+
+    with opened(root) as workspace:
+        run(workspace, choose=Choices.starter)  # the topics curator, asked late, proposes nothing
+        script.calls["topics/curator"] = list(TOPIC)
+        clock[0] = NOW + timedelta(days=1, hours=1)
+        warned = workspace.run_once(scheduled=True).warnings  # its daily run files its first list
+    assert any("review --accept-from agents/topics/curator.md" in line for line in warned), warned
+    monkeypatch.setattr(cli, "open_workspace", opened)
+    decided = CliRunner().invoke(main, ["review", "--accept-from", "agents/topics/curator.md", "--workspace",
+                                        str(root)])
+    assert decided.exit_code == 0 and decided.output.startswith("Accepted p_"), decided.output
 
 
 NEWER = ("p_newer000001", "p_newer000002", "p_newarch0001")

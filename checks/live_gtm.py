@@ -12,19 +12,18 @@ person reads it, what was refused, skipped or failed, what it cost and how long 
 reason, and who decided each admit that landed and how many wait. It never prints a key. It passes only when the
 first run built what its approved list holds, no part of a pass failed, a source that needs the Salesforce CLI among
 them, at least one account article and one person article exist, every
-sentence of each cites a fact or links an article the workspace holds, but a line saying the evidence holds none, and a
-settled pass runs nothing. Its notes source routes `local/calls/` and `local/meetings/` into calls, and
+id a sentence cites is a fact or an article the workspace holds, and a settled pass runs nothing. It counts the
+sentences grounding marked in each article. Its notes source routes `local/calls/` and `local/meetings/` into calls, and
 one more call note lands after the second pass, once the accounts are settled, so it is held: the calls curator reads
 it on its held list and proposes its account to the accounts curator. With `--keep <folder>` the workspace is made there
-and left, to read it after. With `--see-first <words>` the first run is given the person's words on what to see
-first. At its end it asks the wiki the questions in `gtm_questions.yaml` and prints their
+and left, to read it after. At its end it asks the wiki the questions in `gtm_questions.yaml` and prints their
 score, and fails under `--min-score`, 0.85 by default. It fails too unless Brightwater's or Kestrel's article,
 whose notes name their people, has a Stakeholders part, and when any account's Stakeholders part holds a fence: a
 reader is owed sentences there, not data. With `--decision <provider>:<model>`, such as
 `typesafe:jev-1.13.0`, the workspace decides and grounds on that model in place of the default. The questions are judged
 by Rune whatever the workspace decides on, so two runs compare. With `--summary <file>` it writes what a
-run is compared by as JSON: each article, its sentences per part and the facts they cite, by text, what grounding
-dropped and why, the question scores, and the cost.
+run is compared by as JSON: each article, its sentences per part, the facts they cite, by text, and how many grounding
+marked, the question scores, and the cost.
 """
 
 from __future__ import annotations
@@ -38,6 +37,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from _first_run import FIRST, placed, taken_whole
@@ -47,17 +47,35 @@ from spend import spent_line, table
 
 from cerebro import evals, rendered, scaffold
 from cerebro.app import Cerebro
-from cerebro.article import cut, passages
+from cerebro.article import MARK, cut, passages
 from cerebro.budget import LOG
 from cerebro.evidence import CITE
 from cerebro.first_run import run as first_run
-from cerebro.first_run import see_first
-from cerebro.ground import ABSENCE, split_sentences
+from cerebro.ground import split_sentences, unmarked
 from cerebro.models import HttpDecider, ModelSpec
 from cerebro.records import proposals
 from cerebro.runner import PassResult
 
 MAX_PASSES = 8
+SHIFT = datetime.now(UTC).date() - date(2026, 11, 17)  # the notes are written as of 17 November 2026
+DAYS = {"10 November": date(2026, 11, 10), "12 November": date(2026, 11, 12), "21 November": date(2026, 11, 21),
+        "25 November": date(2026, 11, 25), "1 December": date(2026, 12, 1), "2 December": date(2026, 12, 2),
+        "15 December": date(2026, 12, 15), "January": date(2027, 1, 15)}
+
+
+def moved(text: str) -> str:
+    """`text` with each date, day and month the notes name moved by `SHIFT`, so the newest note is dated today and a
+    first run's last 14 days hold them all."""
+
+    def day(found: re.Match[str]) -> str:
+        if found[0] not in DAYS:
+            return (date.fromisoformat(found[0]) + SHIFT).isoformat()
+        at = DAYS[found[0]] + SHIFT
+        return f"{at:%B}" if found[0] == "January" else f"{at.day} {at:%B}"
+
+    return re.sub(r"\b(?:\d{4}-\d{2}-\d{2}|" + "|".join(sorted(DAYS, key=len, reverse=True)) + r")\b", day, text)
+
+
 LOCAL = """kind: files
 window: { behind: all }
 select:
@@ -71,17 +89,17 @@ select:
   - glob: "local/email/**/*.md"
     extract: facts
 """
-LATE = ("local/calls/2026-11-18-tidewater-intro.md", """Account: Tidewater Freight
+LATE = (moved("local/calls/2026-11-17-tidewater-intro.md"), moved("""Account: Tidewater Freight
 Attendees: Lina Brooks <lina@ourco.example>
-Date: 2026-11-18
+Date: 2026-11-17
 
 Ravi Menon, head of finance operations at Tidewater Freight, took an intro call with Lina Brooks from our side.
 Ravi said Tidewater matches about 4,000 carrier invoices a month by hand.
 Lina Brooks will send Ravi a demo recording by 25 November.
-""")
+"""))
 MIN_SCORE = 0.85  # the question score a healthy run clears with room
 QUESTIONS = Path(__file__).resolve().parent / "gtm_questions.yaml"
-NOTES = {
+NOTES = {moved(path): moved(text) for path, text in {
     "local/calls/2026-11-03-brightwater-discovery.md": """Account: Brightwater Logistics
 Attendees: Nessa Torvik <nessa@brightwater.example>, Sam Okoye <sam@ourco.example>
 Date: 2026-11-03
@@ -137,7 +155,7 @@ Date: 2026-11-17
 Grace Liu said the Tacoma clinic's staff training is done.
 Grace Liu raised that the second clinic's network upgrade slips to January, which moves its go-live.
 """,
-}
+}.items()}
 
 
 def show(n: int | str, result: PassResult, seconds: float, reasons: list[str]) -> None:
@@ -194,7 +212,8 @@ def sentences(text: str) -> list[str]:
 
 
 def read_articles(workspace: Cerebro, reasons: list[str]) -> dict[str, list[str]]:
-    """Each collection's articles with content, printed; every sentence checked for a citation the workspace holds."""
+    """Each collection's articles with content, printed with how many sentences grounding marked; every citation
+    checked for a fact or an article the workspace holds."""
     held = {f.id for f in workspace.extraction.facts()}  # a fact the workspace holds, or an article it keeps, as a brief cites
     held |= {a.identity.id for c in workspace.store.collections() for a in workspace.store.query(c)}
     written: dict[str, list[str]] = {}
@@ -205,7 +224,8 @@ def read_articles(workspace: Cerebro, reasons: list[str]) -> dict[str, list[str]
         for article in workspace.store.query(collection):
             full = workspace.store.article(article.identity.id)
             print(f"\n=== {full.identity.id} ({full.identity.title}, {full.identity.status}): "
-                  f"{len(full.compilations)} parts, {len(workspace.store.facts_of(full.identity.id))} facts linked")
+                  f"{len(full.compilations)} parts, {len(workspace.store.facts_of(full.identity.id))} facts linked, "
+                  f"{sum(s.text.count(MARK) for s in full.compilations)} sentences marked")
             for part in passages(full):
                 print(f"## {part.heading}\n{part.text}")
                 if part.by.startswith(rendered.MARK):
@@ -217,10 +237,8 @@ def read_articles(workspace: Cerebro, reasons: list[str]) -> dict[str, list[str]
                         reasons.append(f"{full.identity.id}: {part.heading}: links {path}, which from its folder opens "
                                        "no article that has been written and no record")
                 for sentence in sentences(part.text):
-                    cited = CITE.findall(sentence) + [link.removeprefix("../").removesuffix(".md") for link in
+                    cited = CITE.findall(unmarked(sentence)) + [link.removeprefix("../").removesuffix(".md") for link in
                                                       re.findall(r"\]\((\.\./[^)\s]+\.md)\)", sentence)]
-                    if not cited and not ABSENCE.search(sentence):  # a line saying the evidence holds none stands
-                        reasons.append(f"{full.identity.id}: {part.heading}: cites nothing: {sentence[:120]!r}")
                     reasons += [f"{full.identity.id}: [^{id}] is no fact or article the wiki holds" for id in cited
                                 if id not in held]
             if full.compilations:
@@ -326,9 +344,9 @@ def borrowed_facts(workspace: Cerebro, accounts: dict[str, str], reasons: list[s
             reasons.append(f"{id}: links facts of a note keyed to {' and '.join(others)}")
 
 
-def summary(workspace: Cerebro, dropped: list[str], report: evals.Report) -> dict:
-    """What one run is compared by: each article with content, its sentences per part and the facts they cite,
-    by text so two runs compare, what grounding dropped, the question scores, and what the run spent."""
+def summary(workspace: Cerebro, report: evals.Report) -> dict:
+    """What one run is compared by: each article with content, its sentences per part, the facts they cite, by text
+    so two runs compare, and how many grounding marked, the question scores, and what the run spent."""
     texts = {f.id: f.text for f in workspace.extraction.facts()}
     articles = {}
     for collection in workspace.store.collections():
@@ -338,18 +356,20 @@ def summary(workspace: Cerebro, dropped: list[str], report: evals.Report) -> dic
                 continue  # an archived article is out of the working set a reader asks
             articles[article.identity.id] = {
                 "parts": {s.heading: len(sentences(s.text)) for s in passages(article)},
-                "cites": sorted({texts.get(id, id) for s in passages(article) for id in CITE.findall(s.text)}),
+                "cites": sorted({texts.get(id, id) for s in passages(article)
+                                 for id in CITE.findall(unmarked(s.text))}),
+                "marked": sum(s.text.count(MARK) for s in article.compilations),
                 "linked": len(workspace.store.facts_of(article.identity.id))}
     now = workspace.clock()
-    return {"articles": articles, "facts": sorted(texts.values()), "dropped": dropped,
+    return {"articles": articles, "facts": sorted(texts.values()),
             "score": report.score, "questions": {s.id: s.score for s in report.scored},
             "spent": round(workspace.ledger.spent(now), 4),
             "spent_evaluation": round(workspace.ledger.spent(now, "evaluation"), 4)}
 
 
 def handins(workspace: Cerebro, runs: list) -> dict:
-    """How the runs that write handed in their text: by status, the turns they took, how often the model was told its
-    text cited nothing or that text outside a hand-in is not kept, how much text stood before the first heading, and how
+    """How the runs that write handed in their text: by status, the turns they took, how often the model was told that
+    text outside a hand-in is not kept, how much text stood before the first heading, and how
     often a run with headings under # Output used each of them, in their order, and the tool calls the runs refused,
     as each run's row in the agent-runs log counts them, by tool."""
     by_id = {a.id: a for a in workspace.agents}
@@ -365,7 +385,6 @@ def handins(workspace: Cerebro, runs: list) -> dict:
     return {
         "runs": len(writers), "statuses": {s: sum(r.status == s for r in writers) for s in {r.status for r in writers}},
         "turns": round(sum(r.usage.requests for r in writers) / max(len(writers), 1), 2),
-        "told_uncited": sum("Your text cites nothing" in t for t in said),
         "told_text_not_kept": sum("Your reply handed in nothing" in t for t in said),  # asked once to hand in
         "tool_calls_refused": sum(row.get("refused", 0) for row in logged.values()),
         "refused_by_tool": dict(Counter(tool for row in logged.values() for tool in row.get("refused_tools", []))),
@@ -413,11 +432,8 @@ def main() -> int:
                 print(f"  notice {line}")
             settled = False
             runs = []
-            dropped: list[str] = []
             waited: list[str] = []
             began = time.monotonic()
-            if "--see-first" in sys.argv:  # the person's words on what to see first, as the run asks at a terminal
-                see_first(workspace, sys.argv[sys.argv.index("--see-first") + 1])
             out = first_run(workspace, choose=taken_whole, say=print)
             where = placed(FIRST["pile"], NOTES, OWN_DOMAIN) if "pile" in FIRST else "no list was shown"
             print(f"placed    {where}")
@@ -437,8 +453,6 @@ def main() -> int:
                 runs += result.runs
                 waited += [f"pass {n}: {k}: {why}" for k, why in [*result.skipped.items(), *(
                     line.split(": ", 1) for line in result.warnings if ": " in line)] if "so it waits until" in why]
-                dropped += [f"pass {n}: {line}" for line in result.warnings if ": dropped " in line or
-                            ": removed the lead" in line]
                 if n == 1:
                     for agent, why in sorted(result.skipped.items()):
                         print(f"  skipped {agent}: {why}")
@@ -466,7 +480,9 @@ def main() -> int:
                     reasons.append(f"no {collection} article was written")
             print("\n" + table({a.id: a.role for a in workspace.agents}, runs))
             judge = ModelSpec("fireworks", "rune", job="decision")  # one judge of the questions, whatever the workspace decides on
-            report = evals.run(workspace, evals.load(QUESTIONS), decider=HttpDecider(judge, key=workspace.model_key(judge)),
+            asked = root / QUESTIONS.name  # the questions with their days moved as the notes' are
+            asked.write_text(moved(QUESTIONS.read_text(encoding="utf-8")), encoding="utf-8")
+            report = evals.run(workspace, evals.load(asked), decider=HttpDecider(judge, key=workspace.model_key(judge)),
                                model=judge, ledger=workspace.ledger, cap_usd=workspace.ledger.caps.evaluation, clock=workspace.clock)
             print()
             for line in evals.lines(report):
@@ -483,7 +499,7 @@ def main() -> int:
                   f"${workspace.ledger.spent(now, 'evaluation'):.4f}), {time.monotonic() - started:.0f}s")
             if "--summary" in sys.argv:
                 Path(sys.argv[sys.argv.index("--summary") + 1]).write_text(json.dumps(
-                    summary(workspace, dropped, report) | {"handins": counted}, indent=1), encoding="utf-8")
+                    summary(workspace, report) | {"handins": counted}, indent=1), encoding="utf-8")
     if reasons:
         print("FAIL")
         for reason in reasons:

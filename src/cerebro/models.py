@@ -1,9 +1,10 @@
 """Model settings, prices, and the decision model client.
 
 A workspace names one model for each of three jobs in the `models:` block of `settings.yaml`: extraction, decision and
-compilation, each a provider, a model and an optional effort. An agent file may carry the same shape as its own
-`model:`. A bad entry is refused with one line that names its key. A provider needs a key, and this module says only
-the key's name. It never reads or keeps a key's value: a caller hands the decision client a way to get it.
+compilation, each a provider, a model, and an optional effort and retries. An agent file may carry the same shape as
+its own `model:`, whose retries fall back to its job's, then to `RETRIES`. A bad entry is refused with one line that
+names its key. A provider needs a key, and this module says only the key's name. It never reads or keeps a key's
+value: a caller hands the decision client a way to get it.
 
 Prices are list prices in dollars per million tokens.
 `cost` turns a run's usage into dollars. A model with no known price costs $0, and the budget
@@ -24,7 +25,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from contextvars import ContextVar
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from .errors import CerebroError
@@ -33,15 +35,18 @@ if TYPE_CHECKING:
     from .gateway import Route
 
 __all__ = [
-    "DECISION_MAX_BYTES", "DEFAULTS", "EFFORTS", "ENTRY_KEYS", "JOBS", "PRICES", "PROVIDERS", "RUNE_MAX_QUESTIONS",
-    "SETTINGS_KEYS", "Answer", "Choice", "Decider", "Decision", "DecisionError", "DecisionTooLarge",
-    "HttpDecider", "ModelSettingsError", "ModelSpec", "Price", "Provider", "Question", "Score", "TokenCount", "Tokens",
-    "YesNo", "cost", "price_of", "read_model", "read_models", "wire_id",
+    "DECISION_MAX_BYTES", "DEFAULTS", "EFFORTS", "ENTRY_KEYS", "JOBS", "PRICES", "PROVIDERS", "RETRIES",
+    "RUNE_MAX_QUESTIONS", "SETTINGS_KEYS", "TRIES", "WAIT_MOST", "Answer", "Choice", "Decider", "Decision",
+    "DecisionError", "DecisionTooLarge", "HttpDecider", "ModelSettingsError", "ModelSpec", "Price", "Provider",
+    "Question", "Score", "TokenCount", "Tokens", "Tried", "YesNo", "advice_for", "cost", "price_of", "read_model",
+    "read_models", "wire_id",
 ]
 
 JOBS = ("extraction", "decision", "compilation")
 EFFORTS = ("none", "low", "medium", "high", "xhigh", "max")
-ENTRY_KEYS = ("provider", "model", "effort")
+ENTRY_KEYS = ("provider", "model", "effort", "retries")
+RETRIES = 3  # times a model call is tried again after a timeout, a rate limit or a server error, unless its entry says
+WAIT_MOST = 60.0  # seconds a model call waits at most before it is tried again, whatever the provider asks
 SETTINGS_KEYS = {"models": {job: dict.fromkeys(ENTRY_KEYS) for job in JOBS}}
 
 
@@ -98,12 +103,14 @@ def wire_id(provider: str, model: str) -> str:
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """The model for one job, or for one agent file: a provider, a model as settings name it, and an effort."""
+    """The model for one job, or for one agent file: a provider, a model as settings name it, an effort, and how many
+    times a call is tried again after a timeout, a rate limit or a server error."""
 
     provider: str
     model: str
     effort: str = ""
     job: str = ""
+    retries: int = RETRIES
 
     @property
     def wire_id(self) -> str:
@@ -120,12 +127,13 @@ class ModelSpec:
         """The environment variable that serves the key when the store holds none, such as `FIREWORKS_API_KEY`."""
         return PROVIDERS[self.provider].variable
 
-    def block(self) -> dict[str, str]:
-        """The entry as `settings.yaml` writes it, the shape `run.model_name` and `run.model_settings` take."""
-        out = {"provider": self.provider, "model": self.model}
+    def block(self) -> dict[str, Any]:
+        """The entry in the shape `settings.yaml` writes, which `run.model_name` and `run.model_settings` take, its
+        `retries` always given."""
+        out: dict[str, Any] = {"provider": self.provider, "model": self.model}
         if self.effort:
             out["effort"] = self.effort
-        return out
+        return {**out, "retries": self.retries}
 
 
 DEFAULTS: dict[str, ModelSpec] = {
@@ -136,15 +144,16 @@ DEFAULTS: dict[str, ModelSpec] = {
 
 
 def read_model(entry: Any, where: str, job: str = "compilation") -> ModelSpec:
-    """Check one entry, `{ provider, model, effort }`, for `job`. `where` names it in the refusal, such as
+    """Check one entry, `{ provider, model, effort, retries }`, for `job`. `where` names it in the refusal, such as
     `settings.yaml models.decision` or `agents/things/article.md model`."""
     example = "{ provider: fireworks, model: glm-5p3 }" if job != "decision" else "{ provider: typesafe, model: jev-1.13.0 }"
     if not isinstance(entry, dict):
         raise ModelSettingsError(f"{where} is not a map: write {example}")
     extra = sorted(set(entry) - set(ENTRY_KEYS))
     if extra:
-        raise ModelSettingsError(f"{where} has {extra[0]!r}, which is not a key: use provider, model and effort")
-    provider, model, effort = entry.get("provider"), entry.get("model"), entry.get("effort")
+        raise ModelSettingsError(f"{where} has {extra[0]!r}, which is not a key: use provider, model, effort and "
+                                 "retries")
+    provider, model, effort, retries = (entry.get(key) for key in ENTRY_KEYS)
     if not isinstance(provider, str) or not provider or not isinstance(model, str) or not model:
         raise ModelSettingsError(f"{where} needs a provider and a model: write {example}")
     if provider not in PROVIDERS:
@@ -159,7 +168,9 @@ def read_model(entry: Any, where: str, job: str = "compilation") -> ModelSpec:
                                  "use rune, rune-<suffix>, or a full id ending /routers/rune")
     if effort is not None and effort not in EFFORTS:
         raise ModelSettingsError(f"{where}.effort is {effort!r}: use {', '.join(EFFORTS)}, or leave it out")
-    return ModelSpec(provider, model, effort or "", job)
+    if retries is not None and (not isinstance(retries, int) or isinstance(retries, bool) or retries < 0):
+        raise ModelSettingsError(f"{where}.retries is {retries!r}: use a whole number, 0 or more, or leave it out")
+    return ModelSpec(provider, model, effort or "", job, RETRIES if retries is None else retries)
 
 
 def read_models(settings: Mapping[str, Any]) -> dict[str, ModelSpec]:
@@ -400,6 +411,19 @@ class Decider:
         raise NotImplementedError
 
 
+class Tried(Protocol):
+    """What a caller that holds model calls to a cap is told of each try: `again` before each try after the first,
+    which raises to stop it, and `spent` with what a try that failed is held to have spent."""
+
+    def again(self) -> None: ...
+
+    def spent(self, tokens: Tokens) -> None: ...
+
+
+# The `Tried` the decision call under way tells of its tries, when its caller sets one.
+TRIES: ContextVar[Tried | None] = ContextVar("decision_tries", default=None)
+
+
 def _probability(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1
 
@@ -467,13 +491,13 @@ class HttpDecider(Decider):
     `Cerebro.model_key`, which reads the secrets store first. With none given it reads the environment variable the
     provider names. `send` makes the HTTP request, so a test can stand in for the network. `route` sends it to the
     host settings name for the provider, with their headers, `call` naming the kind of call.
-    A rate limit or a server error is tried again up to `attempts` times, waiting as `Retry-After` asks or 1, 2, 4
-    seconds; a refused key is not.
+    A timeout, a rate limit or a server error is tried again up to the spec's `retries` times, waiting as
+    `Retry-After` asks or 1, 2, 4 seconds and on, a minute at most; a refused key is not.
     """
 
     def __init__(self, spec: ModelSpec, *, key: Callable[[], str] | None = None, send: Send | None = None,
-                 attempts: int = 4, sleep: Callable[[float], None] = time.sleep, url: str = "",
-                 route: Route | None = None, call: str = "decision"):
+                 sleep: Callable[[float], None] = time.sleep, url: str = "", route: Route | None = None,
+                 call: str = "decision"):
         if not PROVIDERS[spec.provider].decision_url:
             raise ModelSettingsError(f"{spec.provider} has no decision API: use fireworks or typesafe")
         self.spec, self.route, self.call = spec, route, call
@@ -481,7 +505,7 @@ class HttpDecider(Decider):
         self.url = url or (route.url(own) if route is not None else own)
         self._key = key or (lambda: os.environ.get(spec.variable, "").strip())
         self._send = send or _urllib_send
-        self.attempts = max(1, attempts)
+        self.attempts = spec.retries + 1
         self._sleep = sleep
 
     def max_questions(self) -> int:
@@ -492,7 +516,7 @@ class HttpDecider(Decider):
         caller that stops waiting itself and must not leave a call running for minutes behind it."""
         send = self._send if self._send is not _urllib_send else (
             lambda url, headers, body: _urllib_send(url, headers, body, timeout=seconds))
-        return HttpDecider(self.spec, key=self._key, send=send, attempts=1, sleep=self._sleep, url=self.url,
+        return HttpDecider(replace(self.spec, retries=0), key=self._key, send=send, sleep=self._sleep, url=self.url,
                            route=self.route, call=self.call)
 
     def body(self, state: Any, questions: Mapping[str, Question]) -> dict[str, Any]:
@@ -528,32 +552,40 @@ class HttpDecider(Decider):
                                                              _tokens(self.spec.model, usage, "output_tokens")))
 
     def _post(self, headers: dict[str, str], data: bytes) -> dict[str, Any]:
+        tried = TRIES.get()
+        sent = TokenCount(input_tokens=(2 * len(data) + 4) // 5)  # what a try that failed read, as `run.tokens` holds it
         attempt = 0
         while True:
             last = attempt >= self.attempts - 1
+            if attempt and tried is not None:
+                tried.again()
             try:
                 status, reply_headers, body = self._send(self.url, headers, data)
             except OSError as error:
+                if tried is not None:
+                    tried.spent(sent)
                 if last:
                     raise DecisionError(f"{self.spec.model} at {self.url} did not answer ({type(error).__name__}): "
                                         "check the network, then try again") from None
-                self._sleep(2.0 ** attempt)
+                self._sleep(min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1
                 continue
+            if (status in (408, 429) or status >= 500) and tried is not None:
+                tried.spent(sent)
             if (status in (408, 429) or status >= 500) and not last:
-                self._sleep(_retry_after(reply_headers) or 2.0 ** attempt)
+                self._sleep(_retry_after(reply_headers) or min(2.0 ** attempt, WAIT_MOST))
                 attempt += 1
                 continue
             if 300 <= status < 400:
                 raise DecisionError(f"{self.spec.model} at {self.url} answered with a redirect (HTTP {status}), which "
                                     "is not followed so the key stays with its host: check the decision URL")
             if status >= 400:  # the reply's body is left out: a server that echoes the request would echo the key
-                if self.route is not None and self.route.refused(status, self.call):
-                    raise DecisionError(f"{self.spec.model} at {self.url} answered HTTP {status}: check providers in "
-                                        "settings.yaml")
-                hint = (f"check the {self.spec.key_name} key" if status in (401, 403)
-                        else "check the model id and the request")
-                raise DecisionError(f"{self.spec.model} answered HTTP {status}: {hint}")
+                at = ""
+                if self.route is not None and self.route.base_url:  # a gateway's: a refused key also stops the pass
+                    self.route.refused(status, self.call)
+                    at = f" at {self.url}"
+                said = advice_for(status, None if at else f"the {self.spec.key_name} key")
+                raise DecisionError(f"{self.spec.model}{at} answered HTTP {status}: {said}")
             try:
                 reply = json.loads(body)
             except ValueError:
@@ -561,6 +593,18 @@ class HttpDecider(Decider):
             if not isinstance(reply, dict):
                 raise DecisionError(f"{self.spec.model} gave a reply that is not an object: ask again, or report it")
             return reply
+
+
+def advice_for(status: int, key: str | None) -> str:
+    """What a person does about a model call that failed with HTTP `status`, every road alike: for a refused key, check
+    `key`, or with None, as through a gateway, which is sent no provider's key, its settings."""
+    if status in (401, 403):
+        return f"check {key}" if key is not None else "check providers in settings.yaml"
+    if status == 402:
+        return "payment is due at the provider"
+    if status in (408, 429) or status >= 500:
+        return "the provider is busy or down, so try again later"
+    return "check the model id and the request"
 
 
 def _tokens(model: str, usage: Mapping[str, Any], key: str) -> int:
@@ -573,10 +617,11 @@ def _tokens(model: str, usage: Mapping[str, Any], key: str) -> int:
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:
-    """The wait `Retry-After` asks for, from 0 to 120 seconds, or None for one that is missing or no number."""
+    """The wait `Retry-After` asks for, from 0 to `WAIT_MOST` seconds, or None for one that is missing or no
+    number."""
     value = next((v for k, v in headers.items() if k.lower() == "retry-after"), None)
     try:
         wait = float(value) if value is not None else math.nan
     except ValueError:
         return None
-    return min(max(wait, 0.0), 120.0) if math.isfinite(wait) else None
+    return min(max(wait, 0.0), WAIT_MOST) if math.isfinite(wait) else None

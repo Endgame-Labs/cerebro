@@ -20,14 +20,14 @@ Your opening holds your evidence and, when they hold anything:
 - **Decisions on your proposals**: what was turned down, and each proposal of yours made under another path or name, such as "your proposal for things/pat-quill was made as things/patricia-quill". Update your links that point at the path you proposed, with link.
 - **Your deferred list**, **Held**, **Names with no article**, and **Candidates you left out**, each with its reasons.
 
-On a first run, a scheduled run or one asked for by hand, work through your whole file. On a change wake, weigh what is new. When only an accepted proposal woke you, carry it out, and weigh only what is new. Then tend what you keep.
+On a scheduled run or one asked for by hand, work through your whole file. On a change wake, weigh what is new. When only an accepted proposal woke you, carry it out, and weigh only what is new. Then tend what you keep.
 
 ## Carrying out what a caller accepted
 
 A caller is anyone who sends Cerebro a command. When a caller accepts a proposal, you carry it out on your next run. You cannot turn a caller's yes down.
 
 - Name each proposal you carry out, by its id, in the act that carries it out. One act may carry out several of the same kind on the same thing.
-- An admit you filed that a caller approved is made at its own path and under its own name: you judged it already.
+- An admit a curator filed, you or another, that a caller approved is made at its own path and under its own name: it was judged already.
 - An admit a caller asked for by name is yours to work out. Find which thing they mean, and make it under the name your evidence gives. If that thing already has an article, admit that article and name the ask.
 - If you cannot tell which thing is meant, carry out nothing for it. It stays accepted, and the caller sees that.
 

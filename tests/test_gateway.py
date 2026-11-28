@@ -1,5 +1,6 @@
 """Model calls through the `providers:` block: every road goes to its `base_url` with its headers, a refusal that
-means stop is one request and stops the pass, trust pins the host, and `status` names it."""
+means stop is one request and stops the pass, a 400 fails its call alone, trust pins the host, and `status` names
+it."""
 
 from __future__ import annotations
 
@@ -20,13 +21,14 @@ from cerebro.agent import Agent, Budget
 from cerebro.app import Cerebro
 from cerebro.budget import CallRefused
 from cerebro.connector import Record
+from cerebro.errors import CerebroError
 from cerebro.facts import FactoidExtraction
 from cerebro.models import ModelSpec, YesNo
 from cerebro.project import WorkspaceError, load
 from cerebro.secrets import open_secrets
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "checks"))
-from gateway_standin import _chat, _decide, _vector
+from gateway_standin import _chat, _decide, _sent, _vector
 
 HOST = "http://gateway.example.internal:8769"
 VALUE = "sk-gateway-test-5d1e9a77"
@@ -93,7 +95,8 @@ def gateway(monkeypatch: pytest.MonkeyPatch) -> Iterator[Gateway]:
 
     def answering(request: httpx2.Request) -> httpx2.Response:
         status, reply = standin.answer(str(request.url), dict(request.headers), request.content)
-        return httpx2.Response(status, json=reply)
+        data, kind = _sent(status, reply, json.loads(request.content or b"{}"))
+        return httpx2.Response(status, content=data, headers={"content-type": kind})
 
     monkeypatch.setattr("pydantic_ai.providers._openai_compatible.create_async_httpx2_client",
                         lambda *args, **kwargs: httpx2.AsyncClient(transport=httpx2.MockTransport(answering)))
@@ -127,7 +130,6 @@ ROADS: dict[str, tuple[Callable[[Cerebro], Any], str, str]] = {
     "decision": (lambda w: w.decider.decide("The sky is blue.", {"q": YesNo("Is the sky blue?")}),
                  "decision", "/v1/systemone"),
     "agent run": (lambda w: w.agent_run.run(AGENT, [], [], Budget()), "agent_run", "/inference/v1/chat/completions"),
-    "repair": (lambda w: w.rewriter.rewrite("Reply ok.", "ok"), "repair", "/inference/v1/chat/completions"),
     "facts layer": (lambda w: w.extraction.extract(NOTE), "embedding", "/inference/v1/embeddings"),
     "key proof": (lambda w: w.prove_key("compilation", COMPILE, "sk-typed-by-a-person"), "key_proof",
                   "/inference/v1/chat/completions"),
@@ -159,27 +161,55 @@ def test_every_road_goes_to_base_url_on_its_own_path_with_the_merged_headers_and
                 assert all(isinstance(v, str) and v for v in context.values()), (name, context)
                 assert headers["x-example-key"] == VALUE, name
                 assert headers["authorization"] == "Bearer unused", (name, headers["authorization"])
-    assert calls == {"decision", "agent_run", "repair", "extraction", "embedding", "extraction_decision", "key_proof"}
+    assert calls == {"decision", "agent_run", "extraction", "embedding", "extraction_decision", "key_proof"}
 
 
-@pytest.mark.parametrize("road", list(ROADS))
-def test_a_403_through_base_url_is_one_request_says_no_secret_it_echoes_and_stops_every_call_after_it(
-        tmp_path: Path, gateway: Gateway, road: str) -> None:
-    """Breaks caught: a road that tries a refused call again, or goes on making calls after the refusal, and what a
-    road says of the refusal holding the secret header's value that the reply echoes."""
+@pytest.mark.parametrize(("road", "status"), [("decision", 401), ("decision", 403), ("agent run", 402),
+                                              ("facts layer", 402), ("facts layer", 403), ("key proof", 403)])
+def test_a_refused_key_through_base_url_is_one_request_says_no_secret_it_echoes_and_stops_every_call_after_it(
+        tmp_path: Path, gateway: Gateway, road: str, status: int) -> None:
+    """Breaks caught: a road that tries a refused call again, or goes on making calls after the refusal, a status of
+    `STOP` that does not stop the pass, what a road says of the refusal holding the secret header's value that the
+    reply echoes, and a decision's, a record's or the pass's refusal that does not send the person to the gateway's
+    settings for a refused key, or to the provider for payment due."""
     call, _, path = ROADS[road]
-    gateway.status = 403
+    gateway.status = status
     with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
         try:
             said = str(getattr(call(workspace), "note", ""))
         except Exception as error:  # noqa: BLE001 - a road may raise its refusal
             said = workspace.mask_every()(str(error)) if road == "facts layer" else str(error)  # as a pass prints it
         assert len(gateway.sent) == 1 and gateway.sent[0][0] == HOST + path and gateway.sent[0][1]["x-example-key"]
-        assert "403" in said and VALUE[:8] not in said and VALUE[-8:] not in said, said
+        assert str(status) in said and VALUE[:8] not in said and VALUE[-8:] not in said, said
+        todo = "payment is due at the provider" if status == 402 else "check providers in settings.yaml"
+        tail = {"decision": f": {todo}", "facts layer": f": {todo}; the record is tried again next pass"}
+        assert road not in tail or said.endswith(tail[road]), said
         assert workspace.gateway.said.startswith(f"Model calls stopped: {HOST} refused a ")
-        assert "HTTP 403 at 09:00 UTC" in workspace.gateway.said
+        assert f"HTTP {status} at 09:00 UTC. Nothing more starts this pass: {todo}, and" in workspace.gateway.said
         with pytest.raises(CallRefused):
             workspace.ledger.check("compilation", NOW)
+
+
+@pytest.mark.parametrize(("road", "said"), [
+    ("decision", f"jev-1.13.0 at {HOST}/v1/systemone answered HTTP 400: check the model id and the request"),
+    ("facts layer", ": check the model id and the request; the record is tried again next pass"),
+])
+def test_a_400_through_base_url_fails_that_call_alone_and_the_next_call_on_the_route_goes_out(
+        tmp_path: Path, gateway: Gateway, road: str, said: str) -> None:
+    """Breaks caught: a 400, one bad request, that stops the pass as a refused key does or is tried again, a
+    decision's failure on one that does not name the gateway or that sends the person to its settings, and a facts
+    layer's that sends the person to the key."""
+    call, _, _ = ROADS[road]
+    gateway.status = 400
+    with Cerebro(_workspace(tmp_path), trusted=True, clock=lambda: NOW) as workspace:
+        with pytest.raises(CerebroError) as failed:
+            call(workspace)
+        line = str(failed.value)
+        assert len(gateway.sent) == 1 and "HTTP 400" in line and line.endswith(said), line
+        gateway.status = 0
+        workspace.ledger.check("compilation", NOW)
+        call(workspace)
+        assert len(gateway.sent) > 1 and workspace.gateway.said == ""
 
 
 def test_a_refused_pass_stops_after_one_request_with_its_stop_line_and_never_prints_the_secret_header(

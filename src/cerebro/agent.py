@@ -32,7 +32,7 @@ import yaml
 from .apps import bind
 from .article import atx
 from .errors import CerebroError
-from .models import ModelSettingsError, read_model
+from .models import ENTRY_KEYS, ModelSettingsError, read_model
 from .store import LOGS, RELATIONS
 from .window import is_window, shaped
 
@@ -44,7 +44,7 @@ __all__ = [
 ]
 
 KEYS = ("evidence", "heartbeat", "tools", "budget", "model", "subagents", "authority", "rendered", "target",
-        "heading")
+        "heading", "min_grounding")
 KEEP_ACTED_ON = ("articles",)  # the lines keep and top act on; on any other they are read and not acted on
 HEARTBEAT_WORDS = ("change", "manual", "hourly", "daily", "weekly")
 SCHEDULES = {"hourly": "1h", "daily": "1d", "weekly": "7d"}
@@ -238,6 +238,7 @@ class Agent:
     composers: list[str] = field(default_factory=list)
     authority: Authority | None = None
     rendered: dict[str, Render] = field(default_factory=dict)
+    min_grounding: float | None = None
     hash: str = ""
     warnings: list[str] = field(default_factory=list)
 
@@ -385,6 +386,12 @@ def _anchored(value: Any) -> bool:
     return isinstance(value, str) and (value == "this" or value.startswith("this."))
 
 
+def _kinds(file: _File, where: str, key: str, value: Any) -> None:
+    """The kinds a line on facts keeps, under `key`: one kind's name, or a list of them."""
+    if not isinstance(value, (str, list)) or (isinstance(value, list) and not all(isinstance(c, str) for c in value)):
+        raise file.fail(f"{where} {key} is not a class or a list of them: write {key}: [timeline]")
+
+
 def _query(file: _File, n: int, kind: str, value: Any, curates: bool) -> None:
     where = f"evidence {n}, {kind}"
     if not isinstance(value, dict) or not isinstance(value.get("from"), str) or not value["from"].strip():
@@ -394,6 +401,9 @@ def _query(file: _File, n: int, kind: str, value: Any, curates: bool) -> None:
         raise file.fail(f"{where} from collections takes no filter: it lists every collection the site shows")
     sided = False
     for key, filter_value in filters.items():
+        if source == "facts" and key in ("classes", "kind"):
+            _kinds(file, where, key, filter_value)
+            continue
         if isinstance(filter_value, (dict, list)):
             raise file.fail(f"{where} filter {key} takes one value, not a list or a map: write {key}: <value>")
         if str(key).lower() == "limit":
@@ -493,11 +503,7 @@ def _evidence(file: _File, value: Any, curates: bool) -> list[EvidenceLine]:
             if "window" in args and not is_window(args["window"]):
                 raise file.fail(f"evidence {n}, facts window {args['window']!r} is no window: write one such as "
                                 "last_30_days or this_quarter")
-            classes = args.get("classes", [])
-            if not isinstance(classes, (str, list)) or (isinstance(classes, list)
-                                                        and not all(isinstance(c, str) for c in classes)):
-                raise file.fail(f"evidence {n}, facts classes is not a class or a list of them: write classes: "
-                                "[timeline]")
+            _kinds(file, f"evidence {n}, facts", "classes", args.get("classes", []))
             relation = args.get("relation", [*RELATIONS])
             if not (relation in RELATIONS or (isinstance(relation, list) and relation
                                               and all(r in RELATIONS for r in relation))):
@@ -596,6 +602,18 @@ def _budget(file: _File, value: Any) -> Budget:
     return Budget(**value)
 
 
+def is_floor(value: Any) -> bool:
+    """Whether `value` can stand as `min_grounding`, in an agent file or in settings.yaml: a number from 0 to 1."""
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and 0 <= value <= 1
+
+
+def _floor(file: _File, value: Any) -> float | None:
+    if value is not None and not is_floor(value):
+        raise file.fail(f"min_grounding is {value!r}: write a number from 0 to 1, such as min_grounding: 0.6",
+                        "min_grounding")
+    return None if value is None else float(value)
+
+
 def _model(file: _File, value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -606,7 +624,7 @@ def _model(file: _File, value: Any) -> dict[str, Any] | None:
     try:
         read_model(value, "model:")
     except ModelSettingsError as error:
-        extra = sorted(set(value) - {"provider", "model", "effort"}, key=str)
+        extra = sorted(set(value) - set(ENTRY_KEYS), key=str)
         raise file.fail(str(error), "model", *extra[:1]) from None
     return value
 
@@ -790,6 +808,9 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
     if curates and target_query is not None:
         raise file.fail("a curator keeps the articles of its folder, so it writes no query: delete the target: line",
                         "target")
+    if curates and front.get("min_grounding") is not None:
+        raise file.fail("a curator decides which articles exist and writes none, so nothing reads min_grounding: "
+                        "delete it", "min_grounding")
     file.at = ("authority",)
     authority = _authority(file, front.get("authority"))
     if authority is not None and not curates:
@@ -827,7 +848,7 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
                 raise file.fail(f"it lists subagents, so its run wakes when theirs would and takes the ordinary read "
                                 f"tools after them: leave out {key}, which belongs in a subagent")
         if not own:
-            for key in ("evidence", "model", "budget"):
+            for key in ("evidence", "model", "budget", "min_grounding"):
                 if front.get(key) is not None:
                     raise file.fail(f"it joins its subagents' content with no model, so nothing reads {key}: move it "
                                     "to the subagent that needs it, or write its own instructions after a level-one "
@@ -889,7 +910,8 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
         instructions=instructions, headings=by_heading, heading=heading or "", context=context if composes else "",
         own=own,
         subagent_ids=[f"{collection}/subagents/{name}" for name in names], authority=authority,
-        rendered=rendered, hash=hashlib.sha256(data).hexdigest()[:8], warnings=warnings,
+        rendered=rendered, min_grounding=_floor(file, front.get("min_grounding")),
+        hash=hashlib.sha256(data).hexdigest()[:8], warnings=warnings,
     )
 
 

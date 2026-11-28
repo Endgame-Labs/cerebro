@@ -43,7 +43,8 @@ def test_todays_models_block_reads_as_one_model_per_job_and_names_each_key() -> 
     assert models["compilation"].wire_id == "claude-sonnet-5-5"
     assert [m.key_name for m in models.values()] == ["fireworks", "fireworks", "anthropic"]
     assert [m.variable for m in models.values()] == ["FIREWORKS_API_KEY", "FIREWORKS_API_KEY", "ANTHROPIC_API_KEY"]
-    assert models["extraction"].block() == {"provider": "fireworks", "model": "glm-5p3-flash", "effort": "low"}
+    assert models["extraction"].block() == {"provider": "fireworks", "model": "glm-5p3-flash", "effort": "low",
+                                            "retries": 3}
     assert read_models({}) == DEFAULTS
 
 
@@ -66,6 +67,7 @@ def test_the_default_models_are_named_to_the_version_and_the_decision_one_has_a_
     ("decision", {"provider": "fireworks", "model": "glm-5p3"}, "models.decision.model is 'glm-5p3'"),
     ("compilation", {"provider": "openai", "model": "gpt-5", "effort": "huge"}, "models.compilation.effort"),
     ("compilation", {"provider": "openai", "model": "gpt-5", "temp": 1}, "has 'temp'"),
+    ("compilation", {"provider": "openai", "model": "gpt-5", "retries": -1}, "models.compilation.retries is -1"),
 ])
 def test_a_bad_models_entry_is_refused_with_one_line_that_names_its_key(job: str, entry: Any, names: str) -> None:
     settings = {"models": {**TODAY["models"], job: entry}}
@@ -206,16 +208,21 @@ def test_a_reply_that_does_not_fit_its_questions_is_refused(break_it: Any) -> No
         Network(change=break_it).decider().decide("text", QUESTIONS)
 
 
-def test_a_rate_limit_is_tried_again_and_a_refused_key_is_not() -> None:
+@pytest.mark.parametrize(("refusal", "said", "busy"), [(401, "check the fireworks key", 500),
+                                                       (402, "payment is due at the provider", 503),
+                                                       (403, "check the fireworks key", 429),
+                                                       (404, "check the model id and the request", 408)])
+def test_a_rate_limit_is_tried_again_and_a_refusal_is_not(refusal: int, said: str, busy: int) -> None:
     net = Network(429, 503)
     assert net.decider().decide("text", {"a": YesNo("A?")}).answers["a"].yes == 0.9
     assert len(net.sent) == 3 and net.slept == [3.0, 2.0]
-    refused = Network(401)
-    with pytest.raises(DecisionError, match="HTTP 401: check the fireworks key"):
+    refused = Network(refusal)
+    with pytest.raises(DecisionError, match=f"^rune answered HTTP {refusal}: {said}$"):
         refused.decider().decide("text", {"a": YesNo("A?")})
     assert len(refused.sent) == 1
-    gone = Network(500, 500, 500, 500)
-    with pytest.raises(DecisionError, match="HTTP 500"):
+    gone = Network(busy, busy, busy, busy)
+    with pytest.raises(DecisionError, match=f"^rune answered HTTP {busy}: the provider is busy or down, so try again "
+                                            "later$"):
         gone.decider().decide("text", {"a": YesNo("A?")})
     assert len(gone.sent) == 4
 
@@ -245,16 +252,19 @@ def test_the_stand_in_decider_answers_what_it_is_told_and_keeps_what_it_was_aske
     decision = fake.decide({"note": "x"}, QUESTIONS)
     assert decision.answers["renewed"].yes == 0.2
     assert decision.answers["tone"].choice == "bad" and decision.answers["tone"].probabilities["bad"] == 1.0
-    assert decision.answers["term"].score == 0.0
+    assert decision.answers["term"].score == 2.0  # a score it was not told: the highest level
     assert fake.asked[0][0] == {"note": "x"}
 
 
-def test_a_dropped_connection_is_tried_again_and_then_named() -> None:
-    net, drops = Network(), [ConnectionResetError(), ConnectionResetError()]
+def test_a_dropped_connection_or_a_timeout_is_tried_again_and_then_named() -> None:
+    net, drops = Network(), [ConnectionResetError(), 408]
 
     def flaky(url: str, headers: dict[str, str], data: bytes) -> tuple[int, dict[str, str], bytes]:
-        if drops:
-            raise drops.pop()
+        drop = drops.pop() if drops else None
+        if isinstance(drop, int):
+            return drop, {}, b""
+        if drop is not None:
+            raise drop
         return net.send(url, headers, data)
 
     slept: list[float] = []
@@ -262,15 +272,16 @@ def test_a_dropped_connection_is_tried_again_and_then_named() -> None:
     assert HttpDecider(spec, key=lambda: "k", send=flaky, sleep=slept.append).decide("t", {"a": YesNo("A?")})
     assert slept == [1.0, 2.0]
     drops.extend([OSError()] * 2)
+    once = ModelSpec("fireworks", "rune", job="decision", retries=1)
     with pytest.raises(DecisionError, match="did not answer \\(OSError\\): check the network"):
-        HttpDecider(spec, key=lambda: "k", send=flaky, sleep=slept.append, attempts=2).decide("t", {"a": YesNo("A?")})
+        HttpDecider(once, key=lambda: "k", send=flaky, sleep=slept.append).decide("t", {"a": YesNo("A?")})
 
 
 def test_odd_replies_neither_crash_the_client_nor_leak_the_reply_or_the_key() -> None:
     from cerebro.models import DecisionError, _retry_after
 
     assert _retry_after({"Retry-After": "nan"}) is None and _retry_after({"Retry-After": "1e400"}) is None
-    assert _retry_after({"Retry-After": "-5"}) == 0.0 and _retry_after({"Retry-After": "9999"}) == 120.0
+    assert _retry_after({"Retry-After": "-5"}) == 0.0 and _retry_after({"Retry-After": "9999"}) == 60.0
     for usage in ("lots", {"input_tokens": 1e400}, {"input_tokens": "12"}):
         net = Network(change=lambda reply, usage=usage: reply | {"usage": usage})
         with pytest.raises(DecisionError, match="usage"):

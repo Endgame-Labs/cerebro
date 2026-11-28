@@ -184,7 +184,7 @@ def test_a_writer_whose_run_stops_at_its_budget_with_nothing_handed_in_fails_and
     cerebro = Cerebro(tmp_path, store=MemoryStore(), extraction=FakeExtraction(), clock=lambda: at[0],
                       connectors=[notes], agent_run=stand)
     first = cerebro.run_once()
-    assert first.failed["reports/weekly"].startswith("run run_1 wrote nothing: budget spent"), first
+    assert first.failed["reports/weekly"].startswith("run run_1: budget spent"), first
     waited = cerebro.run_once()
     assert stand.asked == ["reports/weekly"], waited
     assert waited.skipped["reports/weekly"] == (
@@ -288,7 +288,7 @@ def test_a_writers_wait_on_one_article_is_not_ended_by_its_run_on_another(tmp_pa
 
 def test_a_first_run_curator_that_failed_then_ran_is_a_warning_and_not_a_failure(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Beside a list that goes on: a lone curator that fails ends the first run.
+    # parts fails at discovery, beside a list that goes on, then runs in the build to make what things proposed for it
     from test_first_run import Script
     from test_first_run_structure import by_record, lay_out_workspace, open_it
 
@@ -299,7 +299,9 @@ def test_a_first_run_curator_that_failed_then_ran_is_a_warning_and_not_a_failure
                 return Run("run_f", agent.id, agent.target, "failed", note="the stand-in failed")
             return super().run(agent, evidence, tools, budget)
 
-    script = FailsOnce({"things/curator": [by_record("T1")], "parts/curator": []})
+    beside = ("admit", {"record": {"source": "src", "id": "P1"}, "collection": "parts", "reason": "Part of it.",
+                        "group": "parts of your things"})
+    script = FailsOnce({"things/curator": [by_record("T1"), beside]})
     root = lay_out_workspace(tmp_path)
     monkeypatch.setattr(cli, "open_workspace", lambda where: open_it(root, script))
     done = CliRunner().invoke(main, ["serve", "--once", "--yes", "--workspace", str(root)])
@@ -307,12 +309,13 @@ def test_a_first_run_curator_that_failed_then_ran_is_a_warning_and_not_a_failure
     assert "failed    parts/curator" not in done.output and done.exit_code == 0, done.output
     assert ("warning   parts/curator: failed in this first run, and did not fail when it ran after: discovery for "
             "parts collection did not finish: the stand-in failed") in done.output, done.output
-    assert done.output.splitlines()[-1] == "Done.", done.output
 
 
 def test_a_first_run_that_stops_on_an_error_still_says_what_failed_before(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from test_first_run import Script
+    from test_first_run import FakeConnector, Script
+
+    monkeypatch.setattr(FakeConnector, "questions", {"lookup": "a stand-in question"})  # parts is asked
     from test_first_run_structure import by_record, lay_out_workspace, open_it
 
     from cerebro.errors import CerebroError
