@@ -315,8 +315,8 @@ class SqliteEngine(Engine):
         try:
             db = open_read_only(self.path, limits.seconds, limits.size)
         except sqlite3.Error as error:
-            raise DatabaseError(f"{self.label}: the database does not open ({one_line(error)}): check the file it "
-                                "names is a SQLite database") from None
+            check = ": check the file it names is a SQLite database" if error.sqlite_errorname == "SQLITE_NOTADB" else ""
+            raise DatabaseError(f"{self.label}: the database does not open ({one_line(error)}){check}") from None
         try:
             db.set_authorizer(_authorizer(denied))
             deadline = self.ticks() + limits.seconds
@@ -418,14 +418,14 @@ class DatabaseConnector(Connector):
     def build(cls, source: SourceFile, root: Path, app: Any) -> DatabaseConnector:
         """Every value it gives masked, and never one that names the workspace's own files. A source with an auth line
         is handed its login, which a SQLite file refuses and a Postgres database reads, and once it is read each
-        password and host it names is masked as well as the whole of it."""
+        password it names is masked as well as the whole of it."""
         read = app.login(source) if source.auth else None
 
         def login() -> str:
-            from .postgres import _secrets_in  # it imports this module
+            from .postgres import _passwords_in  # it imports this module
 
             dsn = read()
-            app.mask.add(*_secrets_in(dsn))
+            app.mask.add(*_passwords_in(dsn))
             return dsn
 
         return cls(source, root, login=login if read else None, mask=app.mask, masks=app.mask_every,

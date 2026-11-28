@@ -24,6 +24,7 @@ from test_connector_database import REFUSED
 
 from cerebro.agent import Agent, load_agent
 from cerebro.app import Cerebro, Masked
+from cerebro.caller import Caller
 from cerebro.connector import CursorError, QuestionError, RecordNotFound
 from cerebro.connectors import postgres
 from cerebro.connectors.database import CURSOR, DatabaseConnector, DatabaseError, Limits, QueryRefused
@@ -714,7 +715,7 @@ def test_a_postgres_source_is_refused_as_a_sqlite_one_would_be_when_handed_more_
         source_of("warehouse", "kind: database\nurl: postgres\nauth: { keychain: warehouse-dsn }\ninto: deals\n")
 
 
-def test_a_workspace_hands_a_postgres_source_its_login_and_masks_the_connection_string_once_read(
+def test_a_workspace_hands_a_postgres_source_its_login_and_masks_it_and_its_password_once_read_but_not_its_host(
         tmp_path: Path, store: FileSecrets, server: Server) -> None:
     root = tmp_path / "workspace"
     (root / "sources").mkdir(parents=True)
@@ -726,3 +727,5 @@ def test_a_workspace_hands_a_postgres_source_its_login_and_masks_the_connection_
         assert any("a SQLite file takes no login: delete auth" in line for line in workspace.refused)
         assert workspace.connectors["warehouse"].select("select region, sum from deals").rows[0] == ["East", 4000]
         assert server.dsns == [DSN] and workspace.mask(f"kept {DSN}") == f"kept {MARK}"
+        told = workspace.tell(Caller("you", "person"), f"Postgres moved to db.example, and {PASSWORD} is gone.")
+        assert told.returned == [f"Postgres moved to db.example, and {MARK} is gone."], told

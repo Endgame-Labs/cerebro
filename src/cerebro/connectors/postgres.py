@@ -41,6 +41,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 from ..clock import seconds
 from ..connector import one_line
 from ..errors import CerebroError
+from ..run import masked_error
 from ..secrets import Scrubber, SecretsError, check_name
 from ..source import SourceError, SourceFile
 from .database import DatabaseError, Engine, Limits, QueryRefused, Rows, bounded, check_query
@@ -200,23 +201,28 @@ def cell(value: Any) -> Any:
 
 
 def _secrets_in(dsn: str) -> list[str]:
-    """The connection string, each password and each host written in it, as a URL's or as a `password=`, `host=` or
-    `hostaddr=` keyword, so a line can mask them all."""
-    found = [dsn]
+    """`_passwords_in`, and each host written in the connection string, as a URL's or as a `host=` or `hostaddr=`
+    keyword, so a line of the engine's own can mask them all. A host is an address, so no other line masks it."""
+    found = _passwords_in(dsn)
     if "://" in dsn:
-        try:
+        with contextlib.suppress(ValueError):  # not a URL's address: its keywords still read
             parts = urlsplit(dsn)
-            password = parts.password
-        except ValueError:
-            parts, password = None, None
-        if password:
-            found += [password, unquote(password)]
-        if parts is not None:
-            hosts = parts.netloc.rpartition("@")[2]
-            found += [_host(h) for h in hosts.split(",")]
-            found += [v for k, v in parse_qsl(parts.query) if k in ("password", "host", "hostaddr")]
+            found += [_host(h) for h in parts.netloc.rpartition("@")[2].split(",")]
+            found += [v for k, v in parse_qsl(parts.query) if k in ("host", "hostaddr")]
     for match in re.finditer(r"(?:host|hostaddr)\s*=\s*('(?:[^'\\]|\\.)*'|[^\s&]+)", dsn):
         found += match.group(1).strip("'").split(",")
+    return found
+
+
+def _passwords_in(dsn: str) -> list[str]:
+    """The connection string and each password written in it, as a URL's or as a `password=` keyword: what every line
+    of the workspace masks once the login is read."""
+    found = [dsn]
+    if "://" in dsn:
+        with contextlib.suppress(ValueError):
+            parts = urlsplit(dsn)
+            found += [parts.password, unquote(parts.password)] if parts.password else []
+            found += [v for k, v in parse_qsl(parts.query) if k == "password"]
     for match in re.finditer(r"password\s*=\s*('(?:[^'\\]|\\.)*'|[^\s&]+)", dsn):
         value = match.group(1)
         found.append(value[1:-1].replace("\\'", "'").replace("\\\\", "\\") if value.startswith("'") else value)
@@ -261,9 +267,9 @@ class PostgresEngine(Engine):
         try:
             db = connect(dsn, autocommit=True, connect_timeout=max(2, math.ceil(limits.seconds)),
                          application_name=APPLICATION)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - one not the driver's goes on, with its login masked
             if not hasattr(error, "sqlstate") and not isinstance(error, OSError):
-                raise
+                raise masked_error(error, hide) from None
             raise DatabaseError(f"{self.label}: the database does not open ({one_line(hide(str(error)))}): check "
                                 f"the connection string kept as {self.item}, and that the server is up") from None
         cursor = None
@@ -283,9 +289,9 @@ class PostgresEngine(Engine):
             return bounded(columns, self._fetch(db, cursor, limits, deadline), limits)
         except CerebroError:
             raise
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - one not the driver's goes on, with its login masked
             if not hasattr(error, "sqlstate"):
-                raise
+                raise masked_error(error, hide) from None
             raise self._failure(error, hide, limits) from None
         finally:
             if cursor is not None:
