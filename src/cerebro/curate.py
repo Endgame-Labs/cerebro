@@ -670,6 +670,14 @@ def holder(store: Store, collection: str, key: str, value: str, but: str = "") -
     return next((id for id in store.bound(key, value) if id != but and id.startswith(collection + "/")), None)
 
 
+def held_key(store: Store, article: Identity, keys: dict[str, list[str]]) -> str:
+    """The first of `keys` that binds `article`, as `holder` reads them, written as the article holds it, such as
+    `code T-1`: empty when none does."""
+    return next((f"{key} {held}" for key, values in keys.items() for value in values
+                 if holder(store, article.collection, key, value) == article.id
+                 for held in article.keys.get(key, []) if str(held).lower() == str(value).lower()), "")
+
+
 def address_form(keys: dict[str, list[Any]]) -> dict[str, list[str]]:
     """Keys as a connector's `address_keys` writes them, so an admit binds what a source lists: an `email` in lower
     case, and a `domain` as the part an organization registers, so `www.Alder.example` is `alder.example`."""
@@ -1274,7 +1282,8 @@ class _Curation:
         by_key = list(dict.fromkeys(id for _, id in held if id in strong
                                     or same_thing(keys, self.find(id).keys, weights) is not False))
         if len(by_key) > 1:
-            raise CurateError(f"the keys of {name} bind {', '.join(by_key)}: admit one article, or merge them first")
+            bound = ", ".join(f"{id} ({held_key(self.store, self.find(id), keys)})" for id in by_key)
+            raise CurateError(f"the keys of {name} bind {bound}: admit one article, or merge them first")
         if by_key:
             return self.find(by_key[0])
         if at_path is not None:
@@ -1322,10 +1331,10 @@ class _Curation:
         existing = self._existing(name, keys, at_path, record)
         yes = self.yes()
         if existing is not None and existing.status == "active" and not yes:
-            held = next((f", and holds the key {key} {value}" for key, values in keys.items() for value in values
-                         if holder(self.store, self.collection, key, value) == existing.id), "")
-            raise CurateError(f"admit: {existing.id} is in the working set already{held}: to change its keys or links, "
-                              "use link, and to change your note to its writers, use instruct")
+            held = held_key(self.store, existing, keys)
+            raise CurateError(f"admit: {existing.id} is in the working set already{held and f', and holds the key {held}'}"
+                              ": to change its keys or links, use link, and to change your note to its writers, use "
+                              "instruct")
         if existing is None and read and _lower_path(_link_path(name)):
             raise CurateError(f"admit: {name.strip()} reads as an article's path, and {self.collection} holds no such "
                               "article: give a name, with a space on each side of a slash in it, or name its record")
@@ -1513,12 +1522,13 @@ class _Curation:
                               "there")
         keys = own_values(address_form(keys), name)
         target = _new_path(collection, name)
-        there = [id for id in dict.fromkeys([*self.store.named(name.strip()), *(
-            id for key, values in keys.items() for value in values for id in self.store.bound(key, value))])
-            if id.startswith(collection + "/") and working(self.store, id)]
+        by_key = (holder(self.store, collection, key, value) for key, values in keys.items() for value in values)
+        there = [id for id in dict.fromkeys([*self.store.named(name.strip()), *filter(None, by_key)])
+                 if id.startswith(collection + "/") and working(self.store, id)]
         if there:
-            raise CurateError(f"admit: {there[0]} is in the working set already: to change its keys or links, use link "
-                              f"with collection {collection}")
+            held = held_key(self.store, self.find(there[0], collection=collection), keys)
+            raise CurateError(f"admit: {there[0]} is in the working set already{held and f', and holds the key {held}'}"
+                              f": to change its keys or links, use link with collection {collection}")
         fields = {str(k).strip(): v for k, v in (fields or {}).items()}
         if refused := [why for k, v in fields.items() if (why := field_refused(name, k, v))]:
             raise CurateError(f"admit: {'; '.join(refused)}")

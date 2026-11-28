@@ -1109,15 +1109,19 @@ def test_a_group_given_as_a_key_binds_nothing_and_is_kept_with_the_reason(tmp_pa
 
 def test_a_proposal_of_an_article_the_other_collection_holds_already_is_refused_toward_link(tmp_path: Path) -> None:
     agents, store = write_workspace(tmp_path), MemoryStore()
-    store.create(Identity("people/pat-quill", "people", "Pat Quill", {"email": ["pat@alder.example"]}, "active"))
+    store.create(Identity("people/pat-quill", "people", "Pat Quill", {"email": ["pat@alder.example"],
+                                                                      "slack_channels": ["C1"]}, "active"))
     done, _ = curate(store, curator(agents, "things"), [
         ("admit", {"name": "Pat Quill", "collection": "people", "reason": "the lead on the Alder project"}),
         ("admit", {"name": "P. Quill", "collection": "people", "keys": {"email": ["pat@alder.example"]},
-                   "reason": "the lead on the Alder project"})])
-    said = refusal("admit: people/pat-quill is in the working set already: to change its keys or links, use link with "
-                   "collection people")
-    assert replies(done) == [said, said]
-    assert proposals(store) == [] and done.proposed == []
+                   "reason": "the lead on the Alder project"}),
+        ("admit", {"name": "Sam Reyes", "collection": "people", "keys": {"slack_channels": ["C1"]},
+                   "reason": "in the Alder channel"})])  # a key a source shares names no one article
+    by_name, by_key, shared = replies(done)
+    assert by_name == refusal("admit: people/pat-quill is in the working set already: to change its keys or links, use "
+                              "link with collection people")
+    assert "email pat@alder.example" in by_key and "use link" in by_key, by_key
+    assert "proposed" in shared and [p.target for p in proposals(store)] == ["people/sam-reyes"], shared
 
 
 def test_a_held_list_and_a_proposal_survive_a_pass_that_lets_go_of_a_gone_source_and_agent(tmp_path: Path) -> None:

@@ -128,15 +128,13 @@ def test_a_null_or_a_take_off_in_another_spelling_acts_on_each_spelling_the_arti
 def test_an_admit_of_an_article_in_the_working_set_is_refused_naming_link_and_the_key_that_found_it(
         tmp_path: Path) -> None:
     store = MemoryStore()
-    things(store, alder={"code": ["t-alder"]})
+    things(store, alder={"code": ["T-Alder"]})
     replies = curate(store, tmp_path, [("admit", {"name": "Alder", "reason": "seen again"}),
                                        ("admit", {"name": "Birch", "keys": {"code": ["t-alder"]}, "reason": "new"})],
                      admit=False)
-    assert replies == [refusal("admit: things/alder is in the working set already: to change its keys or links, use "
-                               "link, and to change your note to its writers, use instruct"),
-                       refusal("admit: things/alder is in the working set already, and holds the key code t-alder: to "
-                               "change its keys or links, use link, and to change your note to its writers, use "
-                               "instruct")]
+    assert replies[0] == refusal("admit: things/alder is in the working set already: to change its keys or links, use "
+                                 "link, and to change your note to its writers, use instruct")
+    assert "code T-Alder" in replies[1] and "use link" in replies[1], replies  # the key as the article holds it
     assert proposals(store) == []
 
 
