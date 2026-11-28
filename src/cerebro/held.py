@@ -34,6 +34,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
+from . import clock
 from .agent import Agent, EvidenceLine
 from .connector import NOBODY, Ours, Record, outside_domain, registrable
 from .evidence import RECENT_DAYS, Evidence, EvidenceError, Item
@@ -157,7 +158,9 @@ def first_run_since(store: Store) -> str:
     with no session."""
     session = store.state(FIRST_RUN_KEY)
     began = session.get("at") if isinstance(session, dict) else None
-    return (datetime.fromisoformat(began) - timedelta(days=RECENT_DAYS)).date().isoformat() if began else ""
+    if not began:
+        return ""
+    return (clock.pinned(datetime.fromisoformat(began)) - timedelta(days=RECENT_DAYS)).date().isoformat()
 
 
 def before_cut(at: str, since: str) -> bool:

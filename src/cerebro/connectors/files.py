@@ -58,7 +58,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, quote_plus
 
-from ..clock import system_clock
+from ..clock import pinned, system_clock
 from ..connector import (
     Connector,
     CursorError,
@@ -1106,7 +1106,7 @@ class FilesConnector(Connector):
         """Read every file once into an index, the window read by the clock and, with `now`, the settle time."""
         said, mask = _Said(), self._mask()
         clock = self.now()
-        floor = clock - self.behind if self.behind is not None else None
+        floor = pinned(clock) - self.behind if self.behind is not None else None
         if now is not None:
             self.unsettled_until = None
         entries: dict[str, tuple[str, bool, _Spot]] = {}
@@ -1226,7 +1226,7 @@ class FilesConnector(Connector):
 
     def _current(self) -> list[Record]:
         """Every record inside the window, without its body, a later record of an id winning."""
-        floor = self.now() - self.behind if self.behind is not None else None
+        floor = pinned(self.now()) - self.behind if self.behind is not None else None
         records: dict[str, Record] = {}
         for record, _ in self._each(_Said(), self._mask(), full=True):
             records.pop(record.id, None)

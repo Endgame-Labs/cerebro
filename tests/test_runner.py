@@ -175,6 +175,7 @@ def test_one_clock_reaches_the_window_the_run_and_the_ledger(tmp_path: Path) -> 
 def test_cerebro_today_moves_the_day_windows_the_writer_and_the_judge_read_and_no_stamp(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from cerebro.fakes import FakeDecider
+    from cerebro.held import FIRST_RUN_KEY, first_run_since
     from cerebro.run import PydanticRun
 
     (tmp_path / "agents" / "reports").mkdir(parents=True)
@@ -194,6 +195,8 @@ def test_cerebro_today_moves_the_day_windows_the_writer_and_the_judge_read_and_n
     assert "Today is Fri Nov 20, 2026." in seen[0] and "A note from that week." in seen[0] and "2027" not in seen[0]
     assert [state["today"] for state, _ in decider.asked if "passage" in state] == ["2026-11-20"]
     assert cerebro.store.rows("spend")[0].data["at"] == "2027-11-20T09:00:00Z"
+    cerebro.store.set_state(FIRST_RUN_KEY, {"status": "discovering", "at": stamp(at)})  # a first run begun now
+    assert first_run_since(cerebro.store) == "2026-11-06"
 
 
 def test_extraction_is_held_to_its_own_cap_and_its_cost_is_kept(tmp_path: Path) -> None:

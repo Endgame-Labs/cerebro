@@ -4,7 +4,8 @@ A clock is a function that gives an aware datetime. The app object holds one and
 other reading: seconds on a counter that only moves forward, for pacing requests to a rate, never a time of day.
 `local_zone` reads the machine's own time zone by its IANA name, for `init` to offer. `pinned` moves a moment to the
 day `CEREBRO_TODAY` names, the one today that windows, a writer and the grounding judge read, so a demo's dates stay
-in their windows. Leases, schedules and stamps keep the real clock.
+in their windows. A first run's days back and a files source's `behind:` count from that day too, and a line of
+what left since the last run reads that run on it. Leases, schedules and stamps keep the real clock.
 """
 
 from __future__ import annotations
