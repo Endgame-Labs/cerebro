@@ -935,7 +935,11 @@ def test_an_admit_whose_id_would_hold_a_stored_value_however_slugged_is_refused_
     assert made == [] and rows == [] and "juniper" not in kept.lower()
 
 
-def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_refused(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("asked", "refused"), [
+    ({"name": HELD_IN_ID[1]}, "its name holds"),
+    ({"name": "Juniper", "keys": {"code": [SECRETS["plain"]]}}, "its code key holds")])
+def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_or_whose_key_holds_one_is_refused(
+        tmp_path: Path, asked: dict[str, Any], refused: str) -> None:
     from pydantic_ai.messages import TextPart
 
     said: list[str] = []
@@ -943,7 +947,7 @@ def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_r
 
     def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if not any(isinstance(m, ModelResponse) for m in messages):
-            return ModelResponse(parts=[ToolCallPart("admit", {"name": HELD_IN_ID[1], "reason": "It moved."})])
+            return ModelResponse(parts=[ToolCallPart("admit", asked | {"reason": "It moved."})])
         said.append(str(messages[-1]))
         return ModelResponse(parts=[TextPart("Done.")])
 
@@ -951,7 +955,7 @@ def test_an_agents_admit_whose_id_would_hold_a_stored_value_the_mask_misses_is_r
                  decider=FakeDecider(), agent_run=PydanticRun(FunctionModel(model)), clock=lambda: DAY) as workspace:
         workspace.curate(workspace.agent("things/curator"))
         rows = workspace.call(YOU, "query", {"from": "proposals"}).get("items", [])
-    assert rows == [] and "its name holds a value the secrets store keeps" in said[0]
+    assert rows == [] and f"{refused} a value the secrets store keeps" in said[0], said
 
 
 # -- what an error says, with its causes, and replies of every shape
