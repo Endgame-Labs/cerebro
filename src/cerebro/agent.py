@@ -520,7 +520,7 @@ def _evidence(file: _File, value: Any, curates: bool) -> list[EvidenceLine]:
             _sql(file, n, args)
         elif kind == "held":  # the records held for a curator's collection: held.py reads and checks the line
             from .held import check_line
-            extra = sorted(set(args) - {"limit"}, key=str) if isinstance(args, dict) else []
+            extra = sorted(set(args) - {"limit", "fields"}, key=str) if isinstance(args, dict) else []
             at = ("evidence", n - 1, kind, extra[0]) if extra else ()
             args = check_line(args, curates,
                               lambda problem, n=n, at=at: file.fail(f"evidence {n}, held: {problem}", *at))

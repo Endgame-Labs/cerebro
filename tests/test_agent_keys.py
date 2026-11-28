@@ -163,7 +163,7 @@ REFUSED = [
     ("reports/a.md", "evidence:\n  - script:\n      run: scripts/a.sh\n      args: [1]\n",
      "line 5: evidence 1, script takes run alone, not args"),
     ("things/curator.md", "evidence:\n  - held:\n      limt: 20\n",
-     "line 4: evidence 1, held: it takes limit alone"),
+     "line 4: evidence 1, held: it takes limit and fields"),
     ("reports/a.md", "evidence:\n  - query: { from: things }\n    keeep: open ones\n",
      "line 3: evidence 1 names 2 kinds, query and keeep"),
     ("reports/a.md", "heartbeat:\n  on: [change]\n  off: [x]\n", "line 4: heartbeat: off: is no key of a heartbeat"),
