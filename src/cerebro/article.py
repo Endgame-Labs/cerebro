@@ -391,13 +391,13 @@ def yaml_text(value: Any) -> str:
     return yaml.dump(value, Dumper=_Indented, sort_keys=False, allow_unicode=True, width=1 << 20)
 
 
-YAML_PLAIN = re.compile(r"[\w .,;:'/@#%+=?-]*")  # what a value holds that no renderer reads as markup
+YAML_PLAIN = re.compile(r"[\w .,;:'/@#%+=?()-]*")  # what a value holds that no renderer reads as markup
 QUOTED = "CerebroQuoted"
 
 
 def _quoted_scalar(text: str) -> str:
     """`text` as a YAML double-quoted scalar that any YAML reader reads back as `text`, written in letters, digits,
-    spaces and `.,;:'/@#%+=?-_` alone, every other character as an escape such as `\\x3C`, so a renderer that reads
+    spaces and `.,;:'/@#%+=?()-_` alone, every other character as an escape such as `\\x3C`, so a renderer that reads
     the front matter as text finds no markup in it."""
     out = []
     linked = _bare_bad(text)  # a colon GitHub would read as a scheme's is written as an escape too
@@ -423,7 +423,7 @@ def _risky(text: str) -> bool:
 
 def front_matter(front: dict[str, Any]) -> str:
     """`front` as YAML that reads back as `front`, and in which a renderer that reads it as Markdown text finds no
-    markup: a key or a text value with anything but letters, digits, spaces and `.,;:'/@#%+=?-_` in it is written
+    markup: a key or a text value with anything but letters, digits, spaces and `.,;:'/@#%+=?()-_` in it is written
     double-quoted, with escapes, and every other value as YAML writes it, on one line."""
     held: dict[str, str] = {}
 
