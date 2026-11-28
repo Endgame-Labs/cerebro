@@ -443,7 +443,7 @@ class Cerebro:
                                 f"{self.secrets.where()}, which only your user can read")
         found = decider if decider is not None else self._decider()
         self.decider = MaskedDecider(found, self.mask_every) if found is not None else None
-        self.agents, self.exposed, refused, self.notices = self._agents_and_functions(project, self.notices)
+        self.exposed, self.agents, refused, self.notices = self._agents_and_functions(project, self.notices)
         self.refused += refused
         self._slugged: dict[Callable[[str], str], tuple[Any, Any, list[str]]] = {}  # by slug: the forms, slugged
         self.store = self._open_store(store)
@@ -480,15 +480,22 @@ class Cerebro:
         return handed
 
     def _agents_and_functions(self, project: Project,
-                              notices: list[str]) -> tuple[list[Agent], Exposed, list[str], list[str]]:
-        """The workspace's agents and each app's, the functions the workspace and its apps expose, a line for each
-        agent file refused, and `notices` with what loading adds, less those of a refused agent. Two agents with one
-        id or one target, or an evidence function named for a built-in kind, are refused in one line; an agent whose
-        evidence reads a kind nothing gives, or that lists a tool nothing runs in its file, is refused alone."""
-        agents, functions, refused = list(project.agents), list(project.extensions), []
-        notices = list(notices)
+                              notices: list[str]) -> tuple[Exposed, list[Agent], list[str], list[str]]:
+        """The functions the workspace and its apps expose, then the agents, refused lines and notices `_agents` gives.
+        An evidence function named for a built-in kind is refused in one line."""
+        exposed = collect([*project.extensions, *(function for app in self.apps for function in app.functions)])
+        for name in exposed.evidence:
+            if name in BUILTIN:
+                raise WorkspaceError(f"evidence function {name} shadows the built-in kind {name}: rename it")
+        return exposed, *self._agents(exposed, project.agents, notices)
+
+    def _agents(self, exposed: Exposed, agents: list[Agent],
+                notices: list[str]) -> tuple[list[Agent], list[str], list[str]]:
+        """The workspace's `agents` and each app's, a line for each agent file refused, and `notices` with what loading
+        adds, less those of a refused agent. Two agents with one id or one target are refused in one line; an agent
+        whose evidence reads a kind nothing gives, or that lists a tool nothing runs in its file, is refused alone."""
+        agents, refused, notices = list(agents), [], list(notices)
         for app in self.apps:
-            functions += app.functions
             if app.agents is not None:
                 loaded, not_loaded = load_agents(Path(app.agents))
                 agents += loaded
@@ -496,14 +503,20 @@ class Cerebro:
                 notices += agent_notices(loaded)
         _refuse_duplicates(agents)
         notices += unbuilt(agents)
-        exposed = collect(functions)
-        for name in exposed.evidence:
-            if name in BUILTIN:
-                raise WorkspaceError(f"evidence function {name} shadows the built-in kind {name}: rename it")
         kinds = {**dict.fromkeys(BUILTIN), **exposed.evidence}
         agents, unknown, notices = refuse_unknown_kinds(agents, kinds, notices)
         agents, untooled, notices = refuse_unknown_tools(agents, exposed.agent_tools, notices)
-        return agents, exposed, refused + unknown + untooled, notices
+        return agents, refused + unknown + untooled, notices
+
+    def agents_read(self) -> None:
+        """Read every agent file again, as serve does before each pass, so the pass runs each agent on its file as it
+        stands. A file that no longer loads is refused in its line, as when the workspace was opened."""
+        agents, refused = load_agents(self.root / "agents")
+        agents, more, notices = self._agents(self.exposed, agents, agent_notices(agents))
+        # each line of an agent file opens with its name, agents/<id>.md, and no other line does
+        self.refused = [line for line in self.refused if not line.startswith("agents/")] + refused + more
+        self.notices = [line for line in self.notices if not line.startswith("agents/")] + notices
+        self.agents = agents
 
     def _lookup(self, kinds: list[str]) -> StoreLookup:
         """What the six operations read and write through: the store and its index, the facts layer metered against

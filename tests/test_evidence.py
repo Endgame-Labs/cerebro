@@ -300,7 +300,8 @@ def test_the_digest_moves_with_what_the_lines_return_and_not_with_the_budget_or_
     third = digest(writer, gather(writer, lookup, {}))
     assert third not in (first, second)
     writer.path.write_text(writer.path.read_text() + "Say it in fewer words.\n")
-    assert digest(writer, gather(writer, lookup, {})) != third  # an edit of the file is a change too
+    edited = load_agent(writer.path, tmp_path / "agents")
+    assert digest(edited, gather(edited, lookup, {})) != third  # an edit of the file is a change too, once read
 
 
 def test_the_digest_moves_when_a_file_a_function_returned_changes_in_place(tmp_path: Path) -> None:

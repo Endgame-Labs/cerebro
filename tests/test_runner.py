@@ -67,6 +67,94 @@ def test_a_weekly_agent_runs_once_a_week_in_the_workspaces_zone_and_not_on_chang
     assert cerebro.run_once().compiled == ["reports/weekly"]
 
 
+def test_under_serve_an_edited_agent_file_runs_on_the_next_pass_on_each_article_whatever_its_schedule(
+        tmp_path: Path) -> None:
+    """With no restart: the curator, and the writer on each article it wrote from the old file, though its week is
+    owed for another. An article whose run on the new file failed runs again on a later pass, and new evidence on the
+    other waits for the week."""
+    from cerebro.runner import run_forever
+
+    hands, store = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC)), MemoryStore()  # a Monday
+    (tmp_path / "agents" / "things").mkdir(parents=True)
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    writer, curator = tmp_path / "agents" / "things" / "article.md", tmp_path / "agents" / "things" / "curator.md"
+    writer.write_text("---\nevidence:\n  - query: { from: facts, source: notes }\nheartbeat: [weekly]\n---\n\nBe brief.\n\n"
+                      "# Output\n\n## Summary\n")
+    curator.write_text("---\nheartbeat: [daily]\n---\n\nKeep things.\n")
+    for id in ("things/first", "things/second"):
+        store.create(Identity(id, "things", id.removeprefix("things/").title()))
+    failing, read, passes, notes = ["things/second"], [], [], FakeConnector("notes", NOTES)
+
+    def write(prompt: str) -> dict[str, str]:
+        read.append(prompt)
+        if "Keep things" in prompt:
+            return {}
+        if any(id in prompt for id in failing):
+            raise RuntimeError("the model went away")
+        return cited(prompt)
+
+    cerebro = Cerebro(tmp_path, store=store, extraction=FakeExtraction(), clock=hands, connectors=[notes],
+                      agent_run=ScriptedRun(write, clock=hands))
+    ran = cerebro.run_once()
+    assert ran.compiled == ["things/first"] and "things/article on things/second" in ran.failed
+    writer.write_text(writer.read_text().replace("Be brief.", "Be briefer."))
+    curator.write_text(curator.read_text().replace("Keep things.", "Keep things and dates."))
+    failing[:], read[:] = ["things/first"], []
+
+    def sleep(seconds: float) -> None:  # past the wait after a failure and the cooldown, the same day
+        failing.clear()
+        notes.add(Record(id="n7", source="notes", revision="1", at="2026-11-16T10:00:00Z", body="A later note."))
+        hands.move(hours=5)
+
+    run_forever(cerebro, interval=60, stop=lambda: len(passes) == 2, sleep=sleep, on_pass=passes.append)
+    assert passes[0].due["things/curator"] == "its agent file changed"
+    assert passes[0].compiled == ["things/second"] and "things/article on things/first" in passes[0].failed
+    assert passes[1].compiled == ["things/first"] and passes[1].due == {"things/article": "its agent file changed"}
+    assert len(read) == 4 and all("Be briefer." in prompt or "Keep things and dates." in prompt for prompt in read)
+
+
+def test_under_serve_a_run_by_hand_on_an_edited_file_is_never_written_over_from_the_file_read_before(
+        tmp_path: Path) -> None:
+    from cerebro.runner import run_forever
+
+    hands, extraction, notes = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC)), FakeExtraction(), FakeConnector("notes", NOTES)
+    read, edited, passes = [], [], []
+    serve = workspace(tmp_path, "[change]", extraction, notes, hands, "schedule:\n  articles: 0\n",
+                      ScriptedRun(lambda prompt: read.append(prompt) or cited(prompt), clock=hands))
+    path = tmp_path / "agents" / "reports" / "weekly.md"
+
+    def by_hand(line: str) -> None:  # while serve's second pass extracts, a person edits the file and runs it elsewhere
+        if len(passes) == 1 and line.startswith("stage     extract") and not edited:
+            path.write_text(path.read_text() + "\nKeep it short.\n")
+            elsewhere = Cerebro(tmp_path, store=serve.store, extraction=extraction, clock=hands, connectors=[notes],
+                                agent_run=ScriptedRun(cited, clock=hands))
+            agent = elsewhere.agent("reports/weekly")
+            assert agent is not None
+            with elsewhere.hold(agent):
+                elsewhere.compile(agent, scheduled=True)
+            edited.append(len(read))
+
+    def sleep(seconds: float) -> None:  # a new note, read once the sources' window has passed
+        notes.add(Record(id=f"n{len(passes) + 6}", source="notes", revision="1", at="2026-11-16T09:30:00Z",
+                         body="A later note."))
+        hands.move(minutes=20)
+
+    run_forever(serve, interval=60, stop=lambda: len(passes) == 3, sleep=sleep, on_pass=passes.append, say=by_hand)
+    assert read[edited[0]:] and all("Keep it short." in prompt for prompt in read[edited[0]:])
+
+
+def test_a_workspace_an_earlier_release_ran_does_not_wake_its_scheduled_writer_for_an_unchanged_file(
+        tmp_path: Path) -> None:
+    hands = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC))  # a Monday
+    cerebro = workspace(tmp_path, "[weekly]", FakeExtraction(), clock=hands)
+    assert cerebro.run_once().compiled == ["reports/weekly"]
+    beat = cerebro.store.state("heartbeat:reports/weekly")
+    beat["articles"]["reports/weekly"]["file"] = "f52d78feee3a6219"  # how Cerebro 0.1.3 kept the file this run read
+    cerebro.store.set_state("heartbeat:reports/weekly", beat)
+    hands.move(days=1)
+    assert cerebro.run_once().skipped["reports/weekly"].startswith("heartbeat is weekly: it ran this period")
+
+
 def test_an_agent_on_manual_alone_waits_for_a_person(tmp_path: Path) -> None:
     result = workspace(tmp_path, "[manual]", FakeExtraction()).run_once()
     assert result.compiled == [] and result.skipped["reports/weekly"] == "heartbeat is manual: run it by hand"

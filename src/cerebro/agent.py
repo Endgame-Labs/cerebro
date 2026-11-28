@@ -208,7 +208,8 @@ class Agent:
     collection. `prompt` is the whole body, `instructions` the body before `# Output`, and `headings` each heading
     under `# Output` with what the file says of it. `output` is what the model writes: those headings less the ones
     `rendered:` hands to code, or a subagent's one heading. `context` is what a composer says to every subagent: its
-    prompt up to its first level-one heading. `hash` is the first eight hex characters of the file's SHA-256.
+    prompt up to its first level-one heading. `hash` is the first eight hex characters of the file's SHA-256, and
+    `data` the file as it was read, which is what a run reads though the file changes after.
     `warnings` holds the lines a file loads with but likely did not
     mean. `own` is what an agent with subagents says to itself: its prompt after its first level-one heading, but for
     `# Output`. With none, it does not run, and its subagents' content is joined.
@@ -240,6 +241,7 @@ class Agent:
     rendered: dict[str, Render] = field(default_factory=dict)
     min_grounding: float | None = None
     hash: str = ""
+    data: bytes = b""
     warnings: list[str] = field(default_factory=list)
 
 
@@ -911,7 +913,7 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
         own=own,
         subagent_ids=[f"{collection}/subagents/{name}" for name in names], authority=authority,
         rendered=rendered, min_grounding=_floor(file, front.get("min_grounding")),
-        hash=hashlib.sha256(data).hexdigest()[:8], warnings=warnings,
+        hash=hashlib.sha256(data).hexdigest()[:8], data=data, warnings=warnings,
     )
 
 
