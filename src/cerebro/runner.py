@@ -366,9 +366,9 @@ class _Beat:
     ran: str | None = None
     scheduled: str | None = None
     retried: str | None = None
-    file: str | None = None  # the agent's file, and its subagents', as its last turn read them, run or not
-    # Each article its runs wrote on, by id: when its last run there started, and the agent's files and the workspace's
-    # settings as that run read them. A writer's cooldown counts from it, article by article.
+    file: str | None = None  # the agent's file, and its subagents', as its last run read them
+    # Each article its runs wrote on, by id, or a curator's collection: when its last run there started, and the agent's
+    # files and the workspace's settings as that run read them. A writer's cooldown counts from it, article by article.
     articles: dict[str, dict[str, str]] | None = None
     # The articles a scheduled run left to do in its period, held, waiting for a cap or failed: the period start, and
     # each article with how its next run runs. The period stays due, and its next run runs on these alone.
@@ -406,12 +406,12 @@ def _words(workspace: Cerebro, agent: Agent) -> list[str]:
     return list(dict.fromkeys(word for sub in subs for word in sub.heartbeat))
 
 
-def _wake(agent: Agent, words: list[str], beat: _Beat, file: str, now: datetime,
+def _wake(agent: Agent, words: list[str], beat: _Beat, moved: bool, now: datetime,
           zone: tzinfo) -> tuple[str | None, str, str]:
     """Whether `agent`, woken by `words`, is due at `now`: the schedule word whose period is due, or None, and why it
-    runs, or empty with why it waits. One whose files, `file` as they stand, are not those its last turn read is due
-    as for a change, whatever its schedule. A writer due for a change may still wait out its cooldown on an article,
-    which compile asks `_hold` once it knows that new evidence alone moved there."""
+    runs, or empty with why it waits. One that `moved` says has an article whose last finished run read other files
+    than it has is due as for a change, whatever its schedule. A writer due for a change may still wait out its
+    cooldown on an article, which compile asks `_hold` once it knows that new evidence alone moved there."""
     if not words:
         return None, "", "nothing wakes it: give it a heartbeat, or its subagents one"
     if all(word == "manual" for word in words):
@@ -426,7 +426,7 @@ def _wake(agent: Agent, words: list[str], beat: _Beat, file: str, now: datetime,
         nexts.append(after)
     if "change" in words:
         return None, "change", ""
-    if beat.file not in (None, file):
+    if moved:
         return None, "its agent file changed", ""
     plan = ", ".join(words)
     return None, "", f"heartbeat is {plan}: it ran this period, and runs next at {min(nexts):%Y-%m-%d %H:%M}"
@@ -441,7 +441,7 @@ def _due(workspace: Cerebro, agents: list[Agent], result: PassResult,
     for agent in agents:
         if agent.role == "subagent":
             continue
-        word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), _file_stamp(workspace, agent),
+        word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), bool(_older(workspace, agent)),
                                  now, zone)
         if agent.id in woken and word is None:
             why, waits = "a caller accepted a proposal for its collection", ""
@@ -475,14 +475,14 @@ def _ran(workspace: Cerebro, agent: Agent, word: str | None, run: Run | None, fa
          left: dict[str, str] | None = None) -> None:
     """Keep what one agent's turn did: when it ran, the files it ran on, and whether its schedule's period is spent.
     When it ran is `began`, the workspace's clock as the turn began, never the run's own stamps, and the period is the
-    one it began in. Each of `articles`, those a run of this turn wrote on, takes that time as its mark, so its
-    cooldown counts from there. A scheduled run that fails leaves its period due for one more try, then spends it.
+    one it began in. Each of `articles`, those a run of this turn wrote on or a curator's collection, takes that
+    time as its mark, so its cooldown counts from there. A scheduled run that fails leaves its period due for one
+    more try, then spends it.
     `left` names the articles a scheduled run did not finish, as `_Beat.pending` keeps them, each `failed`, or `whole`
     or `parts` for one held or waiting for a cap: those stay pending until they run, then the period is spent."""
     beat, now = _beat(workspace, agent), workspace.clock()
     if run is not None:
         beat.ran = stamp(began or now)
-    if run is not None or not failed:
         beat.file = _file_stamp(workspace, agent)
     if articles:
         beat.articles = (beat.articles or {}) | dict.fromkeys(articles, _mark(workspace, agent, began or now))
@@ -516,6 +516,24 @@ def _mark(workspace: Cerebro, agent: Agent, began: datetime) -> dict[str, str]:
     return {"ran": stamp(began), "file": _file_stamp(workspace, agent), "setting": _setting_stamp(workspace)}
 
 
+def _older(workspace: Cerebro, agent: Agent) -> list[str]:
+    """The articles of `agent` in the working set, or its collection for a curator, whose last finished run read other
+    files than it has now. A run that failed, was held or stopped leaves its mark where it was, so the article runs at
+    once whatever the agent's schedule. An article no run finished on has no mark, and waits for the schedule."""
+    file = _file_stamp(workspace, agent)
+    return [id for id, mark in (_beat(workspace, agent).articles or {}).items()
+            if mark.get("file") != file and (agent.role == "curator" or working(workspace.store, id))]
+
+
+def due_articles(workspace: Cerebro, agent: Agent, word: str | None, articles: list[str]) -> list[str]:
+    """The articles of `articles` a due run of `agent` for `word` runs on: every one, but for an agent no change wakes
+    and no schedule word runs now, those `_older` finds, since its files alone woke it."""
+    if word is not None or "change" in _words(workspace, agent):
+        return articles
+    older = _older(workspace, agent)
+    return [article for article in articles if article in older]
+
+
 def cooldown(workspace: Cerebro, agent: Agent, part: str = "", cadence: bool = True) -> tuple[int, str]:
     """How long new evidence waits after `agent` runs on an article, in seconds and as written: its own heartbeat's
     `cooldown:`, else for a writer the workspace's `schedule.articles`, 4h when left out. A curator has none: its
@@ -533,10 +551,11 @@ def cooldown(workspace: Cerebro, agent: Agent, part: str = "", cadence: bool = T
 
 
 def _file_stamp(workspace: Cerebro, agent: Agent) -> str:
-    """One hash of the agent's file and of each of its subagents' files, as they stand now."""
+    """One hash of the agent's file and of each of its subagents' files, as the workspace loaded them: what its runs
+    read, though a file changes on disk while one is under way."""
     hashed = hashlib.sha256()
     for one in [agent, *(a for a in workspace.agents if a.id in agent.subagent_ids)]:
-        hashed.update(one.id.encode() + b"\0" + (one.path.read_bytes() if one.path.is_file() else one.prompt.encode()))
+        hashed.update(one.id.encode() + b"\0" + one.hash.encode() + b"\0")
     return hashed.hexdigest()[:16]
 
 
@@ -1213,7 +1232,7 @@ def curators_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, st
     woken = {agent.id for agent in curators if _beat(workspace, agent).again or new_yes(workspace.store, agent)}
     now, zone = workspace.clock(), zone_of(workspace.settings)
     for agent in curators:  # a scheduled run does not wait, as a writer's does not
-        word, _, held = _wake(agent, _words(workspace, agent), _beat(workspace, agent), _file_stamp(workspace, agent),
+        word, _, held = _wake(agent, _words(workspace, agent), _beat(workspace, agent), bool(_older(workspace, agent)),
                               now, zone)
         if agent.id not in listed and word is None and not held and (why := waits_after(workspace, agent, agent.target)):
             listed[agent.id] = []
@@ -1288,7 +1307,8 @@ def _curate_due(workspace: Cerebro, due: list[tuple[Agent, str | None]], result:
             _again(workspace, agent, curated)
         if word is None and spends and not why and curated is not None and curated.run is not None:
             word = next((w for w in _words(workspace, agent) if w in SCHEDULES), None)
-        _ran(workspace, agent, word, curated.run if curated else None, bool(why), began)
+        # a run that did not fail, or a skip that found nothing moved since the last, read its files as they are
+        _ran(workspace, agent, word, curated.run if curated else None, bool(why), began, None if why else [agent.target])
 
 
 def _again(workspace: Cerebro, agent: Agent, curated: Any) -> None:
@@ -2308,10 +2328,12 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassR
                 f"{agent.target} holds no article yet: its curator admits them"
             del result.due[agent.id]
             continue
+        articles = due_articles(workspace, agent, word, articles)
         if (left := _left(workspace, agent, word)) is not None:  # what its period's run did not finish, alone
             parts |= {(agent.id, article) for article, how in left.items() if how == "parts"}
             owed = [article for article in articles if article in left]
-            rest = [article for article in articles if article not in left] if "change" in _words(workspace, agent) else []
+            older, changing = _older(workspace, agent), "change" in _words(workspace, agent)
+            rest = [article for article in articles if article not in left and (changing or article in older)]
             changes |= {(agent.id, article) for article in rest}  # pending narrows the schedule alone: a change still runs
             if not owed:
                 _ran(workspace, agent, word, None, False)
@@ -2730,7 +2752,7 @@ def held_runs(workspace: Cerebro, agent: Agent, article: str) -> str:
     there, or else the writer's next run, which runs every part that did not run. A period whose earlier run left
     other articles to do owes only those."""
     zone, words = zone_of(workspace.settings), _words(workspace, agent)
-    word, _, _ = _wake(agent, words, _beat(workspace, agent), _file_stamp(workspace, agent), workspace.clock(), zone)
+    word, _, _ = _wake(agent, words, _beat(workspace, agent), bool(_older(workspace, agent)), workspace.clock(), zone)
     if word is not None and ((owed := _left(workspace, agent, word)) is None or article in owed):
         return "runs next pass"
     local = workspace.clock().astimezone(zone)

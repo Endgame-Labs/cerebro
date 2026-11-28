@@ -122,7 +122,7 @@ A query of a collection comes newest first by a date field Cerebro picks. Name t
 | Word | Runs |
 |---|---|
 | `change` | When its evidence changes |
-| `hourly`, `daily`, `weekly` | Once in each period, in the workspace's time zone |
+| `hourly`, `daily`, `weekly` | Once in each period, in the workspace's time zone, and again at once after you change its file |
 | `manual` | Only when you run it, with `cerebro agents run` |
 
 After an agent writes an article, new evidence waits four hours before it rewrites it, so a busy afternoon gives one rewrite, not twenty. An agent can set its own wait:

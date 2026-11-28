@@ -352,7 +352,7 @@ def fingerprint(agent: Agent, evidence: list[Evidence]) -> dict[str, str]:
     def hashed(data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()[:16]
 
-    out = {"": hashed(agent.path.read_bytes() if agent.path.is_file() else agent.prompt.encode())}
+    out = {"": agent.hash}  # the file as it was loaded, which is what a run reads
     for entry in evidence:
         if (entry.heading == LEFT_OUT and not entry.items) or entry.returns_now is not None:
             continue

@@ -911,7 +911,7 @@ def load_agent(path: Path, agents_dir: Path) -> Agent:
         own=own,
         subagent_ids=[f"{collection}/subagents/{name}" for name in names], authority=authority,
         rendered=rendered, min_grounding=_floor(file, front.get("min_grounding")),
-        hash=hashlib.sha256(data).hexdigest()[:8], warnings=warnings,
+        hash=hashlib.sha256(data).hexdigest()[:16], warnings=warnings,
     )
 
 

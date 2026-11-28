@@ -443,9 +443,9 @@ def test_what_changes_outside_the_store_during_a_curators_act_still_wakes_it(tmp
     note = Record(id="n1", source="crm", revision="1", at="2026-11-09T09:00:00Z", keys={}, fields={"subject": "Birch"},
                   body="Birch shipped on time.")
     extraction, run = FakeExtraction(), PerAgent()
+    crm = FakeConnector("crm", [a_part("p1", "Alder"), a_part("p2", "Birch"), a_part("p3", "Cedar"), note])
     workspace = Cerebro(tmp_path, store=MemoryStore(), extraction=extraction, clock=lambda: NOW, agent_run=run,
-                        connectors=[FakeConnector("crm", [a_part("p1", "Alder"), a_part("p2", "Birch"),
-                                                                  a_part("p3", "Cedar"), note])])
+                        connectors=[crm])
     workspace.run_once(agents=False)
     module = sys.modules["cerebro.curate"]  # the package's `curate` names a function
     admits = [("admit", {"record": {"source": "crm", "id": id}, "reason": "a part"}) for id in ("p1", "p2", "p3")]
@@ -479,6 +479,9 @@ def test_what_changes_outside_the_store_during_a_curators_act_still_wakes_it(tmp
     else:
         workspace.curate(next(a for a in workspace.agents if a.id == "things/curator"))
     monkeypatch.undo()
+    if how == "agent file":  # read as the workspace is opened again, as a run reads it
+        workspace = Cerebro(tmp_path, store=workspace.store, extraction=extraction, clock=lambda: NOW, agent_run=run,
+                            connectors=[crm], trusted=True)
     assert "things/curator" in workspace.run_once().due
 
 

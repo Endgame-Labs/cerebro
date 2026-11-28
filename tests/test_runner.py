@@ -70,27 +70,106 @@ def test_a_weekly_agent_runs_once_a_week_in_the_workspaces_zone_and_not_on_chang
 
 
 def test_a_weekly_writer_runs_at_once_after_its_file_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Once, on the next pass or by a person's hand, and then it keeps its schedule."""
+    """Once, on the next pass or by a person's hand, and then it keeps its schedule: a change made while it ran too."""
     hands = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC))  # a Monday
     notes, extraction = FakeConnector("notes", NOTES), FakeExtraction()
-    cerebro = workspace(tmp_path, "[weekly]", extraction, notes, hands)
-    assert cerebro.run_once().compiled == ["reports/weekly"]
     path = tmp_path / "agents" / "reports" / "weekly.md"
 
-    def changed() -> Cerebro:
+    def edit() -> None:
         path.write_text(path.read_text() + "\nKeep it short.\n")
+
+    def edited(prompt: str) -> dict[str, str]:  # a person edits the file while the run is under way
+        edit()
+        return cited(prompt)
+
+    cerebro = workspace(tmp_path, "[weekly]", extraction, notes, hands, run=ScriptedRun(edited, clock=hands))
+    assert cerebro.run_once().compiled == ["reports/weekly"]
+
+    def opened() -> Cerebro:
         hands.move(days=1)
         return Cerebro(tmp_path, store=cerebro.store, extraction=extraction, clock=hands, connectors=[notes],
                        agent_run=ScriptedRun(cited, clock=hands))
 
-    again = changed()
+    again = opened()
     ran = again.run_once()
     assert ran.compiled == ["reports/weekly"] and ran.due["reports/weekly"] == "its agent file changed"
     assert again.run_once().skipped["reports/weekly"].startswith("heartbeat is weekly: it ran this period")
-    by_hand = changed()
+    edit()
+    by_hand = opened()
     monkeypatch.setattr(cli, "open_workspace", lambda root: nullcontext(by_hand))
     assert CliRunner().invoke(cli.main, ["agents", "run", "reports/weekly", "--workspace", str(tmp_path)]).exit_code == 0
     assert by_hand.run_once().skipped["reports/weekly"].startswith("heartbeat is weekly: it ran this period")
+
+
+def things(tmp_path: Path, hands: Hands, extraction: FakeExtraction, store: MemoryStore, line: str,
+           fails: str = "") -> Cerebro:
+    """A weekly writer of the things collection over every note, its file ending in `line`, opened on `store`, which
+    holds things/first and things/second: its run on `fails` raises."""
+    (tmp_path / "agents" / "things").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "settings.yaml").write_text("{}\n")
+    (tmp_path / "agents" / "things" / "article.md").write_text(
+        f"---\nevidence:\n  - query: {{ from: facts, source: notes }}\nheartbeat: [weekly]\n---\n\n{line}\n\n# Output\n\n"
+        "## Summary\n")
+    for id in ("things/first", "things/second"):
+        if store.article(id) is None:
+            store.create(Identity(id, "things", id.removeprefix("things/").title()))
+
+    def write(prompt: str) -> dict[str, str]:
+        if fails and fails in prompt:
+            raise RuntimeError("the model went away")
+        return cited(prompt)
+
+    return Cerebro(tmp_path, store=store, extraction=extraction, clock=hands, connectors=[FakeConnector("notes", NOTES)],
+                   agent_run=ScriptedRun(write, clock=hands))
+
+
+def test_an_article_whose_run_on_a_changed_file_failed_runs_at_once_on_a_later_pass_and_no_other(tmp_path: Path) -> None:
+    from cerebro.preview import stale
+
+    hands, extraction, store = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC)), FakeExtraction(), MemoryStore()  # a Monday
+    assert sorted(things(tmp_path, hands, extraction, store, "Be brief.").run_once().compiled) == [
+        "things/first", "things/second"]
+    hands.move(days=1)
+    ran = things(tmp_path, hands, extraction, store, "Be briefer.", fails="things/second").run_once()
+    assert ran.compiled == ["things/first"] and "things/article on things/second" in ran.failed
+    extraction.extract(Record(id="n9", source="notes", revision="1", at="2026-11-17T10:00:00Z", body="A later note."))
+    hands.move(hours=2)  # past the wait after a failure
+    again = things(tmp_path, hands, extraction, store, "Be briefer.")
+    assert [(row.article, row.status) for row in stale(again).rows] == [("things/second", "stale")]
+    ran = again.run_once()  # the new note waits for the week on things/first
+    assert ran.compiled == ["things/second"] and ran.due["things/article"] == "its agent file changed"
+
+
+def test_a_file_changed_while_a_period_is_owed_runs_what_that_period_wrote_on_the_old_file(tmp_path: Path) -> None:
+    hands, extraction, store = Hands(datetime(2026, 11, 16, 9, tzinfo=UTC)), FakeExtraction(), MemoryStore()  # a Monday
+    ran = things(tmp_path, hands, extraction, store, "Be brief.", fails="things/second").run_once()
+    assert ran.compiled == ["things/first"] and "things/article on things/second" in ran.failed  # its period is owed
+    ran = things(tmp_path, hands, extraction, store, "Be briefer.").run_once()
+    assert sorted(ran.compiled) == ["things/first", "things/second"]
+
+
+def test_a_daily_curator_whose_run_on_its_changed_file_failed_runs_at_once_on_a_later_pass(tmp_path: Path) -> None:
+    from cerebro.run import Run
+
+    class Fails(AgentRun):
+        def run(self, agent: Any, evidence: Any, tools: Any, budget: Any) -> Run:
+            return Run("run_f", agent.id, agent.target, "failed", note="the provider refused it")
+
+    hands, store = Hands(datetime(2026, 11, 17, 9, tzinfo=UTC)), MemoryStore()
+    (tmp_path / "agents" / "notes").mkdir(parents=True)
+    (tmp_path / "settings.yaml").write_text("{}\n")
+
+    def opened(line: str, run: AgentRun) -> Cerebro:
+        (tmp_path / "agents" / "notes" / "curator.md").write_text(f"---\nheartbeat: [daily]\n---\n\n{line}\n")
+        return Cerebro(tmp_path, store=store, clock=hands, agent_run=run)
+
+    assert opened("Keep notes.", ScriptedRun(lambda prompt: {})).run_once().due == {
+        "notes/curator": "daily, and it never ran"}
+    assert "notes/curator" in opened("Keep notes and their dates.", Fails()).run_once().failed
+    hands.move(minutes=1)  # past the wait after a failure
+    again = opened("Keep notes and their dates.", ScriptedRun(lambda prompt: {}))
+    assert again.run_once().due == {"notes/curator": "its agent file changed"}
+    assert again.run_once().skipped["notes/curator"].startswith("heartbeat is daily: it ran this period")
 
 
 def test_an_agent_on_manual_alone_waits_for_a_person(tmp_path: Path) -> None:
