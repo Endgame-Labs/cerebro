@@ -772,9 +772,8 @@ def _resolved(result: Any) -> tuple[bool, list[str]]:
     if isinstance(result, ReadResult):
         ids = [a.identity.id for a in result.articles] + [f.id for f in result.facts]
         return bool(ids), ids
-    if isinstance(result, dict) and isinstance(result.get("record"), str):  # an app's tool that kept a record
-        return True, [result["record"]]
-    return True, []
+    record = result.get("record") if isinstance(result, dict) else getattr(result, "record", None)
+    return True, [record] if isinstance(record, str) else []  # a tell's record, or one an app's tool kept
 
 
 STOPPED_NOTHING = "serve is stopping, so this call did not run: nothing of it was written, so send it again once serve is back"

@@ -2,7 +2,8 @@
 
 A run is due when anything it reads moved: the digest of its evidence is kept once it finishes and stamped on what
 it writes, so the same evidence does not run it again. A run, or a gather, that failed on the same evidence waits,
-30 seconds doubling to an hour. A scheduled compile runs even when nothing moved.
+30 seconds doubling to an hour. A scheduled compile runs even when nothing moved, and so does one of an article
+that cites what a caller took back since its agent last ran there, as for a change.
 
 Every run goes through `run_agent`, so each is held to the cap and leaves its spend and its `agent-runs` row. An
 editor (`ground.Editor`) scores each sentence a run hands in against what it read, and the run is told, once, of
@@ -105,7 +106,7 @@ from .tokens import MASKED
 from .workspace import Workspace
 
 __all__ = ["CompileError", "CompileRefused", "Compiled", "agent_surface", "birth", "compile_article", "drop_material",
-           "fixed", "keep_judge", "material_key", "run_agent", "targets"]
+           "fixed", "keep_judge", "material_key", "retracted_of", "run_agent", "targets"]
 
 ARTICLE_ID = re.compile(r"[\w.@-]+(?:/[\w.@-]+)+")  # a collection and a name, as notes/weekly
 MAX_VALUE = 4096  # bytes of one value `override` sets, as JSON: long text belongs in the article
@@ -364,8 +365,9 @@ class _Writes:
 
 def _by_tool(read: list[Fact | Article]) -> list[Evidence]:
     """The facts a run read through its tools, as one more entry of its evidence, so what it cites of them is checked
-    as any evidence is, and its digest moves when one of those facts does. Empty when it read no fact that way."""
-    facts = [f for f in read if isinstance(f, Fact)]
+    as any evidence is, and its digest moves when one of those facts does. A retracted fact is none of them: a
+    citation of it backs nothing, as one of a fact the run never read. Empty when it read no other fact that way."""
+    facts = [f for f in read if isinstance(f, Fact) and f.status != "retracted"]
     if not facts:
         return []
     entry = Evidence(BY_TOOL)
@@ -667,7 +669,7 @@ class _Grounding:
         today = pinned(self.clock().astimezone(self.zone))
         judge = Judge(decider, self.article, _workspace(self.root), f"{today:%Y-%m-%d}")
 
-        def found(ids: list[str]) -> dict[str, dict[str, Any]]:
+        def found(ids: list[str]) -> dict[str, dict[str, Any] | None]:
             entries = reads()
             citable = _citable(entries)
             facts = {f.id: f for f in self.linked()}
@@ -681,10 +683,18 @@ class _Grounding:
             stale, sides = self.stale(cited), own_sides(self.lookup.store.record, cited.values())
             return {id: fields_of(id, citable.get(id), cited.get(id), texts.get(id, ""), stale.get(id, ""),
                                   sides.get(cited[id].record) if id in cited else None) or {"text": ""}
-                    for id in ids if id in citable or id in cited}
+                    for id in ids if id in citable or id in cited} | dict.fromkeys(
+                retracted_of(self.lookup, [id for id in ids if id not in citable and id not in cited]))
 
         floor = agent.min_grounding if agent.min_grounding is not None else self.floor
         return Editor(judge, found, floor, self.known, agent.output[0] if agent.role == "subagent" else "", run)
+
+
+def retracted_of(lookup: Lookup, ids: list[str]) -> set[str]:
+    """Of `ids`, each that names a retracted fact: a citation of it backs nothing, and the judge, the run's line and
+    the article's copy say it was retracted, where an id that names nothing is not found."""
+    found = lookup.extraction.facts(ids=ids) if ids and lookup.extraction is not None else []
+    return {f.id for f in found if f.status == "retracted"}
 
 
 def _workspace(root: Path) -> str:
@@ -713,7 +723,8 @@ def _copy(store: Store, article_id: str, article: Article | None, root: Path, gr
     if article is None:
         return ""
     try:
-        mirror(article, root, facts=grounding.linked(), zone=grounding.zone)
+        mirror(article, root, facts=grounding.linked(), zone=grounding.zone,
+               retracted=partial(retracted_of, grounding.lookup))
     except OSError as error:
         unmirrored(store, article_id, True)
         return (f"{article_id} is stored, and its copy articles/{article_id}.md was not written ({error.strerror or error}): fix "
@@ -740,7 +751,7 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
                     starter: Starter | None = None, sources: Mapping[str, Connector] | None = None,
                     descriptions: Mapping[str, str] | None = None, only: str = "",
                     hold: Callable[[list[str]], str] | None = None, by_hand: bool = False,
-                    min_grounding: float = FLOOR) -> Compiled:
+                    min_grounding: float = FLOOR, taken_back: bool = False) -> Compiled:
     """Run `agent` on the article it writes, if anything it reads has moved, score what it hands in, and land it.
 
     `this` names the article, for an agent that writes many. `subagents` are the loaded agents a composer's names are
@@ -749,7 +760,9 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
     `by_hand`, a person's ask, runs only what moved, but at once after a failure. `only`, a subagent's id, runs that
     subagent of a composed article as `scheduled` would, and the agent that lists it after it. `hold`, serve's
     cooldown, is asked only when what moved is the evidence of the agents it is handed: a line that says why that
-    rebuild waits, or empty to run it.
+    rebuild waits, or empty to run it. `taken_back` says the article cites what a caller took back since its agent
+    last ran there: it runs as for a change though nothing it reads moved, every subagent of a composed one with it,
+    so the cut takes the line out.
 
     With a `decider`, grounding and the keep judge of an `articles` line ask the decision model, priced on
     `decision` and held to the compilation cap. `min_grounding` is the workspace's floor, which an agent file's own
@@ -768,7 +781,7 @@ def compile_article(agent: Agent, *, lookup: Lookup, store: Store, agent_run: Ag
     c = _Compile(lookup=lookup, store=store, agent_run=agent_run, root=root, functions=functions,
                  agent_tools=agent_tools, workspace=workspace, ledger=ledger, model=model, clock=clock, grounding=grounding,
                  scheduled=scheduled, hold=hold, by_hand=by_hand, starter=starter, zone=zone, sources=sources,
-                 judge=keep_judge(decider, store, clock, ledger, decision, root))
+                 judge=keep_judge(decider, store, clock, ledger, decision, root), taken_back=taken_back)
     if agent.role == "composer":
         compiled = _Composing(c, agent, article, _subagents(agent, subagents), subagents, only).compose()
     else:
@@ -809,6 +822,7 @@ class _Compile:
     zone: tzinfo
     sources: Mapping[str, Connector] | None  # the connectors a `sql` line reads
     judge: DecisionKeepJudge | None  # what cuts an `articles` line with `keep`
+    taken_back: bool  # the article cites what a caller took back since its agent last ran there
 
     def gather(self, agent: Agent, article: str, writers: list[str], now: datetime) -> list[Evidence]:
         """What a run reads: the agent's evidence on `article`, then what people left for it, which counts in its digest
@@ -840,7 +854,8 @@ def _single(c: _Compile, agent: Agent, article: str, descriptions: Mapping[str, 
         raise CompileError(f"{_name(agent)} writes articles/{article}.md, which does not exist: its collection's curator "
                            "admits it, so compile one of the articles targets lists")
     owned = current is not None and any(s.by == agent.id for s in current.compilations)
-    status, why = due(agent, article, store, stamp_, clock(), fresh=unmoved(store, agent, article, stamp_),
+    status, why = due(agent, article, store, stamp_, clock(),
+                      fresh=unmoved(store, agent, article, stamp_) and not c.taken_back,
                       scheduled=c.scheduled, by_hand=c.by_hand, hold=c.hold)
     if status == "cooling down":
         return Compiled(None, current, skipped=True, waiting=why)  # what rendered: names, the pass's rendering writes
@@ -897,7 +912,7 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
                 after_ = store.article(article)
                 notes.append(KEPT if after_ is not None and any(s.by == agent.id for s in after_.compilations)
                              else NONE_LEFT)
-        if drew or ended and (gone or writes.sets):  # what changed the article, so its copy follows
+        if drew or ended and (gone or writes.sets or c.taken_back):  # what changed it or its footnotes: the copy follows
             _copy(store, article, store.article(article), c.root, grounding)
         return Compiled(run, None, dropped=dropped, runs=[run], notes=notes)
     if fixed(agent):
@@ -1348,7 +1363,7 @@ class _Composing:
                                "curator admits it, so compile one of the articles targets lists")
         self.own_read = digest(composer, self.lead + _read_before(c.lookup, store, composer, article))
         own_stamp = _stamp_of(self.own_read, *_returned(subs, self.held))
-        stale = [n for n, sub in enumerate(subs) if (sub.id == self.only if self.only else c.scheduled or
+        stale = [n for n, sub in enumerate(subs) if (sub.id == self.only if self.only else c.scheduled or c.taken_back or
                                                      self.held[n].get("digest") != self.stamps[n])]
         due = self.instructed and (c.scheduled and not self.only or store.state(_read(composer, article)) != own_stamp)
         waits = not c.scheduled and not c.by_hand
@@ -1612,7 +1627,7 @@ class _Composing:
             _wrote_nothing(store, own, [])
         else:
             compiled.notes.append(NONE_STAND)
-        if gone or self.writes.sets or any(w.sets for w in self.sub_writes.values()):
+        if gone or self.writes.sets or any(w.sets for w in self.sub_writes.values()) or c.taken_back:
             _copy(store, article, store.article(article), c.root, c.grounding)
         return compiled
 

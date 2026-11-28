@@ -1055,6 +1055,13 @@ class StoreLookup(Lookup):
             every = [row.data | {"seq": row.seq} for row in reversed(rows)]
             if source == "agent-runs":
                 every.sort(key=lambda row: str(row.get("ended_at") or ""), reverse=True)
+            if source == REQUESTS:  # the log keeps a retracted tell's words, and a query of it no longer gives them
+                taken = retracted_records(self.store)
+                for row in every:
+                    told = [self.store.record(id) for id in row.get("resolved") or []] if row.get("tool") == "tell" else []
+                    if isinstance(row.get("args"), dict) and any(r is not None and was_retracted(r, taken) for r in told):
+                        row["args"] = {k: v for k, v in row["args"].items() if k != "text"}
+                        row["retracted"] = True
         elif bare:
             every = [identity(r).fields | {"id": r.id, "at": r.at} for r in reversed(self.store.records(source))]
         else:
@@ -1222,7 +1229,7 @@ class StoreLookup(Lookup):
             facts = self._facts_named(id.strip())
             if (record := self.store.record(id.strip())) is not None and self._facts_only(caller, record.source):
                 result.warnings.append(_facts_of(record, self.store.scrubbing()))
-            if record is not None and was_retracted(record, taken):
+            if retracted := record is not None and was_retracted(record, taken):
                 result.warnings.append(f"record {record.id} was retracted")
             if facts:
                 kept = narrow(facts, terms)
@@ -1230,7 +1237,7 @@ class StoreLookup(Lookup):
                     result.warnings.append(_none_matched(str(about), id.strip(), facts, terms,
                                                          len(facts) == 1 and facts[0].id == id.strip()))
                 _show_once(result, kept, shown)
-            else:
+            elif not retracted:
                 result.missing.append(id)
         every = result.facts + [f for fs in result.since_written.values() for f in fs]
         result.stale = self._stale(every)

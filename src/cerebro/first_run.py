@@ -1430,6 +1430,7 @@ def _merge(into: PassResult, more: PassResult) -> None:
     into.paused |= more.paused
     into.grounding |= more.grounding
     into.cleaned |= more.cleaned
+    into.taken_back |= more.taken_back
 
 
 def late(workspace: Cerebro, *, say: Callable[[str], None] | None = None,

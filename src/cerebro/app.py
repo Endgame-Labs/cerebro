@@ -712,13 +712,15 @@ class Cerebro:
         return [self.mask_every()(line) for line in runner.ready_by_hand(self, agent, articles)]
 
     def compile(self, agent: Agent, this: str | None = None, scheduled: bool = False, only: str = "",
-                hold: Callable[[list[str]], str] | None = None, by_hand: bool = False) -> Compiled:
+                hold: Callable[[list[str]], str] | None = None, by_hand: bool = False,
+                taken_back: bool = False) -> Compiled:
         """Run one agent on `this`, the article it writes, if anything it reads has moved or the run is scheduled.
         `by_hand` is a person's ask, as `compile --article`: it runs what moved, a failed run's wait or not.
         `compile.targets` lists the articles an agent writes. Its runs' transcripts and its lines come masked. With
-        no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, as
-        `compile_article` takes it. A run that lands, or that ran and wrote nothing, moves the article's clock, by hand
-        or in a pass; one that fails does not. What grounding did on it is counted in its `grounding`."""
+        no key for its model, it is refused in one line before anything runs. `hold` is the cooldown, and `taken_back`
+        says the article cites what a caller took back, as `compile_article` takes them. A run that lands, or that ran
+        and wrote nothing, moves the article's clock, by hand or in a pass; one that fails does not. What grounding did
+        on it is counted in its `grounding`."""
         self.files_read()
         self.need_key(agent)
         self.refresh_mask()
@@ -734,7 +736,8 @@ class Cerebro:
                                            scheduled=scheduled, decider=self.decider, decision=self.models["decision"],
                                            zone=self.zone, starter=self.start_script, sources=self.connectors,
                                            descriptions=descriptions(self.settings), only=only, hold=hold,
-                                           by_hand=by_hand, min_grounding=min_grounding(self.settings))
+                                           by_hand=by_hand, min_grounding=min_grounding(self.settings),
+                                           taken_back=taken_back)
         finally:
             TALLY.reset(counting)
         compiled.grounding = dict(tally)
