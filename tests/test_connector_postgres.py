@@ -401,12 +401,16 @@ def test_a_server_that_does_not_open_sends_nothing_and_says_where_the_connection
     assert server.connections == []
 
 
-def test_an_error_that_is_not_the_drivers_is_not_dressed_as_one(root: Path, store: FileSecrets,
-                                                                server: Server) -> None:
-    server.fails["query"] = KeyError("a stand-in's own fault")
-    with pytest.raises(KeyError):
+@pytest.mark.parametrize("step", ["connect", "query"])
+def test_an_error_that_is_not_the_drivers_is_not_dressed_as_one(root: Path, store: FileSecrets, server: Server,
+                                                                step: str) -> None:
+    server.fails[step] = fault = KeyError("a stand-in's own fault")
+    fault.__context__ = handling = ValueError("what the stand-in was handling")
+    with pytest.raises(KeyError) as failed:
         warehouse(root, store).select("select 1")
-    read_only(server, opened("select 1"))  # and the transaction still ends in a rollback
+    assert failed.value.__context__ is handling and not failed.value.__suppress_context__  # its traceback shows both
+    if step == "query":
+        read_only(server, opened("select 1"))  # and the transaction still ends in a rollback
 
 
 # -- bounds, masks, values --------------------------------------------------------------------------------------

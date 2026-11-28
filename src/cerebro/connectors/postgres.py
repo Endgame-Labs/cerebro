@@ -267,9 +267,11 @@ class PostgresEngine(Engine):
         try:
             db = connect(dsn, autocommit=True, connect_timeout=max(2, math.ceil(limits.seconds)),
                          application_name=APPLICATION)
-        except Exception as error:  # noqa: BLE001 - one not the driver's goes on, with its login masked
+        except Exception as error:  # one not the driver's goes on, with its login masked
             if not hasattr(error, "sqlstate") and not isinstance(error, OSError):
-                raise masked_error(error, hide) from None
+                if (safe := masked_error(error, hide)) is error:
+                    raise
+                raise safe from None
             raise DatabaseError(f"{self.label}: the database does not open ({one_line(hide(str(error)))}): check "
                                 f"the connection string kept as {self.item}, and that the server is up") from None
         cursor = None
@@ -289,9 +291,11 @@ class PostgresEngine(Engine):
             return bounded(columns, self._fetch(db, cursor, limits, deadline), limits)
         except CerebroError:
             raise
-        except Exception as error:  # noqa: BLE001 - one not the driver's goes on, with its login masked
+        except Exception as error:  # one not the driver's goes on, with its login masked
             if not hasattr(error, "sqlstate"):
-                raise masked_error(error, hide) from None
+                if (safe := masked_error(error, hide)) is error:
+                    raise
+                raise safe from None
             raise self._failure(error, hide, limits) from None
         finally:
             if cursor is not None:

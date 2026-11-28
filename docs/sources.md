@@ -190,6 +190,8 @@ cerebro secrets set warehouse-dsn
 
 The value is a connection string, such as `postgresql://cerebro_reader:<password>@db.example:5432/team?sslmode=require`. Postgres needs one extra package, so install with `uv tool install '.[postgres]'`.
 
+Cerebro masks the password wherever its words appear, so a password that is a common word, such as `postgres`, masks that word in facts and articles too. A real password avoids this.
+
 Cerebro runs only a single `SELECT`, read only, and stops at 500 rows or 10 seconds. Connect as a login that can only read the tables you want, and never as a superuser, which Cerebro refuses:
 
 ```sql
