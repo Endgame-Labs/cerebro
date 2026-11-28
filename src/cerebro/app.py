@@ -763,12 +763,13 @@ class Cerebro:
         one line before anything runs."""
         self.need_key(agent)
         self.refresh_mask()
-        curated = run_curator(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run, root=self.root,
-                              functions=self.exposed.evidence, agent_tools=self.exposed.agent_tools, workspace=self.handle,
-                              ledger=self.ledger, model=self.model_of(agent), clock=self.clock,
-                              changed_only=changed_only, starter=self.start_script, sources=self.connectors,
-                              decider=self.decider, decision=self.models["decision"], wake=wake,
-                              accepted=accepted)
+        with masking(self.mask_every()):  # what a source gave, kept before a secret was saved, is masked before a cut
+            curated = run_curator(agent, lookup=self.lookup, store=self.store, agent_run=self.agent_run, root=self.root,
+                                  functions=self.exposed.evidence, agent_tools=self.exposed.agent_tools,
+                                  workspace=self.handle, ledger=self.ledger, model=self.model_of(agent),
+                                  clock=self.clock, changed_only=changed_only, starter=self.start_script,
+                                  sources=self.connectors, decider=self.decider, decision=self.models["decision"],
+                                  wake=wake, accepted=accepted)
         return self.masked(curated)
 
     def weighs_nothing(self, agent: Agent) -> bool:

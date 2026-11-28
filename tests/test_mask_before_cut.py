@@ -453,6 +453,42 @@ def test_a_first_run_says_and_returns_no_part_of_a_secret_a_source_or_a_curator_
     assert not leaks(secret, text), leaks(secret, text)
 
 
+@pytest.mark.parametrize("name", CUT_NAMES)
+def test_a_held_record_kept_before_its_secret_was_saved_reaches_the_curator_masked_across_the_cut(
+        tmp_path: Path, name: str) -> None:
+    from pydantic_ai.messages import TextPart
+
+    from cerebro.fakes import MemoryStore
+    from cerebro.held import MAX_LINE
+    from cerebro.held import entry as held_entry
+
+    secret, secrets, sent = SECRETS[name], FakeSecrets(), []
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        sent.extend(strings(messages))
+        return ModelResponse(parts=[TextPart("Done.")])
+
+    def row(id: str, value: str) -> dict[str, Any]:
+        return dataclasses.asdict(Record(id=id, source="desk", revision="1", at="2026-11-10T09:00:00Z",
+                                         keys={"ref": [value]}, into="things"))
+
+    def line(agent: Agent, value: str) -> str:  # the held line of a record whose ref is `value`
+        store = MemoryStore()
+        store.set_state("held:desk", [row("t0", value)])
+        return held_entry(agent, store, ["desk"], 1, agent.evidence[0]).items[0].text
+
+    with Cerebro(first_workspace(tmp_path / "ws"), trusted=True, agent_run=PydanticRun(FunctionModel(model)),
+                 extraction=FakeExtraction(), secrets=secrets, connectors=[FakeConnector("desk", [])],
+                 clock=lambda: DAY) as workspace:
+        agent = workspace.agent("things/curator")
+        workspace.store.set_state("held:desk", [  # kept while the secrets store held nothing, as a source listed it
+            row(f"t{n}", padded(start, secret, lambda value: line(agent, value)))
+            for n, start in enumerate(offsets(len("- ") + MAX_LINE, secret))])
+        secrets.set("DESK_TOKEN", secret)
+        workspace.curate(agent)
+    assert [s for s in sent if MARK in s] and not [s for s in sent if leaks(secret, s)]
+
+
 # -- a script's error, an app's tool, a reply of any type, and forms too short to mask
 
 

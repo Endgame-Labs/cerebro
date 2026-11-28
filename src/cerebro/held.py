@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .agent import Agent, EvidenceLine
-from .connector import NOBODY, Ours, Record, outside_domain, registrable
+from .connector import NOBODY, Ours, Record, masked_first, outside_domain, registrable
 from .evidence import RECENT_DAYS, Evidence, EvidenceError, Item
 from .identity import OWN_WEIGHED, bound_to, reached, working, would_bind
 from .records import Proposal, proposals
@@ -539,8 +539,9 @@ MAX_LINE = 2000  # characters one held record takes of the list, whatever its ke
 
 
 def _capped(text: str, cap: int) -> str:
-    """Text folded to one line and cut at `cap` characters, with how long it was."""
-    one = " ".join(str(text).split())
+    """Text masked as `masked_first` masks it, folded to one line and cut at `cap` characters, with how long it was.
+    A held row kept before a secret was saved holds it in the clear, and a cut first would leave part of it."""
+    one = " ".join(masked_first(str(text)).split())
     return one if len(one) <= cap else f"{one[:cap]}… ({len(one)} characters)"
 
 
