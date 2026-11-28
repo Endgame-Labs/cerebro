@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .agent import Agent, EvidenceLine
-from .connector import NOBODY, Ours, Record, masked_first, outside_domain, registrable
+from .connector import NOBODY, Ours, Record, outside_domain, registrable
 from .evidence import RECENT_DAYS, Evidence, EvidenceError, Item
 from .identity import OWN_WEIGHED, bound_to, reached, working, would_bind
 from .records import Proposal, proposals
@@ -538,16 +538,16 @@ MAX_REASON = 200  # characters of a left-out reason, as leave_out bounds it
 MAX_LINE = 2000  # characters one held record takes of the list, whatever its keys hold
 
 
-def _capped(text: str, cap: int) -> str:
-    """Text masked as `masked_first` masks it, folded to one line and cut at `cap` characters, with how long it was.
-    A held row kept before a secret was saved holds it in the clear, and a cut first would leave part of it."""
-    one = " ".join(masked_first(str(text)).split())
+def _capped(text: str, cap: int, mask: Callable[[str], str]) -> str:
+    """Text masked by `mask`, folded to one line and cut at `cap` characters, with how long it was. The mask comes
+    first: a row kept before a secret was saved holds it in the clear, and a cut first would leave part of it."""
+    one = " ".join(mask(str(text)).split())
     return one if len(one) <= cap else f"{one[:cap]}… ({len(one)} characters)"
 
 
-def _line(data: dict[str, Any]) -> str:
-    """One held record as the list shows it: its data as JSON, cut at `MAX_LINE` characters."""
-    return "- " + _capped(json.dumps(data, sort_keys=True), MAX_LINE)
+def _line(data: dict[str, Any], mask: Callable[[str], str]) -> str:
+    """One held record as the list shows it: its data as JSON, masked by `mask`, cut at `MAX_LINE` characters."""
+    return "- " + _capped(json.dumps(data, sort_keys=True), MAX_LINE, mask)
 
 
 def _data(held: Held) -> dict[str, Any]:
@@ -594,11 +594,12 @@ def entry(agent: Agent, store: Store | None, sources: Iterable[str], n: int, lin
             for row in store.rows("left-out", {"collection": agent.target}) if row.data.get("id")}
     out = Evidence(f"Held for {agent.target}: records your sources hold that no article in the working set binds, "
                    "newest first", spelled=f"held for {agent.target}")
+    mask = store.scrubbing() or (lambda text: text)  # as the store masks what it keeps now, for every reader
     for held in found.items:
-        shown = _line(_data(held))
-        counted = _line(_counted(held, agent.id))
+        shown = _line(_data(held), mask)
+        counted = _line(_counted(held, agent.id), mask)
         reason = left.get((held.source, held.id))
-        text = _line(_data(held) | {"left_out": _capped(reason, MAX_REASON)}) if reason else shown
+        text = _line(_data(held) | {"left_out": _capped(reason, MAX_REASON, mask)}, mask) if reason else shown
         # the reason is the curator's own words, so it is shown and never counted: a reworded one wakes no run
         out.items.append(Item(f"held:{held.source}:{held.id}:{held.revision}", text, at=held.at,
                               left=f"{held.source}:{held.id}", counts=counted if text != counted else None))

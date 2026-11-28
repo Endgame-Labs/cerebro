@@ -69,7 +69,7 @@ from .models import Decider, DecisionError, DecisionTooLarge, ModelSpec, YesNo, 
 from .records import WAITING, proposal_from
 from .rendered import MARK
 from .shown import shown
-from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, update_state
+from .store import LOGS, MENTIONS, SUBJECT, Store, compares, own_key, scrubbed, update_state
 from .window import Span, WindowError, holds, is_window, read_time, span
 from .workspace import Workspace
 
@@ -1112,7 +1112,8 @@ class _Gatherer:
         if who.admitted_by is None:
             return item
         said = f"\n  admitted by {who.admitted_by.name} on {who.admitted_at[:10]}"
-        reason = " ".join(who.admitted_reason.split())
+        store = getattr(self.lookup, "store", None)  # its mask now, before the cut: kept earlier, it may hold a secret
+        reason = " ".join(scrubbed(who.admitted_reason, store.scrubbing() if store is not None else None).split())
         reason = reason if len(reason) <= 200 else f"{reason[:200]}… ({len(reason)} characters)"
         # the reason is the curator's own words: shown, and never counted
         return replace(item, text=item.text + said + (f": {reason}" if reason else ""),
