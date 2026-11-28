@@ -131,7 +131,7 @@ After an agent writes an article, new evidence waits four hours before it rewrit
 heartbeat: { on: [change], cooldown: 30m }
 ```
 
-When you take back a fact an article cites, its agent runs on the next pass, whatever its heartbeat or wait.
+When you take back a fact or a record an article cites, its agent runs there on the next pass, whatever its heartbeat or cooldown. If its last run there failed, it still waits first, as [a failed run does](runs.md#when-a-run-fails).
 
 An agent with nothing new to write can say so, with a reason. Its run wrote nothing, and the article keeps the text it had. The pass prints the reason, and the agent runs again once its evidence moves:
 

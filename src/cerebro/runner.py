@@ -146,7 +146,6 @@ from .records import (
     RETRY,
     TOLD,
     Claimed,
-    Proposal,
     decided_by_caller,
     extract_told,
     finish_retracts,
@@ -2225,23 +2224,28 @@ def writers_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, str
     one waits goes on `result.skipped`, and the articles each must run on though nothing moved on `result.taken_back`.
     It takes each due one's lease, so `compile --dry-run` calls it on a store apart."""
     writers = [agent for agent in workspace.agents if agent.role != "curator"]
-    taken = [p for p in proposals(workspace.store, ACCEPTED) if p.kind in RETRACTS and decided_by_caller(p)]
+    taken: dict[str, datetime] = {}  # each id a caller took back, at the last time one did
+    for p in proposals(workspace.store, ACCEPTED):
+        if p.kind in RETRACTS and decided_by_caller(p):
+            at = datetime.fromisoformat(p.decided_at or p.at)
+            taken[p.target] = max(at, taken.get(p.target, at))
     result.taken_back = {agent.id: cited for agent in writers if taken and agent.role in WRITERS
                          and (cited := _citing_taken_back(workspace, agent, taken))}
     return _due(workspace, writers, result, set(result.taken_back))
 
 
-def _citing_taken_back(workspace: Cerebro, agent: Agent, taken: list[Proposal]) -> list[str]:
-    """Each article `agent` wrote that cites a fact, or a record, that a retract of `taken` took back since the agent
-    last ran there, in the same second too: it runs on the next pass, whatever its heartbeat, though nothing it reads
-    moved, so the cut takes the line out. Only a caller's retract wakes it, as only a caller's cuts a line."""
-    writers, out = (agent.id, *agent.subagent_ids), []
+def _citing_taken_back(workspace: Cerebro, agent: Agent, taken: dict[str, datetime]) -> list[str]:
+    """Each article `agent` wrote that cites a fact, or a record, that a caller took back since the agent last ran
+    there, in the same second too, `taken` giving when: it runs on the next pass, whatever its heartbeat or cooldown,
+    though nothing it reads moved, so the cut takes the line out. Only a caller's retract wakes it, as only a caller's
+    cuts a line."""
+    writers, newest, out = (agent.id, *agent.subagent_ids), max(taken.values()), []
     for article, mark in (_beat(workspace, agent).articles or {}).items():
         since = _when(mark.get("ran"))
-        ids = {p.target for p in taken if since is None or _when(p.decided_at or p.at) >= since}  # type: ignore[operator]
-        found = workspace.store.article(article) if ids else None
-        if found is not None and any(c.id in ids or c.source in ids for part in found.compilations if part.by in writers
-                                     for c in part.citations):
+        found = workspace.store.article(article) if since is None or newest >= since else None
+        cited = [taken[id] for part in (found.compilations if found is not None else []) if part.by in writers
+                 for c in part.citations for id in (c.id, c.source) if id in taken]
+        if cited and (since is None or max(cited) >= since):
             out.append(article)
     return out
 
@@ -2364,10 +2368,10 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
     key = _key(agent, article)
     result.step("compile", "start", article)
     try:
+        taken = article in result.taken_back.get(agent.id, [])  # it runs at once, its cooldown or not
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
-                                 hold=_hold(workspace, agent, article, served) if change else None,
-                                 only=_marked(workspace, agent, article) if parts else "",
-                                 taken_back=article in result.taken_back.get(agent.id, []))
+                                 hold=_hold(workspace, agent, article, served) if change and not taken else None,
+                                 only=_marked(workspace, agent, article) if parts else "", taken_back=taken)
     except HeldForRoom:
         result.step("compile", "end", article, mark="skipped", text="held for room under the cap")
         raise

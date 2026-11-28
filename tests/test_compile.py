@@ -1505,13 +1505,14 @@ def test_ten_unchanged_passes_make_no_model_call_for_any_shape_of_composed_artic
                                sorted(["briefs/subagents/people", "briefs/subagents/risks"] * 4))
 
 
-def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote_and_from_beside_one_that_stands(
+def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_the_store_wrote_and_footnoted_retracted_beside_one_that_stands(
         ) -> None:
+    from functools import partial
     from types import SimpleNamespace
 
-    from cerebro.article import Compilation, Identity
+    from cerebro.article import Compilation, Identity, markdown
     from cerebro.clean import label
-    from cerebro.compile import _Grounding, _withdrawn
+    from cerebro.compile import _Grounding, _withdrawn, retracted_of
     from cerebro.facts import Fact
     from cerebro.fakes import MemoryStore
 
@@ -1532,14 +1533,17 @@ def test_a_retracted_fact_whose_id_is_not_label_safe_is_withdrawn_from_the_text_
     store.write_compilation(Compilation("things/halden", "Part", f"The lab moved [^{label(gone)}].[^unsupported]\nIt has a dock [^{kept}].\n"
                                                      f"It grew [^{label(beside)}] [^{kept}].\n", by="things/parts",
                                 citations=[Citation("fact", gone), Citation("fact", kept), Citation("fact", beside)]))
-    grounding = _Grounding("things/halden", lookup=SimpleNamespace(extraction=Facts()),  # type: ignore[arg-type]
+    lookup = SimpleNamespace(extraction=Facts())
+    grounding = _Grounding("things/halden", lookup=lookup,  # type: ignore[arg-type]
                            root=Path("."), ledger=None, clock=lambda: datetime.now(UTC), decider=None, decision=None,
                            zone=UTC, floor=0.6)
     said = _withdrawn(grounding, store, "things/halden", ["things/parts"])
     part = next(s for s in store.article("things/halden").compilations if s.by == "things/parts")
-    assert sorted(asked) == sorted([gone, kept, beside]) and len(said) == 2
-    assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept]
-    assert f"It grew [^{kept}]." in part.text  # a fact it cites still stands, and its footnote alone
+    assert sorted(asked) == sorted([gone, kept, beside]) and len(said) == 1
+    assert "moved" not in part.text and "dock" in part.text and [c.id for c in part.citations] == [kept, beside]
+    assert f"It grew [^{label(beside)}] [^{kept}]." in part.text  # a fact it cites still stands: the line stays whole
+    copy = markdown(store.article("things/halden"), retracted=partial(retracted_of, lookup))  # type: ignore[arg-type]
+    assert f"[^{label(beside)}]: retracted" in copy and f"[^{kept}]: retracted" not in copy, copy
 
 
 LINKS = "---\nevidence:\n  - items: {}\n  - articles: [this.linked]\n---\n\n# Instructions\n\nDraft it.\n"

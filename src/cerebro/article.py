@@ -447,8 +447,9 @@ def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = U
              retracted: Callable[[list[str]], Collection[str]] | None = None) -> str:
     """The article as a person reads it: front matter, the empty-article note while there is nothing else to read,
     each compilation under its heading, then a footnote per citation with its source and quote, one for each id cited
-    with no source that says `RETRACTED` when `retracted`, asked of those ids, gives it, else `NOT_FOUND`, and
-    `UNSUPPORTED` once when a part holds `MARK`. `facts` are the facts linked to the article, which the note counts."""
+    with no source that says `NOT_FOUND`, and `UNSUPPORTED` once when a part holds `MARK`. A footnote of an id
+    `retracted` gives, asked of every cited id, says `RETRACTED` in place of the rest. `facts` are the facts linked to
+    the article, which the note counts."""
     who = article.identity
     front: dict[str, Any] = {"id": who.id, "title": who.title}
     if who.status != "active":
@@ -471,16 +472,17 @@ def markdown(article: Article, facts: list[Fact] | None = None, zone: tzinfo = U
         else:
             lines += [f"## {compilation.heading}", ""] + ([text, ""] if text else [])
         notes |= {c.id: c for c in compilation.citations if c.id not in notes}
-    for citation in notes.values():
-        said = " ".join(citation.quote.split())  # one line: a quote's line breaks never forge a heading of the copy
-        quote = f' "{said}"' if said else ""
-        lines += [f"[^{label(citation.id)}]: {inert(citation.source) or inert(citation.kind) or "source"}{quote}", ""]  # never cleaned
-        # each its own block: a renderer without footnotes reads lines together as one paragraph, where a backtick or
-        # a bracket of one quote would pair with the next line's
     written = "\n".join(c.text for c in article.compilations)
     named = {label(c.id) for c in notes.values()} | {MARK[2:-1]}
     unnamed = [found for found in dict.fromkeys(CITED.findall(written)) if found not in named]
-    gone = retracted(unnamed) if retracted is not None and unnamed else ()
+    gone = retracted([*notes, *unnamed]) if retracted is not None and (notes or unnamed) else ()
+    for citation in notes.values():
+        said = " ".join(citation.quote.split())  # one line: a quote's line breaks never forge a heading of the copy
+        quote = f' "{said}"' if said else ""
+        source = f"{inert(citation.source) or inert(citation.kind) or "source"}{quote}"  # never cleaned
+        lines += [f"[^{label(citation.id)}]: {RETRACTED if citation.id in gone else source}", ""]
+        # each its own block: a renderer without footnotes reads lines together as one paragraph, where a backtick or
+        # a bracket of one quote would pair with the next line's
     lines += [line for found in unnamed for line in (f"[^{found}]: {RETRACTED if found in gone else NOT_FOUND}", "")]
     lines += [UNSUPPORTED, ""] if MARK in written else []
     return "\n".join(lines).rstrip() + "\n"

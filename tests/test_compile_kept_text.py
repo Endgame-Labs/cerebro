@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -297,6 +297,47 @@ def test_a_draft_that_stood_while_another_lands_loses_a_line_whose_fact_its_sour
     parts = dict(_texts(space.store, "briefs/alder"))
     assert "Risks" not in parts and VALVE[:-1] in parts["People"], result.warnings
     assert PUMP[:-1] in parts["People"]  # what a writer just handed in is never cut: its editor scores it
+
+
+def test_a_line_citing_a_live_fact_beside_one_a_caller_took_back_stays_whole_and_its_copy_says_retracted(
+        tmp_path: Path) -> None:
+    space = Facts(tmp_path, {"reports/weekly.md": WRITER.replace("[change]", "[weekly]")}, "reports/weekly", run=Drafts)
+    pump = next(f.id for fs in space.extraction.by_record.values() for f in fs if f.text == PUMP)
+    space.notes.add(Record(id="n1", source="notes", revision="1", at="2026-11-15T09:00:00Z", body=VALVE))
+    space.workspace.run_once()
+    space.workspace.compile(space.workspace.agent("reports/weekly"), "reports/weekly", scheduled=True)
+    line = space.text()
+    assert f"[^{pump}]" in line and VALVE[:-1] in line and "\n" not in line.strip()  # one line cites both
+    space.workspace.agent_run = ScriptedRun(lambda p: "")  # it hands in nothing
+    space.workspace.retract(Caller("you", "person"), pump, "the wrong pump")
+    result = space.workspace.run_once()
+    assert space.text() == line, result.warnings  # never rewritten inside a line
+    assert f"[^{pump}]: retracted" in (tmp_path / "articles" / "reports" / "weekly.md").read_text()
+
+
+def test_an_article_citing_a_record_a_caller_took_back_runs_inside_its_cooldown(tmp_path: Path) -> None:
+    (tmp_path / "agents" / "reports").mkdir(parents=True)
+    (tmp_path / "agents" / "reports" / "weekly.md").write_text(EVIDENCE.replace("[change]", "[weekly]") + "Write it.\n")
+    (tmp_path / "settings.yaml").write_text("schedule: { articles: 4h }\n")
+    now, you = [datetime(2026, 11, 16, 9, tzinfo=UTC)], Caller("you", "person")
+
+    def write(prompt: str) -> str:
+        asked = re.search(r"\[\^(\S+?)\] instruction from you", prompt)
+        return f"Lead with the risk [^{asked.group(1)}]." if asked else ""
+
+    workspace = Cerebro(tmp_path, store=(store := MemoryStore()), extraction=FakeExtraction(), clock=lambda: now[0],
+                        connectors=[FakeConnector("notes", [Record(id="n0", source="notes", revision="1",
+                                                                   at="2026-11-10T09:00:00Z", body=PUMP)])],
+                        agent_run=ScriptedRun(write), trusted=True)
+    workspace.run_once()
+    told = workspace.tell(you, "Lead with the risk.", "reports/weekly", "proposal")
+    workspace.compile(workspace.agent("reports/weekly"), "reports/weekly", scheduled=True)
+    assert [c.kind for s in store.article("reports/weekly").compilations for c in s.citations] == ["record"]
+    now[0] += timedelta(minutes=30)
+    workspace.retract(you, told.record, "not any more")
+    result = workspace.run_once(scheduled=True)  # as serve runs it, its cooldown 4h
+    assert "Lead with the risk" not in "".join(s.text for s in store.article("reports/weekly").compilations), \
+        result.skipped
 
 
 @pytest.mark.parametrize("how", ["caller", "agent", "out of its evidence", "out of a subagent's evidence"])

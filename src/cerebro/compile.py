@@ -12,8 +12,8 @@ in `settings.yaml`, else `ground.FLOOR`. What it hands in lands whole in one wri
 under the floor marked, with the fields it set with `override`, or not at all; each sentence's score and why stay on
 its run's row of the `agent-runs` log. A run
 writes only its own part, its fields, and the article's identity only when a fixed article is first born. A run that
-lands nothing leaves the article as it was, but for a line whose facts were all withdrawn, and the citation of a
-withdrawn fact on a line that cites more. Then the mirror copy is written. The store is the truth: a copy that fails to write is a warning, and the article stands.
+lands nothing leaves the article as it was, but for a line whose facts were all withdrawn. Then the mirror copy is
+written. The store is the truth: a copy that fails to write is a warning, and the article stands.
 
 Grounding is given the decision model when the workspace has one, the line the run read for each citation, the facts
 linked to the article, the day, and the body of `workspace.md`. What its calls spent is kept under compilation, call
@@ -520,10 +520,9 @@ NONE_LEFT = "nothing of the run landed, and each line of its earlier text cited 
 def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[str]) -> list[str]:
     """Take out of each part `writers` wrote on `article`, each standing from before as none of them rewrote it in
     this run, each line whose every citation names what was taken back since, as `_Grounding.withdrawn` reads it, and
-    from a line that cites more, the citation of what was taken back, with its footnote, and nothing else: the article
-    stays as it was, but a claim whose fact was taken back does not stay for good. A part left with no text, only
-    headings or nothing, goes. Gives a line for each line taken out or cut. The text cites a fact by the label the
-    store wrote, so each label is read back as its citation's id."""
+    nothing else: the article stays as it was, but a claim whose fact was taken back does not stay for good. A part
+    left with no text, only headings or nothing, goes. Gives a line for each line taken out. The text cites a fact by
+    the label the store wrote, so each label is read back as its citation's id."""
     current = store.article(article)
     mine = [s for s in current.compilations if s.by in writers] if current is not None else []
     by_label = {label(c.id): c.id for s in mine for c in s.citations}
@@ -540,19 +539,14 @@ def _withdrawn(grounding: _Grounding, store: Store, article: str, writers: list[
     changed: list[tuple[Compilation, str]] = []
     for part in mine:
         kept: list[str] = []
+        taken: list[str] = []
         for line in part.text.split("\n"):
             cites = cited(line)
-            if not (ids := [id for id in dict.fromkeys(cites) if id in gone]):
-                kept.append(line)
-            elif len(ids) == len(set(cites)):
-                said.append(f"{part.by}, its earlier text: took out {line.strip()!r}: every fact it cites was "
-                            "withdrawn since")
-            else:
-                kept.append(re.sub(" ?" + CITE.pattern, lambda m: "" if by_label.get(m[1], m[1]) in gone else m[0], line))
-                said.append(f"{part.by}, its earlier text: took out the citation of {', '.join(ids)} from "
-                            f"{line.strip()!r}: withdrawn since")
-        if (text := "\n".join(kept)) != part.text:
-            changed.append((part, text))
+            (taken if cites and all(id in gone for id in cites) else kept).append(line)
+        said += [f"{part.by}, its earlier text: took out {line.strip()!r}: every fact it cites was withdrawn since"
+                 for line in taken]
+        if taken:
+            changed.append((part, "\n".join(kept)))
     with store.exclusive():
         for part, text in changed:
             if any(line.strip() and not HEADING_LINE.match(line) for line in text.split("\n")):
@@ -696,8 +690,8 @@ class _Grounding:
 
 
 def retracted_of(lookup: Lookup, ids: list[str]) -> set[str]:
-    """Of `ids` that a run cannot cite, each that names a retracted fact: it backs nothing, and the judge, the run's
-    line and the article's copy say it was retracted, where an id that names nothing is not found."""
+    """Of `ids`, each that names a retracted fact: a citation of it backs nothing, and the judge, the run's line and
+    the article's copy say it was retracted, where an id that names nothing is not found."""
     found = lookup.extraction.facts(ids=ids) if ids and lookup.extraction is not None else []
     return {f.id for f in found if f.status == "retracted"}
 
@@ -917,7 +911,7 @@ def _write(c: _Compile, agent: Agent, article: str, evidence: list[Evidence], ow
                 after_ = store.article(article)
                 notes.append(KEPT if after_ is not None and any(s.by == agent.id for s in after_.compilations)
                              else NONE_LEFT)
-        if drew or ended and (gone or writes.sets):  # what changed the article, so its copy follows
+        if drew or ended and (gone or writes.sets or c.taken_back):  # what changed it or its footnotes: the copy follows
             _copy(store, article, store.article(article), c.root, grounding)
         return Compiled(run, None, dropped=dropped, runs=[run], notes=notes)
     if fixed(agent):
@@ -1632,7 +1626,7 @@ class _Composing:
             _wrote_nothing(store, own, [])
         else:
             compiled.notes.append(NONE_STAND)
-        if gone or self.writes.sets or any(w.sets for w in self.sub_writes.values()):
+        if gone or self.writes.sets or any(w.sets for w in self.sub_writes.values()) or c.taken_back:
             _copy(store, article, store.article(article), c.root, c.grounding)
         return compiled
 
