@@ -329,7 +329,7 @@ def test_a_task_is_a_logged_activity_bound_to_its_account_and_contact(connector:
     assert task.url == f"{INSTANCE}/lightning/r/Task/{task.id}/view"
 
 
-def test_an_email_binds_by_its_addresses_and_an_opportunity_by_its_own_id_too(connector: SalesforceConnector) -> None:
+def test_an_email_holds_its_parties_addresses_and_an_opportunity_its_own_id_too(connector: SalesforceConnector) -> None:
     email = connector.get(sf_id("02s", 1))
     assert email.keys == {"salesforce_id": [ACME], "email": ["jane.doe@vandelay.example", "wile@acme.example"],
                           "domain": ["acme.example", "vandelay.example"]}
@@ -973,6 +973,22 @@ def test_a_deals_fields_land_on_the_deal_alone_and_a_fact_of_its_text_links_to_t
     assert own_articles(store, deal) == ["opportunities/acme-corp-renewal"]  # its stage lands here, never on Acme
     fact = Fact("fact_1", "The renewal waits on a revised quote.", "renewal", "fact", "", "crm", RENEWAL)
     assert sorted(link(store, fact, deal)) == ["accounts/acme-corp", "opportunities/acme-corp-renewal"]  # not its owner
+
+
+def test_an_emails_fields_land_on_what_it_is_logged_on_and_a_fact_of_its_text_links_to_whom_it_was_sent(
+        connector: SalesforceConnector) -> None:
+    from cerebro.article import Identity
+    from cerebro.facts import Fact
+    from cerebro.fakes import MemoryStore
+    from cerebro.identity import link, own_articles
+
+    store, email = MemoryStore(), connector.get(sf_id("02s", 1))  # logged on Acme, between Wile and the login
+    store.create(Identity("accounts/acme-corp", "accounts", "Acme Corp", {"salesforce_id": [ACME]}))
+    store.create(Identity("people/wile-coyote", "people", "Wile Coyote", {"salesforce_id": [sf_id("003", 1)],
+                                                                         "email": ["wile@acme.example"]}))
+    assert own_articles(store, email) == ["accounts/acme-corp"]  # an address points at its person, and names no email
+    fact = Fact("fact_1", "Three years works if the price holds.", "", "fact", "", "crm", email.id)
+    assert sorted(link(store, fact, email)) == ["accounts/acme-corp", "people/wile-coyote"]
 
 
 def test_a_deal_deleted_at_the_source_archives_its_article_unless_a_persons_word_stands_on_it(

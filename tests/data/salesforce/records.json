@@ -356,6 +356,10 @@
   },
   "body": "From: \"Wile Coyote\" <wile@acme.example>\nTo: jane.doe@vandelay.example\nDate: 2026-10-08T12:00:00Z\nSubject: Re: renewal quote\n\nThree years works if the price holds.\n",
   "extract": "facts",
-  "into": ""
+  "into": "",
+  "carried": [
+   "email",
+   "domain"
+  ]
  }
 ]

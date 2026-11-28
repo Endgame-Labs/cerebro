@@ -1174,7 +1174,8 @@ class SalesforceConnector(Connector):
         return _Found(record, stamp)
 
     def _distilled(self, session: _Session, object: str, row: dict[str, Any]) -> _Found | None:
-        """A record read for extraction: its text, its time, and the ids and addresses that bind it."""
+        """A record read for extraction: its text, its time, the ids that bind it, and its parties' addresses, which
+        it only carries, as a message does: they point at the people, so its facts reach them, and bind it to none."""
         id = id18(_text(row, "Id"))
         if not id:
             return None
@@ -1191,7 +1192,8 @@ class SalesforceConnector(Connector):
         stamp = _text(row, "SystemModstamp")
         record = Record(id=id, source=self.name, revision=stamp, at=_record_at(object, row),
                         url=self._url(session, object, id), keys=keys, links=_unique(refs), fields=fields,
-                        body=record_text(object, row), extract=self.source.extract or "facts")
+                        body=record_text(object, row), extract=self.source.extract or "facts",
+                        carried=[k for k in ("email", "domain") if k in keys])
         return _Found(record, stamp)
 
     def _deal(self, session: _Session, row: dict[str, Any], floor: datetime | None = None) -> _Found | None:
