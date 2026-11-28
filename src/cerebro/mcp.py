@@ -231,12 +231,6 @@ def _client(ctx: Context) -> str:
     return params.client_info.name if params is not None and params.client_info is not None else ""
 
 
-def _proven(ctx: Any) -> Caller:
-    """The caller a request's token names, else the one local caller: over stdio no request carries one."""
-    proven = ctx.request.scope.get(CALLER_KEY) if ctx.request is not None else None
-    return proven if isinstance(proven, Caller) else LOCAL
-
-
 # -- a call's arguments, read as the tools take them -------------------------------------------------------------------
 
 class QueryArguments(ArgModelBase):
