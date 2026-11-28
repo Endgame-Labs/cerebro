@@ -152,6 +152,17 @@ def test_a_list_taller_than_the_terminal_scrolls_with_a_line_counting_the_rows_o
     assert scrolled[3].startswith("  … ") and any(line.startswith(">") for line in scrolled)
 
 
+def test_a_scrolled_list_shows_a_groups_lines_only_under_its_heading() -> None:
+    lst = Checklist([Row(f"part {n}") for n in range(9)],
+                    [Group(f"Parts of thing {n}", [3 * n, 3 * n + 1, 3 * n + 2], heading=f"Thing {n}")
+                     for n in range(3)], ["Things"])
+    model = Model(lst)
+    press(model, *[Key.DOWN] * 5)  # onto the next heading: the view opens on it, not on the parts above it
+    assert model.render(120, 12)[2:4] == ["  … 3 more", "> [x] Thing 1  3 of 3"]
+    press(model, Key.UP)  # back up into the group above: its heading shows over the cursor
+    assert model.render(120, 12)[2] == "  [x] Thing 0  3 of 3"
+
+
 def test_a_row_that_hangs_off_another_follows_it_through_toggled() -> None:
     def follow(rows: list[int], on: bool, checked: list[bool]) -> list[bool]:
         if 0 in rows:

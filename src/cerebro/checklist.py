@@ -425,6 +425,17 @@ class Model:
         self.top = max(min(self.top, len(lines) - view), 0)
         while self.top > 0 and self.top + 1 < len(lines) and lines[self.top + 1].kind == _DETAIL:
             self.top += 1
+        # a group's lines show only under its heading: the view opens on the heading where the cursor still fits under
+        # it, or else on the next heading down to the cursor
+        if self.top > 0:
+            up = next((i for i in range(self.top + 1, -1, -1) if lines[i].kind == _HEADING
+                       or lines[i].kind == _GROUP and not lst.groups[lines[i].at].heading), 0)
+            if lines[up].kind == _HEADING and up <= self.top:
+                down = next((i for i in range(self.top + 1, at + 1) if lines[i].kind == _HEADING), len(lines))
+                if end <= max(up - 1, 0) + view - 2:
+                    self.top = max(up - 1, 0)
+                elif down <= len(lines) - view + 1:
+                    self.top = down - 1
         last = min(self.top + view, len(lines))
         while last < len(lines) and lines[last - 1].kind == _DETAIL and last - 2 > max(end, at):
             last -= 1
