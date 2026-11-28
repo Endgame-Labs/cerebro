@@ -160,18 +160,20 @@ def test_a_held_line_names_its_record_first_and_gives_its_fields_last_without_ou
         tmp_path: Path) -> None:
     agents, store = write_workspace(tmp_path), MemoryStore()
     wide = Record(id="t1", source="files", revision="1", at="2026-11-12T09:00:00Z", into="things",
-                  keys={"name": ["Thing one"], "email": [f"part{n:02d}@things.example" for n in range(80)]},
-                  fields={"notes": "a word " * 400})
+                  keys={"name": ["Thing one"], "email": [f"part{n:02d}@things.example" for n in range(80)]})
     marked = Record(id="t2", source="files", revision="1", at="2026-11-11T09:00:00Z", keys={"name": ["Thing two"]},
                     fields={"status": "deferred", "due": "", "owner": None, "parts": [], "more": {},
                             "ours": ["Sam Okoye"]}, into="things")
-    hold(store, wide, marked, source="files")
+    long = Record(id="t3", source="files", revision="1", at="2026-11-10T09:00:00Z", keys={"name": ["Thing three"]},
+                  fields={"notes": "a word " * 400}, into="things")
+    hold(store, wide, marked, long, source="files")
     entry = gather(curator(agents, "things"), StoreLookup(store, clock=lambda: NOW), {},
                    sources={"files": FakeConnector("files", [])}, now=NOW)
-    cut, short = next(e for e in entry if e.spelled == "held for things").items
+    cut, short, fields_cut = next(e for e in entry if e.spelled == "held for things").items
     assert cut.text.endswith("characters)")  # cut, and what admit and leave_out name it by is still there
     assert all(said in cut.text for said in ('"source": "files"', '"id": "t1"', '"name": "Thing one"'))
     assert json.loads(short.text.removeprefix("- "))["fields"] == {"status": "deferred"}
+    assert fields_cut.text.endswith("characters)") and '"keys": {"name": ["Thing three"]}' in fields_cut.text
 
 
 def test_the_held_list_is_bounded_and_counts_the_rest(tmp_path: Path) -> None:
