@@ -14,7 +14,7 @@ uv tool install .
 
 ```text
 $ cerebro version
-cerebro 0.1.3
+cerebro 0.1.4
 ```
 
 ## 2. Make a workspace
