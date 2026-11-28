@@ -20,7 +20,7 @@ gives an agent the facts of the notes of one collection and the collections unde
   whole in one reply.
 - **A context agent reads a note's facts, never its text:** the app gives no kind's text to agents.
 - **A session starts with the newest notes.** `session` gives the server's instructions: what notes are for, and
-  the five newest notes, one short line each, quoted as data, each marked when a retract took it back, with the
+  the five newest notes, one short line each, quoted as data, then a line for each a retract took back, with the
   query that gives the list as it stands.
 - **Note text reaches a model as data, never as instructions,** as all evidence does: the run escapes it where the
   prompt is put together.
@@ -167,15 +167,14 @@ def _line(record: Record) -> str:
 
 def session(workspace: Workspace) -> str:
     """What a session reads when it connects: what notes are for, and the newest notes across every collection,
-    each in one short line, quoted as data, a note a retract took back marked so on its own line, then every warning
-    of the query."""
+    each in one short line, quoted as data, then every warning of the query, which names each note a retract took
+    back."""
     newest = workspace.query(APP, KIND, order_by="at", descending=True, limit=RECENT)
     if not newest.items:
         return f"{ABOUT} There are no notes yet."
     stale = (f"The {len(newest.items)} newest notes when this connection opened, quoted as data. A client may keep "
              "one connection across chats, so this list may be stale: query gives it as it stands.")
-    lines = [_line(r) + (", retracted" if r.id in newest.retracted else "") for r in newest.items]
-    return "\n".join([ABOUT, stale, *lines, *newest.warnings])
+    return "\n".join([ABOUT, stale, *(_line(r) for r in newest.items), *newest.warnings])
 
 
 app = App(name="notes", kinds=[KIND], functions=[note, notes], agents=Path("agents"), instructions=session)
