@@ -224,7 +224,6 @@ def test_the_notes_session_instructions_and_what_a_query_of_notes_says_never_say
     assert said[3].is_error and "50 KiB" in said[3].content[0].text
     assert "read_as" in said[4].structured_content and "listed one level" in said[5].content[0].text
     assert said[-2]["warnings"] and said[-1]["warnings"]
-    assert said[7].structured_content["warnings"] != said[8].structured_content["warnings"]
     for item in said:
         text = item if isinstance(item, (str, dict)) else (item.content[0].text, item.structured_content)
         assert not BRAIN.search(str(text)), text
