@@ -81,6 +81,7 @@ from .held import (
 from .identity import naming_keys, redirects, working, would_bind
 from .records import ACCEPTED, MAX_DECIDE, WAITING, NotAllowed, Proposal, _refuse_secret, proposals, propose
 from .records import _slug as record_slug
+from .reply import outside
 from .review import held_lines
 from .run import Run
 from .runner import PassResult, Progress, first_list, first_list_line, hold_sources, run_curators, run_pass
@@ -299,10 +300,20 @@ class LocalApproval(Approval):
         self.agents_given = agents is not None
 
     def _query(self, args: dict[str, Any]) -> list[dict[str, Any]]:
-        return list((self.workspace.call(self.caller, "query", args) or {}).get("items") or [])
+        """What `query` gives, as kept: `call` masks it for an outside agent, and a row filed from it must not be."""
+        return list((outside(self.workspace._call(self.caller, "query", args)) or {}).get("items") or [])
 
     def pile(self) -> Pile:
-        """The list as it stands, with its plain tree: every proposal that waits a row of the curator of its
+        """The list as a screen shows it, with its plain tree: `_listed`, masked of every value the secrets store
+        holds, a value saved after a row was kept too."""
+        pile = self.workspace.masked(self._listed())  # before its tree, whose groups hold its rows
+        pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
+                           _articles(self.workspace), redirects(self.workspace.store))
+        return pile
+
+    def _listed(self) -> Pile:
+        """The list as it stands, as kept, with no tree, which `apply` files from, so a value the mask hides is still
+        refused: every proposal that waits a row of the curator of its
         collection, in the order filed, and each curator asked with the candidates it left out and the held records
         it never weighed, those of the workspace's own side last and at most `OWN_LISTED`, with a line that counts the
         rest. Each row of the workspace's own side says so."""
@@ -352,9 +363,6 @@ class LocalApproval(Approval):
                                      str(state.get("note") or ""), agent.id in cut, said,
                                      f"{len(unlisted)} more held for {agent.target} are of the workspace's own side "
                                      "and not listed" if unlisted else ""))
-        pile = self.workspace.masked(pile)  # before its tree, whose groups hold its rows
-        pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
-                           _articles(self.workspace), redirects(self.workspace.store))
         return pile
 
     def _waiting(self, session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -474,7 +482,7 @@ class LocalApproval(Approval):
         left alone is marked as offered, never rejected. Refused for an agent, an app or a source, none of which is a caller."""
         if self.caller.kind != "person":
             raise NotAllowed(f"the first run's list: {self.caller.name} is not a caller, and only a caller decides it")
-        rows = {row.id: row for row in self.pile().rows()}
+        rows = {row.id: row for row in self._listed().rows()}
         named = [id for ids in choices.accept for id in ids]
         stood = decided_meanwhile(self.workspace, [id for id in named if id not in rows], ACCEPTED)
         if unknown := [id for id in named if id not in rows and id not in stood]:

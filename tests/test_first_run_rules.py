@@ -227,6 +227,32 @@ def test_a_checked_left_out_row_of_a_held_record_is_filed_with_that_record(tmp_p
     assert filed.status == "accepted" and filed.payload["record"] == {"source": "src", "id": "T2"}
 
 
+def test_a_ticked_row_whose_name_holds_a_value_saved_as_a_secret_since_it_was_kept_is_refused_and_files_no_admit(
+        tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from test_first_run_structure import RECORDS, thing
+
+    from cerebro.fakes import FakeSecrets
+    from cerebro.first_run import LocalApproval
+    from cerebro.records import InputError, proposals
+
+    value, secrets = "fake_deadbeefc0ffee0123456789abcdef", FakeSecrets()
+    kept = thing("T3", f"Thing {value}", "t-three")
+    kept = replace(kept, keys={**kept.keys, "email": [value]})
+    left = ("leave_out", {"record": {"source": "src", "id": "T3"}, "reason": "Named once."})
+    with open_it(lay_out_workspace(tmp_path), Script({"things/curator": [by_record("T1"), left], "parts/curator": []}),
+                 [*RECORDS, kept], secrets=secrets) as workspace:
+        run(workspace, choose=None, say=lambda line: None)  # the list waits, the row left out kept with it
+        secrets.set("vault", value)  # never read here
+        approval = LocalApproval(workspace)
+        [row] = [row for row in approval.pile().rows() if row.left_out and row.record == {"source": "src", "id": "T3"}]
+        assert row.name == "Thing [secret]"  # as a screen shows it
+        with pytest.raises(InputError, match="its name holds a value the secrets store keeps"):
+            approval.apply(Choices(accept=[[row.id]]))
+        assert not [p for p in proposals(workspace.store) if p.reason.startswith("left out: ")]
+
+
 # -- a record on no list. A held record its curator neither proposed nor left out is a row of its Left out
 #    group, `not weighed`, for every collection
 
