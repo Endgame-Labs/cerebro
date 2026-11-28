@@ -374,9 +374,10 @@ def test_a_context_agents_tools_give_a_notes_facts_and_never_its_text_and_the_ar
                 query("note", {"matching": "zebra"}), read([record]), read([name]), read([record], about="zebra"),
                 query("facts", {"record": record}), query("facts", {"about": "zebra"})]
         listed = said[0]
-        assert listed["count"] == 1 and listed["items"][0]["fields"] == {"name": name, "title": "Ship day"}
+        assert listed["count"] == 1 and listed["items"][0]["fields"] == {
+            "name": name, "title": "Ship day", "collection": "notes/projects/ship"}
         assert "body" not in listed["items"][0] and "query from: facts, record:" in listed["warnings"][0]
-        assert said[2]["count"] == 0  # no filter reads the text either
+        assert said[1]["count"] == 1 and said[2]["count"] == 0  # a filter on a field keeps it, and none reads the text
         assert any(f"query from: facts, record: {record}" in w for w in said[4]["warnings"])
         assert [f["text"] for f in said[7]["items"]] == ["We ship on Monday."]
         agent = Caller("projects/standing", "agent")
@@ -507,7 +508,7 @@ def test_nothing_in_a_notes_title_collection_or_id_can_end_its_quote_or_start_a_
         said = anyio.run(connected, workspace) or ""
         _, read = agent_surface(workspace.lookup, Caller("projects/standing", "agent"))
         warned = next(w for w in read([kept[0]["record"]])["warnings"] if "is a note record" in w)
-        assert f', title {json.dumps(TRICKS[0])}, kept' in warned
+        assert f', title {json.dumps(TRICKS[0])}, collection "notes", kept' in warned
     listed = [line for line in said.splitlines() if line.startswith("- ")]
     assert len(listed) == 5
     for line in listed:
@@ -545,14 +546,16 @@ def test_a_collection_is_listed_one_level_with_its_child_collections_and_the_top
                                                  "collection": collection}).structured_content)
         assert not over_mcp(workspace, "retract", {"id": made[2]["record"], "reason": "moved"}).is_error
         data = over_mcp(workspace, "browse_notes", {"collection": "notes"}).structured_content
-        assert [i["fields"]["title"] for i in data["items"]] == ["Entry 6", "Entry 0"] and "warnings" not in data
+        assert [i["title"] for i in data["items"]] == ["Entry 6", "Entry 0"] and "warnings" not in data
+        assert data["items"][0] == {"id": made[6]["id"], "record": made[6]["record"], "at": "2026-11-17T15:00:00Z",
+                                    "title": "Entry 6", "collection": "notes"}
         assert all("body" not in i for i in data["items"] + data["recent"])
         assert data["collections"] == [
             {"collection": "notes/people", "count": 1, "newest": "2026-11-17T14:00:00Z"},
             {"collection": "notes/projects", "count": 3, "newest": "2026-11-17T13:00:00Z"}]
-        assert [i["fields"]["title"] for i in data["recent"]] == [f"Entry {n}" for n in (6, 5, 4, 3, 1)]  # 2 is gone
+        assert [i["title"] for i in data["recent"]] == [f"Entry {n}" for n in (6, 5, 4, 3, 1)]  # 2 is gone
         projects = over_mcp(workspace, "browse_notes", {"collection": "notes/projects"}).structured_content
-        assert [i["fields"]["title"] for i in projects["items"]] == ["Entry 1"] and "recent" not in projects
+        assert [i["title"] for i in projects["items"]] == ["Entry 1"] and "recent" not in projects
         assert [(c["collection"], c["count"]) for c in projects["collections"]] == [
             ("notes/projects/hire", 1), ("notes/projects/ship", 1)]
 
