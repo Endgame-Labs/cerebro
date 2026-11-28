@@ -1022,7 +1022,8 @@ class StoreLookup(Lookup):
                 continue
             held = [v for a in every for v in _held(a, key)]
             if not held:
-                lines.append(f"no article of {source} has a field {key}: check its name")
+                lines.append(f"{key} on {source} holds no value" if any(key in fields(a) for a in every)
+                             else f"no article of {source} has a field {key}: check its name")
                 continue
             links = [v for v in held if isinstance(v, str) and LINK.fullmatch(v)]
             asks_link = isinstance(want, str) and LINK.fullmatch(want) is not None
