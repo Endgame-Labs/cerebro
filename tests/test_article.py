@@ -35,14 +35,15 @@ def test_an_article_reads_as_front_matter_parts_and_a_footnote_per_citation(tmp_
 def test_front_matter_indents_each_lists_items_under_its_key_and_keeps_a_risky_titles_escapes() -> None:
     risky = "R&D <draft> [x](y)"
     article = Article(Identity("things/a", "things", risky, keys={"call_id": ["1234"]}),
-                      properties={"attendees": Property(["ana@ourco.example", risky], YOU, "2026-11-01T09:00:00Z")})
+                      properties={"attendees": Property(["ana@ourco.example", risky], YOU, "2026-11-01T09:00:00Z"),
+                                  "kind": Property("Beagle (dog)", YOU, "2026-11-01T09:00:00Z")})
     text = markdown(article)
     front = text.split("---\n")[1]
-    escaped = '"R\\x26D \\x3Cdraft\\x3E \\x5Bx\\x5D\\x28y\\x29"'
+    escaped = '"R\\x26D \\x3Cdraft\\x3E \\x5Bx\\x5D(y)"'
     assert front == (f"id: things/a\ntitle: {escaped}\nidentity:\n  call_id:\n    - '1234'\n"
-                     f"attendees:\n  - ana@ourco.example\n  - {escaped}\n")
+                     f"attendees:\n  - ana@ourco.example\n  - {escaped}\nkind: Beagle (dog)\n")
     assert yaml.safe_load(front) == {"id": "things/a", "title": risky, "identity": {"call_id": ["1234"]},
-                                     "attendees": ["ana@ourco.example", risky]}
+                                     "attendees": ["ana@ourco.example", risky], "kind": "Beagle (dog)"}
 
 
 def test_an_empty_article_carries_the_note_by_its_state_until_a_part_holds_text() -> None:
