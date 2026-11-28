@@ -572,7 +572,6 @@ def test_a_persons_instruction_reaches_the_writer_at_its_next_run(tmp_path: Path
 
 def test_a_persons_instruction_is_cited_by_its_record_and_an_agents_waiting_ask_lands_shown_as_not_found(
         tmp_path: Path) -> None:
-    from cerebro.article import markdown
     from cerebro.records import Proposal, propose
 
     store, _, _, common = setup(tmp_path)
@@ -589,13 +588,13 @@ def test_a_persons_instruction_is_cited_by_its_record_and_an_agents_waiting_ask_
     compiled = compile_article(AGENT, agent_run=ScriptedRun(write), **common)
     [part] = compiled.article.compilations
     assert [(c.kind, c.id) for c in part.citations] == [("record", told.record)]
-    assert "[^prop_agent1]: not found" in markdown(compiled.article)
+    assert "[^prop_agent1]: not found" in (tmp_path / "articles" / "reports" / "weekly.md").read_text()
 
 
 @pytest.mark.parametrize("role", ["writer", "subagent"])
-def test_an_article_read_by_tool_is_cited_as_found_and_a_retracted_fact_read_by_tool_as_not_found(
+def test_an_article_read_by_tool_is_cited_as_found_and_a_retracted_fact_read_by_tool_as_retracted(
         tmp_path: Path, role: str) -> None:
-    from cerebro.article import Compilation, markdown
+    from cerebro.article import Compilation
     from cerebro.facts import Fact
     from cerebro.fakes import FakeDecider
 
@@ -620,9 +619,11 @@ def test_an_article_read_by_tool_is_cited_as_found_and_a_retracted_fact_read_by_
                                    **common)
     asked = decider.asked[0][0]
     assert "Beta ships in May." in asked["facts"]["things/beta"]["text"]
-    assert "f_gone" not in asked["facts"] and asked["not_found"] == ["f_gone"]  # it backs nothing
-    copy = markdown(compiled.article)
-    assert "[^things/beta]: not found" not in copy and "[^f_gone]: not found" in copy
+    assert "f_gone" not in asked["facts"] and asked["retracted"] == ["f_gone"] and "not_found" not in asked
+    notes = [line for row in store.rows("agent-runs") for line in row.data.get("notes") or []]
+    assert any("[^f_gone], retracted" in line for line in notes), notes
+    copy = (tmp_path / "articles" / f"{compiled.article.identity.id}.md").read_text()
+    assert "[^things/beta]: not found" not in copy and "[^f_gone]: retracted" in copy
 
 
 def test_a_composer_stopped_by_the_cap_leaves_the_paid_drafts_standing(tmp_path: Path) -> None:

@@ -91,6 +91,7 @@ from .compile import (
     left_alone,
     made_safe,
     material_key,
+    retracted_of,
     targets,
     unmirrored,
 )
@@ -230,6 +231,7 @@ class PassResult:
     paused: set[str] = field(default_factory=set)  # each source a daily cap stopped reading, at its first model record
     grounding: dict[str, dict[str, int]] = field(default_factory=dict)  # what grounding did, by the run's key and kind
     cleaned: dict[str, int] = field(default_factory=dict)  # the things landing made safe, by the run's key
+    taken_back: dict[str, list[str]] = field(default_factory=dict)  # by writer, its articles citing what a caller took back
     token: str = field(default_factory=lambda: uuid.uuid4().hex, repr=False)  # whose leases this pass holds
     say: Callable[[str], None] | None = field(default=None, repr=False, compare=False)  # a line as each step happens
     on: Callable[[Progress], None] | None = field(default=None, repr=False, compare=False)  # an event as each happens
@@ -2220,27 +2222,28 @@ def _reachable(start: str, deps: dict[str, set[str]]) -> set[str]:
 
 def writers_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, str | None]]:
     """The writers a pass compiles now, each with the schedule word it runs for, or None for a change; why each other
-    one waits goes on `result.skipped`. It takes each due one's lease, so `compile --dry-run` calls it on a store
-    apart."""
+    one waits goes on `result.skipped`, and the articles each must run on though nothing moved on `result.taken_back`.
+    It takes each due one's lease, so `compile --dry-run` calls it on a store apart."""
     writers = [agent for agent in workspace.agents if agent.role != "curator"]
     taken = [p for p in proposals(workspace.store, ACCEPTED) if p.kind in RETRACTS and decided_by_caller(p)]
-    woken = {agent.id for agent in writers if taken and agent.role in WRITERS and _cites_taken_back(workspace, agent, taken)}
-    return _due(workspace, writers, result, woken)
+    result.taken_back = {agent.id: cited for agent in writers if taken and agent.role in WRITERS
+                         and (cited := _citing_taken_back(workspace, agent, taken))}
+    return _due(workspace, writers, result, set(result.taken_back))
 
 
-def _cites_taken_back(workspace: Cerebro, agent: Agent, taken: list[Proposal]) -> bool:
-    """Whether an article `agent` wrote cites a fact, or a record, that a retract of `taken` took back since the agent
-    last ran there, in the same second too: it runs on the next pass, whatever its heartbeat, so the cut takes the
-    line out. Only a caller's retract wakes it, as only a caller's cuts a line."""
-    writers = (agent.id, *agent.subagent_ids)
+def _citing_taken_back(workspace: Cerebro, agent: Agent, taken: list[Proposal]) -> list[str]:
+    """Each article `agent` wrote that cites a fact, or a record, that a retract of `taken` took back since the agent
+    last ran there, in the same second too: it runs on the next pass, whatever its heartbeat, though nothing it reads
+    moved, so the cut takes the line out. Only a caller's retract wakes it, as only a caller's cuts a line."""
+    writers, out = (agent.id, *agent.subagent_ids), []
     for article, mark in (_beat(workspace, agent).articles or {}).items():
         since = _when(mark.get("ran"))
         ids = {p.target for p in taken if since is None or _when(p.decided_at or p.at) >= since}  # type: ignore[operator]
         found = workspace.store.article(article) if ids else None
         if found is not None and any(c.id in ids or c.source in ids for part in found.compilations if part.by in writers
                                      for c in part.citations):
-            return True
-    return False
+            out.append(article)
+    return out
 
 
 def _compile(workspace: Cerebro, result: PassResult, served: bool = False,
@@ -2360,7 +2363,8 @@ def _compile_one(workspace: Cerebro, result: PassResult, agent: Agent, word: str
     try:
         compiled = workspace.compile(agent, this=article, scheduled=not change and not parts,
                                  hold=_hold(workspace, agent, article, served) if change else None,
-                                 only=_marked(workspace, agent, article) if parts else "")
+                                 only=_marked(workspace, agent, article) if parts else "",
+                                 taken_back=article in result.taken_back.get(agent.id, []))
     except HeldForRoom:
         result.step("compile", "end", article, mark="skipped", text="held for room under the cap")
         raise
@@ -2691,7 +2695,7 @@ def _copy(workspace: Cerebro, article_id: str, result: PassResult) -> None:
         return
     try:
         mirror(article, workspace.root, facts=workspace.lookup.read(Caller("compile", "agent"), [article_id]).facts,
-               zone=workspace.zone)
+               zone=workspace.zone, retracted=partial(retracted_of, workspace.lookup))
     except OSError as error:
         unmirrored(workspace.store, article_id, True)
         line = (f"{article_id} is stored, and its copy articles/{article_id}.md was not written ({error.strerror or error}): "
