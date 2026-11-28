@@ -32,6 +32,8 @@ It runs a pass every 30 seconds and checks each source every 15 minutes. A chang
 
 `serve --once` reads every source now and skips the 4-hour wait, so a note you just saved reaches its article in that pass.
 
+On a terminal, `serve --once` shows each article as it is written, with its time so far. Off a terminal, or with `--plain`, it prints a `stage` line as each step starts and a `ran` line as each agent's run ends. To check on a long pass from another shell, run `cerebro status`: it shows when each agent's last run ended, and which articles are not yet written.
+
 ## What a pass does
 
 1. **Read.** Each source lists what changed since last time.

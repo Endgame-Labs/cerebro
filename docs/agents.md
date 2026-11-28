@@ -268,6 +268,8 @@ In an agent file, `linked: this` finds what links to the article being written, 
 
 When an agent hands in its text, the decision model scores each sentence from 0 to 1 against the facts it cites. It reads meaning, not wording, so a fair summary, a translation or a quote in another style scores as well as a plain restatement. If any sentence scores under the floor, the agent gets those sentences back once, with each score and why, and hands in again. That text lands whole.
 
+Grounding checks that each sentence is backed, not how long the article is. A word limit in an agent's prompt, such as `Keep it under 300 words.`, is the writer's to keep.
+
 Grounding never cuts a sentence. One that still scores under the floor lands with a footnote, and the article defines it once:
 
 ```text

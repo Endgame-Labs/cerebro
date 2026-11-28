@@ -108,6 +108,12 @@ atlas: questions, 2 cases, judge none: rules alone, score 1.00
 evaluation: 0 decision calls, 0 input and 0 output tokens, $0.0000, 0.0s
 ```
 
+Cerebro reads the suite's path from the folder you run the command in, not from the workspace. From another folder, give the suite's full path along with `--workspace`:
+
+```sh
+cerebro eval ~/wikis/team-wiki/atlas.yaml --workspace ~/wikis/team-wiki
+```
+
 Without `--no-model`, the decision model judges each answer against `judge`. Evals have their own daily cap, $2 unless `settings.yaml` says otherwise.
 
 ## Good to know
