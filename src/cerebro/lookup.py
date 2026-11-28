@@ -76,6 +76,7 @@ from .store import (
     check_where,
     compares,
     order_key,
+    scrubbed,
 )
 from .tokens import HIDDEN, hide_tokens
 from .window import Span, WindowError, holds, read_time, shaped, span
@@ -500,9 +501,11 @@ def identity(record: Record) -> Record:
                   fields={k: record.fields[k] for k in IDENTIFIES if k in record.fields})
 
 
-def _facts_of(record: Record) -> str:
-    """The line an agent's read of an app's record gives in place of its text."""
-    named = "".join(f", {k} {shown_quoted(str(record.fields[k])[:200])}" for k in IDENTIFIES if record.fields.get(k))
+def _facts_of(record: Record, mask: Callable[[str], str] | None) -> str:
+    """The line an agent's read of an app's record gives in place of its text, each name masked by `mask` before it
+    is cut: a record kept before a secret was saved holds it in the clear."""
+    named = "".join(f", {k} {shown_quoted(scrubbed(str(record.fields[k]), mask)[:200])}" for k in IDENTIFIES
+                    if record.fields.get(k))
     return (f"{record.id} is a {record.source} record{named}, kept {record.at}: its text is not for agents, and its "
             f"facts are reached with query from: facts, record: {record.id}")
 
@@ -1218,7 +1221,7 @@ class StoreLookup(Lookup):
                 continue
             facts = self._facts_named(id.strip())
             if (record := self.store.record(id.strip())) is not None and self._facts_only(caller, record.source):
-                result.warnings.append(_facts_of(record))
+                result.warnings.append(_facts_of(record, self.store.scrubbing()))
             if record is not None and was_retracted(record, taken):
                 result.warnings.append(f"record {record.id} was retracted")
             if facts:

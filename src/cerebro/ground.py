@@ -36,6 +36,7 @@ from typing import Any
 from .article import MARK, UNSUPPORTED, Citation, atx
 from .budget import BudgetSpent
 from .clean import PARSER, inert
+from .connector import masked_first
 from .errors import CerebroError
 from .evidence import CITE
 from .facts import Fact
@@ -198,7 +199,9 @@ QUOTE_BOUND = 300  # the most of a fact's quotes a citation shows
 
 
 def bounded_quote(text: str, bound: int = QUOTE_BOUND) -> str:
-    """`text` as a citation quotes it: cut at a word to at most `bound` characters, an ellipsis after the cut."""
+    """`text` as a citation quotes it: masked as `masked_first` masks it, then cut at a word to at most `bound`
+    characters, an ellipsis after the cut. A fact kept before a secret was saved holds it in the clear."""
+    text = masked_first(text)
     if len(text) <= bound:
         return text
     cut = text[:bound].rsplit(" ", 1)[0] or text[:bound]
