@@ -324,6 +324,11 @@ def test_a_weekly_writer_runs_on_the_next_pass_once_a_caller_takes_back_a_fact_i
         space.workspace.run_once()
         space.workspace.compile(space.workspace.agent(agent), article, scheduled=True)
         assert PUMP[:-1] in space.text()
+    if "subagent" in how:  # another article it writes cites only the valve, so no take-back wakes it there
+        space.store.create(Identity("briefs/birch", "briefs", "Birch"))
+        space.run.quiet = False
+        space.workspace.compile(space.workspace.agent(agent), "briefs/birch", scheduled=True)
+        space.run.quiet = True
     if by.kind == "person":
         space.workspace.retract(by, pump, "the wrong pump")
     else:  # an agent's take-back wakes no one, as it cuts nothing
@@ -332,6 +337,9 @@ def test_a_weekly_writer_runs_on_the_next_pass_once_a_caller_takes_back_a_fact_i
         space.extraction.retract(pump)
     rows = {(row.article, row.agent): row.status for row in stale(space.workspace).rows}
     assert (rows.get((article, part)) == "stale") == (by.kind == "person"), rows  # as the pass then does
-    result = space.workspace.run_once()
+    events: list[Any] = []
+    result = space.workspace.run_once(on=events.append)
     assert (agent in result.due) == (by.kind == "person"), result.skipped
     assert (PUMP[:-1] in space.text()) == (by.kind == "agent"), result.warnings
+    started = {e.key for e in events if e.stage == "compile" and e.kind == "start"}
+    assert started == ({article} if by.kind == "person" else set()), started  # the article that cites it alone

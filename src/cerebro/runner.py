@@ -2309,7 +2309,8 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassR
           only: Collection[str] | None = None) -> tuple[list[tuple[Agent, str | None, str]], set[tuple[str, str]],
                                                         set[tuple[str, str]]]:
     """The articles a pass compiles, each with its agent and the schedule word it runs for, in path order, of `only`
-    alone when given; the articles whose next run runs only the parts that did not run; and those an agent on
+    alone when given, and of a writer a take-back alone woke only those `result.taken_back` gives it; the articles
+    whose next run runs only the parts that did not run; and those an agent on
     `change` runs for a change while its period is owed. Why a due writer runs on none goes on `result.skipped`, and
     one with none of `only` stays due, unsaid."""
     plan: list[tuple[Agent, str | None, str]] = []
@@ -2331,6 +2332,8 @@ def _plan(workspace: Cerebro, due: list[tuple[Agent, str | None]], result: PassR
                 f"{agent.target} holds no article yet: its curator admits them"
             del result.due[agent.id]
             continue
+        if word is None and "change" not in _words(workspace, agent):  # a take-back alone woke it: what cites it runs
+            articles = [article for article in articles if article in result.taken_back.get(agent.id, [])]
         if (left := _left(workspace, agent, word)) is not None:  # what its period's run did not finish, alone
             parts |= {(agent.id, article) for article, how in left.items() if how == "parts"}
             owed = [article for article in articles if article in left]
