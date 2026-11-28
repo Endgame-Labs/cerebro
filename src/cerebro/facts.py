@@ -701,10 +701,10 @@ def _value_text(value: Any) -> str:
 
 def field_rows(record: Record) -> list[dict[str, str]]:
     """The rows of a record's fields document: one a field that holds a value, keyed by the field's name, with the
-    record's name, the field's name in words, and its value in words. No row holds the record's time, so the same
-    fields at a new time are the same document, and cost nothing: a field fact is dated when it was learned. A field
-    whose value is the record's name itself is left out: every row names the record by it already, and "The name of
-    Alder is Alder." says nothing."""
+    record's name, the field's name in words, and its value in words. No row holds the record's time: the document is
+    dated by it, or by now while it is ahead, and the same fields at a new time give no new fact. A field whose value
+    is the record's name itself is left out: every row names the record by it already, and "The name of Alder is
+    Alder." says nothing."""
     name = _as_data(record_name(record))
     rows = []
     for key, value in record.fields.items():
@@ -1137,7 +1137,9 @@ class FactoidExtraction(Extraction):
 
     def extract_fields(self, record: Record) -> Extracted:
         rows = field_rows(record)
-        document = _field_document().from_records(rows, uri=f"{_uri(record)}#fields",
+        # a row ahead, such as a meeting to come, is dated now: Factoid ranks a fact low until its time comes
+        metadata = {"source_datetime": min(at, stamp(system_clock()))} if (at := _utc(record.at)) else {}
+        document = _field_document().from_records(rows, metadata=metadata, uri=f"{_uri(record)}#fields",
                                                   title=f"{record_name(record)}, its fields")
 
         def failed(error: Exception) -> str:
