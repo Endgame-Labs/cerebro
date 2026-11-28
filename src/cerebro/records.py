@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from . import prompts
-from .article import Article, fields
+from .article import Article, fields, made_by_its_agent
 from .caller import KIND_WORDS, Caller, check_caller, describe
 from .clock import Clock, stamp, system_clock
 from .connector import Record
@@ -1106,8 +1106,13 @@ CURATED = {"article.admit": "admitted", "article.link": "linked", "article.archi
 def _curated(root: Path | None, collection: str, kind: str) -> None:
     """Refuse an act into a collection of the workspace at `root` that no curator keeps, since none would carry it
     out. With no `root`, the store alone, nothing is refused."""
-    if root is not None and not (root / "agents" / collection / "curator.md").is_file():
+    if not _kept(root, collection):
         raise InputError(f"tell: articles/{collection} has no curator, so nothing is {CURATED[kind]} there")
+
+
+def _kept(root: Path | None, collection: str) -> bool:
+    """Whether a curator keeps `collection` of the workspace at `root`, or with no `root` may."""
+    return root is None or (root / "agents" / collection / "curator.md").is_file()
 
 
 def _planned(store: Store, kind: str, target: str | None, text: str, extraction: Extraction | None = None,
@@ -1175,14 +1180,14 @@ def _other(store: Store, article: Article, text: str) -> str:
 
 
 def _file(store: Store, extraction: Extraction | None, caller: Caller, kind: str, planned: tuple[str, dict[str, Any]],
-          record: Record, at: str, result: TellResult) -> None:
+          record: Record, at: str, result: TellResult, now: bool = False) -> None:
     """File one proposal a tell gives, citing its record. A caller's is accepted as it is sent: its admit, link,
-    archive, merge or split is carried out by the collection's curator on its next run, and anything else is applied
-    at once. An agent's or an app's waits for a caller."""
+    archive, merge or split is carried out by the collection's curator on its next run, and anything else, or one
+    `now` says no curator carries out, is applied at once. An agent's or an app's waits for a caller."""
     proposal = Proposal(_new_id("p"), kind, planned[0], caller, at, planned[1], [record.id])
     if caller.kind != "person":
         result.notes.append(f"Filed {proposal.id}, {kind} of {proposal.target}: awaiting review by a caller.")
-    elif kind in APPLIES:
+    elif kind in APPLIES and not now:
         proposal = replace(proposal, status=ACCEPTED, decided_by=caller, decided_at=at)
         result.notes.append(f"Accepted {proposal.id}, {kind.partition('.')[2]} of {proposal.target}: its curator "
                             "carries it out on its next run.")
@@ -1222,15 +1227,18 @@ def archive_by_hand(store: Store, extraction: Extraction | None, caller: Caller,
                     clock: Clock = system_clock, root: Path | None = None) -> TellResult:
     """A caller's archive of `article`, by its id, as `cerebro archive` files it. It is filed as a tell's archive is,
     on a record of what the caller said, accepted, and its curator carries it out on its next run: the article
-    leaves the working set, and its file, facts and parts stay."""
+    leaves the working set, and its file, facts and parts stay. The article a one-article agent made, in a collection
+    no curator keeps, is archived at once."""
     check_caller(caller)
     if caller.kind != "person":
         raise NotAllowed(f"archive by hand is a caller's: {caller.name} files an archive with tell")
     found = store.article(_path(article))
     if found is None:
         raise InputError(f"archive {article}: there is no article {article}")
+    now = not _kept(root, found.identity.collection) and made_by_its_agent(found.identity)
     try:
-        _curated(root, found.identity.collection, "article.archive")
+        if not now:
+            _curated(root, found.identity.collection, "article.archive")
     except InputError as error:
         raise InputError(f"archive {article}: {str(error).removeprefix('tell: ')}") from error
     at = stamp(clock())
@@ -1239,7 +1247,7 @@ def archive_by_hand(store: Store, extraction: Extraction | None, caller: Caller,
                     fields={"target": id, "as": "proposal", "kind": "article.archive"})
     store.keep(record)
     result = TellResult(record.id)
-    _file(store, extraction, caller, "article.archive", (id, {}), record, at, result)
+    _file(store, extraction, caller, "article.archive", (id, {}), record, at, result, now)
     return result
 
 

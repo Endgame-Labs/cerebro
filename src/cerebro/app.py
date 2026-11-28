@@ -35,7 +35,7 @@ import httpx
 from . import prompts, runner
 from .agent import Agent, load_agents, refuse_unknown_kinds, refuse_unknown_tools
 from .apps import App, Exposed, bind, check_apps, collect
-from .article import pending
+from .article import made_by_its_agent, pending
 from .budget import Held, Ledger, Metered
 from .caller import Caller
 from .clock import Clock, system_clock
@@ -1175,6 +1175,7 @@ class Cerebro:
         now = self.clock()
         caps = self.ledger.caps
         waits = [a.identity for c in self.store.collections() for a in self.store.query(c) if pending(a)]
+        working = working_set(self.store)
         counted = {c: self.lookup.query(you, c, limit=0).count for c in self.store.collections()}
         waiting = {c: sum(1 for who in waits if who.collection == c) for c in counted}
         articles = {c: n - waiting[c] for c, n in counted.items() if n - waiting[c]}  # the written: pending is apart
@@ -1204,7 +1205,9 @@ class Cerebro:
             "missing_logins": self._missing_logins(),
             "kinds": self.class_notices(),
             "checks": self.checks(),
-            "working_set": len(working_set(self.store)),
+            "working_set": len(working),
+            "leftover": [who.id for who in working if made_by_its_agent(who) and self.writer_of(who.id) is None
+                         and not (self.root / "agents" / f"{who.id}.md").is_file()],  # its agent file is gone
             "waiting": self.awaiting(),
             "tells_waiting": len(waiting := told_waiting(self.store)),
             "tells_waiting_ids": waiting,

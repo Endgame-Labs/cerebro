@@ -2,9 +2,9 @@
 decision, so it is accepted as sent, and the collection's curator archives it on its next run. The rules: the article
 is named by its path or id, a merged one by the article it was merged into, else by its title or an alias, ignoring
 case and spacing, and the words given are one name; two articles that answer archive nothing; one out of the working
-set already records nothing; a collection no curator keeps is refused; nothing else moves; its file, facts and parts
-stay; and an admit brings it back. A curator's admit of what a caller archived is refused until something new
-arrives."""
+set already records nothing; a collection no curator keeps is refused, but for the article a one-article agent made,
+which is archived at once; nothing else moves; its file, facts and parts stay; and an admit brings it back. A curator's
+admit of what a caller archived is refused until something new arrives."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from cerebro.agent import load_agent
 from cerebro.article import Compilation, Identity, Property, mirror
 from cerebro.caller import Caller
 from cerebro.cli import main
+from cerebro.compile import birth
 from cerebro.curate import run_curator, yes_left
 from cerebro.fakes import FakeConnector, FakeExtraction, ScriptedRun
 from cerebro.records import Proposal, proposals, propose
@@ -259,6 +260,21 @@ def test_an_article_of_a_collection_no_curator_keeps_is_refused_and_nothing_is_r
     assert refused.exit_code == 1, refused.output
     assert "archive reports/weekly: articles/reports has no curator, so nothing is archived there" in refused.output
     assert w.rows() == [] and w.status("reports/weekly") == "active"
+
+
+def test_the_article_a_one_article_agent_made_is_archived_at_once_though_no_curator_keeps_its_collection(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    w = Workspace(tmp_path / "w", monkeypatch)
+    file = w.root / "agents" / "reports" / "week.md"
+    file.parent.mkdir()
+    file.write_text("---\nevidence:\n  - query: { from: facts }\nheartbeat: [change]\n---\n\n# Output\n\n## Summary\n")
+    with w.open() as workspace:
+        birth(workspace.store, load_agent(file, w.root / "agents"), "reports/week", AT)
+    file.unlink()  # renamed away, so its article stays behind
+    done = w.run("reports/week")
+    assert done.exit_code == 0, done.output
+    assert "reports/week is archived" in done.output and w.status("reports/week") == "archived", done.output
+    assert w.rows() == [("reports/week", "accepted", "person", "person")]
 
 
 def test_no_name_is_a_usage_error_that_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

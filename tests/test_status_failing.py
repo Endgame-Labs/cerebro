@@ -15,6 +15,7 @@ from test_thin_path import WEEKLY
 
 from cerebro import Cerebro, cli
 from cerebro.article import Identity
+from cerebro.caller import Caller
 from cerebro.cli import main
 from cerebro.fakes import FakeConnector, FakeExtraction, FakeSecrets, MemoryStore
 from cerebro.records import RETRY
@@ -210,6 +211,18 @@ def test_requests_and_archived_articles_are_counted(tmp_path: Path, monkeypatch:
     assert data["requests"] == {"total": 4, "hits": 3, "misses": 1} and data["archived"] == 1
 
 
+def test_an_article_whose_one_article_agent_file_is_gone_is_named_with_how_to_archive_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = lay_out_workspace(tmp_path)  # agents/reports/weekly.md writes reports/weekly
+    store = MemoryStore()
+    for id in ("reports/weekly", "reports/week"):  # each as a pass births it: agents/reports/week.md was renamed
+        store.create(Identity(id, "reports", id, admitted_by=Caller(id, "agent")))
+    lines = [line for line in status(monkeypatch, root, store).output.splitlines() if line.startswith("leftover")]
+    assert len(lines) == 1 and lines[0].startswith("leftover  reports/week: ") and \
+        lines[0].endswith("cerebro archive reports/week"), lines
+    assert json.loads(status(monkeypatch, root, store, "--json").output)["leftover"] == ["reports/week"]
+
+
 def test_the_plain_closing_line_is_the_printers_own(capsys: pytest.CaptureFixture[str]) -> None:
     from cerebro.output import Printer
 
@@ -232,6 +245,7 @@ def test_every_new_line_in_every_state_says_no_page_section_or_brain(
     spend(store, "2026-11-19T00:05:00Z", "compilation", 60.0)
     store.append("mcp-requests", {"at": "2026-11-19T09:00:00Z", "tool": "find", "result": "miss"})
     store.create(Identity("things/gone", "things", "Gone", status="archived"))
+    store.create(Identity("reports/week", "reports", "Week", admitted_by=Caller("reports/week", "agent")))
     said = status(monkeypatch, root, store).output + status(monkeypatch, root, store, "--json").output
     assert not re.search(r"\b(pages?|sections?|brains?)\b", said, re.IGNORECASE), said
 

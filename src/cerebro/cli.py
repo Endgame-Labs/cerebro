@@ -1091,6 +1091,9 @@ def status(root: Path | None, as_json: bool) -> None:
     _echo(f"working   {_count(data['working_set'], 'article')} in the working set")
     if data["archived"]:
         _echo(f"archived  {_count(data['archived'], 'article')} out of the working set")
+    for id in data["leftover"]:
+        _echo(f"leftover  {id}: agents/{id}.md is gone, so no agent writes it. It stays in the working set until you "
+              f"run cerebro archive {id}")
     if data["compile_order"]:
         _echo(f"order     {data['compile_order']}")
     for agent, run in data["last_runs"].items():
@@ -1819,7 +1822,8 @@ def _archived_one(store: Any, text: str) -> Any:
 def archive(names: tuple[str, ...], root: Path | None) -> None:
     """Take an article out of the working set, by its path, as <collection>/<name>, or by its title. It is your
     decision, so it is accepted as you send it, and the collection's curator archives it on its next run: then a
-    query leaves it out and no agent writes it. Its file and what it has stay. cerebro admit brings it back."""
+    query leaves it out and no agent writes it. Its file and what it has stay. cerebro admit brings it back. An
+    article a one-article agent wrote, in a collection with no curator, is archived at once."""
     from .identity import in_working_set
     from .records import archive_by_hand
 
@@ -1833,7 +1837,8 @@ def archive(names: tuple[str, ...], root: Path | None) -> None:
             return
         told = workspace.masked(archive_by_hand(workspace.store, workspace.extraction, YOU, article.id,
                                                 clock=workspace.clock, root=workspace.root))
-    for line in _accepted(told, article.id, "archives it"):
+        now = not in_working_set(workspace.store.article(article.id).identity)  # no curator was needed to carry it out
+    for line in told.notes if now else _accepted(told, article.id, "archives it"):
         _echo(line)
 
 

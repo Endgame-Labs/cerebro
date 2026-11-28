@@ -341,6 +341,12 @@ def pending(article: Article) -> bool:
 PENDING = "pending: article admitted but not yet written"  # the label a reader sees
 
 
+def made_by_its_agent(identity: Identity) -> bool:
+    """Whether the article is the one a one-article agent made of its own path, `agents/<its id>.md`, as a pass
+    births it: no curator admitted it."""
+    return identity.admitted_by == Caller(identity.id, "agent")
+
+
 def _joined(names: list[str]) -> str:
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 

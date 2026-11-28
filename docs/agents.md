@@ -49,7 +49,7 @@ The folder under `agents/` is the collection. The file's name says what the agen
 | `projects/curator.md` | Decides which articles `projects` holds |
 | `projects/subagents/<name>.md` | Writes one part of each article, for the `article.md` beside it |
 
-The title comes from the file's name, so `reports/weekly-briefing.md` writes "Weekly briefing". A new name starts a new article at the new path, and the old one stays until you archive it, which needs a curator: run `cerebro agents new reports/curator`, then `cerebro archive reports/week`.
+The title comes from the file's name, so `reports/weekly-briefing.md` writes "Weekly briefing". A new name starts a new article at the new path, and the old one stays until you run `cerebro archive reports/week`.
 
 `cerebro agents new` writes a starting file for each. `cerebro agents list` shows each agent's id, its job and when it runs, and names any file that doesn't load and why:
 
