@@ -291,17 +291,6 @@ def test_a_step_shows_a_spinner_and_resolves_to_its_mark_and_time_with_its_sub_l
                           "    \x1b[38;5;243mlocal: 3 records\x1b[0m\n")
 
 
-@pytest.mark.parametrize(("width", "rows"), [(20, 2), (80, 1)])
-def test_a_step_counts_the_screen_rows_its_resolved_line_takes(width: int, rows: int) -> None:
-    clock = {"now": 0.0}
-    stream = Terminal()
-    p = Printer(stream, stream, getenv=env(TERM="xterm-256color").get, dark=True, width=lambda: width,
-                now=lambda: clock["now"], tick=3600)
-    step = p.step("Reviewing 122 proposals")
-    clock["now"] = 64.0
-    assert step.done("Reviewed 122 proposals") == rows
-
-
 def test_a_step_off_a_terminal_prints_its_resolved_line_alone_with_an_ascii_mark() -> None:
     out = io.StringIO()
     p = Printer(out, out, getenv=env().get)

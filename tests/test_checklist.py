@@ -152,6 +152,17 @@ def test_a_list_taller_than_the_terminal_scrolls_with_a_line_counting_the_rows_o
     assert scrolled[3].startswith("  … ") and any(line.startswith(">") for line in scrolled)
 
 
+def test_a_scrolled_list_shows_a_groups_lines_only_under_its_heading() -> None:
+    lst = Checklist([Row(f"part {n}") for n in range(9)],
+                    [Group(f"Parts of thing {n}", [3 * n, 3 * n + 1, 3 * n + 2], heading=f"Thing {n}")
+                     for n in range(3)], ["Things"])
+    model = Model(lst)
+    press(model, *[Key.DOWN] * 5)  # onto the next heading: the view opens on it, not on the parts above it
+    assert model.render(120, 12)[2:4] == ["  … 3 more", "> [x] Thing 1  3 of 3"]
+    press(model, Key.UP)  # back up into the group above: its heading shows over the cursor
+    assert model.render(120, 12)[2] == "  [x] Thing 0  3 of 3"
+
+
 def test_a_row_that_hangs_off_another_follows_it_through_toggled() -> None:
     def follow(rows: list[int], on: bool, checked: list[bool]) -> list[bool]:
         if 0 in rows:
@@ -287,11 +298,13 @@ def test_the_menu_and_the_pager_run_as_widgets_too() -> None:
     assert pager_app.return_value is None
 
 
-def test_the_list_runs_inline_on_a_pseudo_terminal_and_returns_the_checked_rows() -> None:
+def test_the_list_runs_inline_on_a_pseudo_terminal_redraws_in_place_on_a_resize_and_returns_the_checked_rows() -> None:
     code = """
-import sys
-from cerebro.checklist import Checklist, Group, Row, ask
+import os, signal, sys
+from cerebro.checklist import Checklist, ChecklistApp, Group, Row, ask
 from cerebro.output import Printer
+# the terminal is resized once the list is drawn, as dragging its window's edge does
+ChecklistApp.on_mount = lambda app: app.call_after_refresh(os.kill, os.getpid(), signal.SIGWINCH)
 lst = Checklist(rows=[Row("Bramblecote Ltd", detail="Named in 2 notes."), Row("Larkspur Mills", checked=False)],
                 groups=[Group("named in your notes", [0, 1], heading="Sample list")], head=["Sample list"])
 print("RESULT", ask(lst, Printer()), file=sys.stderr)
@@ -299,6 +312,7 @@ print("RESULT", ask(lst, Printer()), file=sys.stderr)
     keys = ((b"Approve selected", 1, b"jj "), (b"Approve selected", 2, b"\r"))
     got = on_a_pty(code, {"TERM": "xterm-256color", "COLORFGBG": "15;0"}, keys=keys)
     assert b"RESULT [False, False]" in got, got[-400:]
+    assert b"\x1b[2J" not in got  # no screen clear, which a terminal keeps in its scrollback as a copy of the list
     assert b"\x1b[38;5;39;49m" in got  # the dark accent at its 256-color index, on the terminal's own background
     assert b"\x1b[38;5;43;49m" in got  # the dark success of a checked box
 
