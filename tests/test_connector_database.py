@@ -8,7 +8,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -357,14 +357,19 @@ def test_a_failing_query_stops_the_gather_with_one_line_that_names_the_file_and_
         "table: nothing_here): run it by hand against the database to see why, and fix it")
 
 
-def test_a_missing_file_or_one_that_is_not_a_database_is_read_as_neither_and_nothing_is_made(root: Path) -> None:
+def test_a_missing_locked_or_not_a_database_file_says_which_and_nothing_is_made(root: Path) -> None:
+    with closing(sqlite3.connect(file_of(root), isolation_level=None)) as writer:
+        writer.execute("begin exclusive")
+        with pytest.raises(DatabaseError) as locked:
+            warehouse(root, limits=Limits(seconds=0.1)).select("select 1")
+    assert str(locked.value) == "sources/warehouse.yaml: the database does not open (database is locked)"
     (root / "sources" / "warehouse.yaml").write_text("kind: database\nurl: sqlite:data/missing.sqlite\n")
     with pytest.raises(DatabaseError, match="the database file it names does not exist"):
         warehouse(root).select("select 1")
     assert not (root / "data" / "missing.sqlite").exists()
     (root / "data" / "notes.sqlite").write_text("North sold 1000.\n")
     (root / "sources" / "warehouse.yaml").write_text("kind: database\nurl: sqlite:data/notes.sqlite\n")
-    with pytest.raises(DatabaseError, match="sources/warehouse.yaml: the query failed .*not a database"):
+    with pytest.raises(DatabaseError, match="open .file is not a database.: check the file it names is a SQLite"):
         warehouse(root).select("select 1")
     assert (root / "data" / "notes.sqlite").read_text() == "North sold 1000.\n"
 
