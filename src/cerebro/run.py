@@ -61,7 +61,7 @@ from . import prompts
 from .agent import Agent, Budget
 from .apps import ToolError
 from .budget import METER, BudgetSpent, MeterTurn, RoundCut, Stopped, cancelling
-from .clock import Clock, stamp, system_clock
+from .clock import Clock, pinned, stamp, system_clock
 from .errors import ArgumentsRefused, CerebroError
 from .evidence import Evidence
 from .file import File
@@ -378,7 +378,7 @@ def opening(agent: Agent, evidence: list[Evidence], now: datetime, root: Path | 
     masked by `mask` when given."""
     parts = [f"## {_data(entry.heading, mask)}\n\n"
              + "\n".join(_data(line, mask) for line in entry.lines or ["Nothing matched."]) for entry in evidence]
-    text = prompts.fill("evidence", root, today=f"{now:%a %b %d, %Y}", evidence="\n\n".join(parts))
+    text = prompts.fill("evidence", root, today=f"{pinned(now):%a %b %d, %Y}", evidence="\n\n".join(parts))
     return text if agent.role == "curator" else f"{WRITES.format(_data(agent.target, mask))}\n\n{text}"
 
 

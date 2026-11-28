@@ -57,7 +57,7 @@ from .article import Article, Citation, cut, fields
 from .article import passages as passages_of
 from .budget import BudgetSpent, Held, Ledger
 from .caller import Caller
-from .clock import Clock, seconds, system_clock
+from .clock import Clock, pinned, seconds, system_clock
 from .connector import NOBODY, Connector, Record, masked_first, masking, one_line
 from .connectors.database import Rows, row_text
 from .errors import CerebroError
@@ -1228,7 +1228,8 @@ class _Gatherer:
             else:
                 resolved[key] = ids[0] if len(ids) == 1 else ids
         windowed = any(is_window(v) for v in filters.values())
-        heading = spelled[:1].upper() + spelled[1:] + (f", as of {_day(self.now)}" if windowed and self.now else "")
+        on = f", as of {_day(pinned(self.now))}" if windowed and self.now else ""
+        heading = spelled[:1].upper() + spelled[1:] + on
         result = self.lookup.query(self.caller, source, resolved, order_by=order_by, descending=order_by is not None,
                                    limit=limit)
         entry = Evidence(heading, spelled=spelled)
@@ -1462,7 +1463,7 @@ class _Gatherer:
                     f"{head}\n\nWhy it left: {why}.\n\n{json.dumps(_front(article), sort_keys=True, default=str)}")
             entry.items.append(Item(f"left:{id}", text, [Citation("article", id, id)], left=f"articles/{id}.md"))
         count = len(entry.items)
-        on = f" on {_day(then.astimezone(self.zone))}" if then is not None else ""
+        on = f" on {_day(pinned(then.astimezone(self.zone)))}" if then is not None else ""
         read = ", read as of that run" if then is not None else ", read as of now"
         entry.heading = (f"Left since the last run{on}, query {spelled}: {count} article{'' if count == 1 else 's'} it "
                          f"returned then that it no longer returns{read}, each as it stands now with why it left")

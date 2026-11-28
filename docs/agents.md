@@ -113,6 +113,8 @@ In a value, `this` means the article being written. So `articles: this` keeps th
 
 A time range such as `last_30_days`, `next_14_days` or `this_quarter` works in `window:` on facts, and on any date field your articles have.
 
+A range counts from today. For a demo or a test, set `CEREBRO_TODAY` to count from another day, as in `CEREBRO_TODAY=2026-11-20 cerebro serve`.
+
 A query of a collection comes newest first by a date field Cerebro picks. Name the field yourself with `order_by:`, as in `- query: { from: projects, order_by: due }`.
 
 ## When it runs

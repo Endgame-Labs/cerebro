@@ -38,7 +38,7 @@ from .apps import App, Exposed, bind, check_apps, collect
 from .article import pending
 from .budget import Held, Ledger, Metered
 from .caller import Caller
-from .clock import Clock, system_clock
+from .clock import Clock, pinned, system_clock
 from .compile import Compiled, _workspace, compile_article
 from .connector import Ask, Connector, Listing, Offer, Ours, Record, RecordNotFound, masking, one_line
 from .connectors import CONNECTORS
@@ -395,6 +395,7 @@ class Cerebro:
                  trusted: bool | None = None):
         project = load(root, trusted=trusted)
         self.clock = clock or system_clock
+        pinned(self.clock())  # a CEREBRO_TODAY that is no date is refused as the workspace opens
         self.root = project.root
         self.settings = project.settings
         self.models = project.models
