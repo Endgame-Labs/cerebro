@@ -297,3 +297,22 @@ def test_a_draft_that_stood_while_another_lands_loses_a_line_whose_fact_its_sour
     parts = dict(_texts(space.store, "briefs/alder"))
     assert "Risks" not in parts and VALVE[:-1] in parts["People"], result.warnings
     assert PUMP[:-1] in parts["People"]  # what a writer just handed in is never cut: its editor scores it
+
+
+@pytest.mark.parametrize("by", [Caller("you", "person"), Caller("reports/curator", "agent")], ids=["caller", "agent"])
+def test_a_weekly_writer_runs_on_the_next_pass_once_a_caller_takes_back_a_fact_it_cites(tmp_path: Path,
+                                                                                        by: Caller) -> None:
+    from cerebro.records import ACCEPTED, Proposal, propose
+
+    space = Facts(tmp_path, {"reports/weekly.md": WRITER.replace("[change]", "[weekly]")}, "reports/weekly")
+    pump = next(f.id for fs in space.extraction.by_record.values() for f in fs if f.text == PUMP)
+    space.run.quiet = True
+    if by.kind == "person":
+        space.workspace.retract(by, pump, "the wrong pump")
+    else:  # an agent's take-back wakes no one, as it cuts nothing
+        propose(space.store, Proposal("p_1", "fact.retract", pump, by, "2026-11-16T09:00:00Z", status=ACCEPTED,
+                                      decided_by=by))
+        space.extraction.retract(pump)
+    result = space.workspace.run_once()
+    assert ("reports/weekly" in result.due) == (by.kind == "person"), result.skipped
+    assert (PUMP[:-1] in space.text()) == (by.kind == "agent"), result.warnings

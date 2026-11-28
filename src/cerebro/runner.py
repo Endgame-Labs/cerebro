@@ -30,6 +30,9 @@ What is due, in order:
    and a writer whose run stopped at its budget with nothing handed in, wait as `waits_after` says.
 5. Any other agent waits for its next period.
 
+But a writer of an article that cites what a caller took back since it last ran there is due as for a change,
+whatever its heartbeat.
+
 A subagent is never due on its own: it runs inside its composer's. What ran when is kept under
 `heartbeat:<agent id>`, and each run is a row of the `agent-runs` log.
 
@@ -138,9 +141,12 @@ from .private import make_file, make_folder
 from .project import read_ours, read_schedule, zone_of
 from .records import (
     ACCEPTED,
+    RETRACTS,
     RETRY,
     TOLD,
     Claimed,
+    Proposal,
+    decided_by_caller,
     extract_told,
     finish_retracts,
     instructions_on,
@@ -432,14 +438,17 @@ def _due(workspace: Cerebro, agents: list[Agent], result: PassResult,
          woken: Collection[str] = ()) -> list[tuple[Agent, str | None]]:
     """The agents of `agents` due now, each with the schedule word it runs for, or None for a change. A subagent is
     never due on its own: it drafts inside its composer's run, whose stamp covers what it reads. A curator of `woken`
-    has accepted proposals to carry out, and is due as for a change, whatever its heartbeat."""
+    has accepted proposals to carry out, and a writer of it wrote an article that cites what a caller took back: each
+    is due as for a change, whatever its heartbeat."""
     now, zone, due = workspace.clock(), zone_of(workspace.settings), []
     for agent in agents:
         if agent.role == "subagent":
             continue
         word, why, waits = _wake(agent, _words(workspace, agent), _beat(workspace, agent), now, zone)
         if agent.id in woken and word is None:
-            why, waits = "a caller accepted a proposal for its collection", ""
+            why = "a caller accepted a proposal for its collection" if agent.role == "curator" else \
+                "a caller took back what an article it wrote cites"
+            waits = ""
         if not waits and agent.role in (*WRITERS, "curator") and (until := _lease(workspace, agent, result.token, result)):
             waits = f"a pass in another process runs it now: it waits for that, or for its lease to lapse at {until}"
         if waits:
@@ -2213,7 +2222,25 @@ def writers_due(workspace: Cerebro, result: PassResult) -> list[tuple[Agent, str
     """The writers a pass compiles now, each with the schedule word it runs for, or None for a change; why each other
     one waits goes on `result.skipped`. It takes each due one's lease, so `compile --dry-run` calls it on a store
     apart."""
-    return _due(workspace, [agent for agent in workspace.agents if agent.role != "curator"], result)
+    writers = [agent for agent in workspace.agents if agent.role != "curator"]
+    taken = [p for p in proposals(workspace.store, ACCEPTED) if p.kind in RETRACTS and decided_by_caller(p)]
+    woken = {agent.id for agent in writers if taken and agent.role in WRITERS and _cites_taken_back(workspace, agent, taken)}
+    return _due(workspace, writers, result, woken)
+
+
+def _cites_taken_back(workspace: Cerebro, agent: Agent, taken: list[Proposal]) -> bool:
+    """Whether an article `agent` wrote cites a fact, or a record, that a retract of `taken` took back since the agent
+    last ran there, in the same second too: it runs on the next pass, whatever its heartbeat, so the cut takes the
+    line out. Only a caller's retract wakes it, as only a caller's cuts a line."""
+    writers = (agent.id, *agent.subagent_ids)
+    for article, mark in (_beat(workspace, agent).articles or {}).items():
+        since = _when(mark.get("ran"))
+        ids = {p.target for p in taken if since is None or _when(p.decided_at or p.at) >= since}  # type: ignore[operator]
+        found = workspace.store.article(article) if ids else None
+        if found is not None and any(c.id in ids or c.source in ids for part in found.compilations if part.by in writers
+                                     for c in part.citations):
+            return True
+    return False
 
 
 def _compile(workspace: Cerebro, result: PassResult, served: bool = False,
