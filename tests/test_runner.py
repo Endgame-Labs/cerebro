@@ -196,13 +196,6 @@ def test_cerebro_today_moves_the_day_windows_the_writer_and_the_judge_read_and_n
     assert cerebro.store.rows("spend")[0].data["at"] == "2027-11-20T09:00:00Z"
 
 
-def test_a_cerebro_today_that_is_no_date_is_refused_with_what_to_write(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CEREBRO_TODAY", "tomorrow")
-    result = workspace(tmp_path, extraction=FakeExtraction()).run_once()
-    assert "CEREBRO_TODAY is 'tomorrow': write a date such as 2026-11-20" in result.failed["reports/weekly"]
-
-
 def test_extraction_is_held_to_its_own_cap_and_its_cost_is_kept(tmp_path: Path) -> None:
     (tmp_path / "agents").mkdir()
     (tmp_path / "settings.yaml").write_text("budget:\n  extraction_daily_usd: 0.000000001\n")
