@@ -16,6 +16,7 @@ from suites.extraction import *
 from suites.extraction import MEMO, OTHER
 
 import cerebro
+from cerebro.clock import stamp, system_clock
 from cerebro.connector import Record
 from cerebro.facts import (
     Extraction,
@@ -586,6 +587,10 @@ def test_a_records_fields_become_facts_by_rule_dated_by_it_a_repeat_costs_nothin
     assert [f.text for f in handler.facts(record="p-7")] == ["The phase of Alder valve is done."]  # due date gone
     handler.extract_fields(replace(part("done"), fields={"name": "Alder valve"}))
     assert handler.facts(record="p-7") == []  # every field gone
+    read = stamp(system_clock())
+    [ahead] = handler.extract_fields(Record(id="p-8", source="parts", revision="1", at="2999-01-01T09:00:00Z",
+                                            fields={"name": "Birch valve", "phase": "planned"})).facts
+    assert read <= ahead.at <= stamp(system_clock())  # a row ahead of now is dated when it is read
     handler.close()
 
 
