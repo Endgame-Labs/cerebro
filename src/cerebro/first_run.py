@@ -352,6 +352,7 @@ class LocalApproval(Approval):
                                      str(state.get("note") or ""), agent.id in cut, said,
                                      f"{len(unlisted)} more held for {agent.target} are of the workspace's own side "
                                      "and not listed" if unlisted else ""))
+        pile = self.workspace.masked(pile)  # before its tree, whose groups hold its rows
         pile.groups = tree(plain([row for row in pile.rows() if not row.left_out], weights_of(self.workspace.store)),
                            _articles(self.workspace), redirects(self.workspace.store))
         return pile
@@ -1553,9 +1554,9 @@ def _at_a_terminal() -> bool:
 
 def _failures(workspace: Cerebro) -> list[str]:
     """Each curator of this first run whose discovery did not finish, in the words `Discovery
-    for <collection> collection did not finish: <why>`."""
+    for <collection> collection did not finish: <why>`, masked of every value the secrets store holds now."""
     states = (_state(workspace) or {}).get("lists") or {}
-    return [note[:1].upper() + note[1:] for a in _curators(workspace)
+    return [workspace.mask_every()(note[:1].upper() + note[1:]) for a in _curators(workspace)
             if str((state := states.get(a.id) or {}).get("state") or "") == "failed"
             and (note := str(state.get("note") or ""))]
 

@@ -17,6 +17,7 @@ from cerebro.fakes import FakeConnector, FakeExtraction
 from cerebro.first_run import KEY, Choices, run
 from cerebro.held import stand_ins
 from cerebro.records import proposals
+from cerebro.secrets import Secrets
 
 NOW = datetime(2026, 11, 18, 9, tzinfo=UTC)
 THINGS = "---\nevidence:\n  - held: {}\nheartbeat: [daily]\n---\n\nKeep the things.\n"
@@ -56,9 +57,9 @@ class Source(FakeConnector):
     IDENTITY_KEYS: ClassVar[dict[str, int]] = {"shelves": 0}
 
 
-def open_it(root: Path, script: Script, records: list[Record] | None = None) -> Cerebro:
+def open_it(root: Path, script: Script, records: list[Record] | None = None, secrets: Secrets | None = None) -> Cerebro:
     workspace = Cerebro(root, agent_run=script, extraction=FakeExtraction(), clock=lambda: NOW,
-                        connectors=[Source("src", list(RECORDS if records is None else records))])
+                        connectors=[Source("src", list(RECORDS if records is None else records))], secrets=secrets)
     script.store = workspace.store
     return workspace
 

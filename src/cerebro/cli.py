@@ -1040,6 +1040,7 @@ def status(root: Path | None, as_json: bool) -> None:
         data |= standing.gather(workspace, data)
         data["waits"] = waiting_runs(workspace) + reviewing.held_lines(workspace)
         data |= {"calls_go_to": hosts} if (hosts := calls_go_to(workspace.settings)) else {}
+        data = workspace.masked(data)
         zone, held_to, routes = zone_of(workspace.settings), workspace.ledger.caps, route_lines(workspace.settings)
     data["refused"] = list(map(_masking(data["refused"], root), data["refused"]))
     if as_json:
@@ -3549,9 +3550,10 @@ def eval_command(suite: Path, root: Path | None, group: str, workers: int, no_mo
     loaded = evals.load(suite)
     with open_workspace(root) as workspace:
         decider = None if no_model else workspace.decider
-        report = evals.run(workspace, loaded, decider=decider, model=workspace.models["decision"], ledger=workspace.ledger,
-                           cap_usd=cap if cap is not None else workspace.ledger.caps.evaluation, clock=workspace.clock,
-                           group=group, workers=max(1, workers))
+        report = workspace.masked(evals.run(
+            workspace, loaded, decider=decider, model=workspace.models["decision"], ledger=workspace.ledger,
+            cap_usd=cap if cap is not None else workspace.ledger.caps.evaluation, clock=workspace.clock, group=group,
+            workers=max(1, workers)))
     if as_json:
         _print_json(report)
         return
