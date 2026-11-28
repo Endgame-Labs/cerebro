@@ -90,7 +90,7 @@ def test_a_query_of_an_app_kind_gives_its_records_and_agent_runs_come_newest_fir
     assert [r["run"] for r in lookup.query(YOU, "agent-runs").items] == ["c", "a", "b"]
 
 
-def test_a_query_or_read_of_an_app_kind_says_which_records_it_shows_a_retract_took_back_and_no_other() -> None:
+def test_a_query_of_an_app_kind_leaves_out_and_counts_what_a_retract_took_back_and_a_read_names_it() -> None:
     from dataclasses import replace
 
     from cerebro.records import retract
@@ -102,9 +102,12 @@ def test_a_query_or_read_of_an_app_kind_says_which_records_it_shows_a_retract_to
                           body=id, by=YOU))
         retract(store, None, YOU, id, clock=lambda: NOW)
     store.keep(replace(store.record("n2"), revision="2", at="2026-11-17T13:00:00Z"))  # its maker's word after it
+    left = "1 record of note that the filters keep was retracted, so the query left it out"
     shown = lookup.query(YOU, "note", {"owner": "west"})
-    assert [r.id for r in shown.items] == ["n2", "n1"] and shown.retracted == ["n1"]
-    assert shown.warnings == ["record n1 was retracted"]
+    assert [r.id for r in shown.items] == ["n2"] and shown.count == 1 and shown.warnings == [left]
+    by_id = lookup.query(YOU, "note", {"id": "n1"})
+    assert by_id.items == [] and by_id.warnings == [left]
+    assert lookup.query(YOU, "note", {"id": "n2"}).warnings == []
     assert lookup.read(YOU, ["n3", "n2"]).warnings == ["record n3 was retracted"]
 
 

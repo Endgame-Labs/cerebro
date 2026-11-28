@@ -129,8 +129,7 @@ class QueryResult:
 
     `read_as` is the line that says how to read the records' text, when the reply gives it. `ties` says, by fact
     id, how each fact of a query by `articles` that is not plainly about them is tied to them: `mentions` when it
-    names them, `record` when it reaches them only through a record of theirs. `retracted` names each record of an
-    app's kind it gives that a retract took back, as its warnings say.
+    names them, `record` when it reaches them only through a record of theirs.
     """
 
     source: str
@@ -142,7 +141,6 @@ class QueryResult:
     stale: dict[str, str] = field(default_factory=dict)
     read_as: str = ""
     ties: dict[str, str] = field(default_factory=dict)
-    retracted: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -674,10 +672,6 @@ class StoreLookup(Lookup):
         if offset and offset >= result.count > 0:
             result.warnings.append(f"offset {offset} is past the {result.count} matches: pass a smaller offset")
         result.items = result.items[offset:None if limit is None else offset + limit]
-        if app_kind:
-            taken = retracted_records(self.store)
-            result.retracted = [r.id for r in result.items if was_retracted(r, taken)]
-            result.warnings += [f"record {id} was retracted" for id in result.retracted]
         result.stale = self._stale([f for item in result.items for f in _facts_in(item)])
         shown = {f.id for item in result.items for f in _facts_in(item)}
         result.ties = {id: how for id, how in result.ties.items() if id in shown}
@@ -1018,15 +1012,24 @@ class StoreLookup(Lookup):
         kept = [row for row in every
                 if all(compares(row.get(k), "=", v) for k, v in literal.items())
                 and all(holds(w, row.get("at" if k == "window" else k), zone) for k, w in windows.items())]
+        gone = 0  # the records the query matched that a retract took back, left out as a retracted fact is
         if source in self.kinds and source not in LOGS:
             records = {r.id: identity(r) if bare else r for r in self.store.records(source)}
             items: list[Any] = [records[row["id"]] for row in kept]
             items = _shape(items, where, order_by, descending, lambda r: r.fields | {"id": r.id, "at": r.at})
             held = sorted({k for r in records.values() for k in r.fields} | {"id", "at"})
+            taken = retracted_records(self.store)
+            standing = [r for r in items if not was_retracted(r, taken)]
+            gone, items = len(items) - len(standing), standing
         else:
             items = _shape(kept, where, order_by, descending, lambda row: row)
             held = sorted({k for row in every for k in row})
         result = QueryResult(source, items, len(items))
+        if gone:
+            kept_by = " that the filters keep" if filters or where else ""
+            result.warnings.append(f"{gone} record{'s' if gone > 1 else ''} of {source}{kept_by} "
+                                   f"{'were' if gone > 1 else 'was'} retracted, so the query left "
+                                   f"{'them' if gone > 1 else 'it'} out")
         if order_by is not None and every and order_by not in held:
             result.warnings.append(_no_order(f"line of {source}", order_by, held))
         if bare:
@@ -1034,7 +1037,7 @@ class StoreLookup(Lookup):
                                    f"reached with query from: facts, record: <its id>")
         if not items and not every:
             result.warnings.append(f"{source} has no lines yet")
-        elif not items:  # a where predicate is named by no line, so none may blame a filter for what it kept out
+        elif not items and not gone:  # no line names a where predicate, so none may blame a filter for what it kept out
             have = {k for row in every for k in row}
             result.warnings += [f"no line of {source} has a field {k}: check its name"
                                 for k in filters if k != "window" and k not in have] or (

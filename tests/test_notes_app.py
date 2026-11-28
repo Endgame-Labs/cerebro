@@ -675,10 +675,9 @@ def test_delete_note_refuses_an_id_no_note_has_and_a_note_deleted_already(tmp_pa
                  agent_run=ScriptedRun(standing), clock=lambda: DAY) as workspace:
         kept = over_mcp(workspace, "note", {"text": "We ship on Friday.", "title": "Ship"}).structured_content
         assert not over_mcp(workspace, "retract", {"id": kept["record"], "reason": "moved"}).is_error
-        for id, said in ((kept["record"], f"no note has the id {kept['record']}"),
-                         (kept["id"], f"note {kept['id']} is deleted already")):
+        for id in (kept["record"], kept["id"]):
             refused = over_mcp(workspace, "delete_note", {"id": id})
-            assert refused.is_error and said in refused.content[0].text
+            assert refused.is_error and f"no note has the id {id}, or it is deleted already" in refused.content[0].text
 
 
 # -- two clients writing at once ----------------------------------------------------------------------------------------
