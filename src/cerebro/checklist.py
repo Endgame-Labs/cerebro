@@ -1166,12 +1166,13 @@ class _InlineApp[T](App[T]):
 
         linux_inline_driver.os = _Reading(hung_up)  # type: ignore[attr-defined]
         # no focus or mouse reporting: the views need neither, and a terminal that reports them, as VS Code's
-        # does, then sends a sequence at every focus change and every mouse move, which it repaints the panel for
+        # does, then sends a sequence at every focus change and every mouse move, which it repaints the panel for.
+        # No screen clear either, which the driver writes on each resize and many terminals keep in the scrollback.
         driver_class = linux_inline_driver.LinuxInlineDriver
         driver_write = driver_class.write
 
         def write(driver: Any, data: str) -> None:
-            driver_write(driver, _NO_REPORTS.sub("", data))
+            driver_write(driver, _NO_REPORTS.sub("", data).replace("\x1b[2J", ""))
 
         driver_class.write = write  # type: ignore[method-assign]
 

@@ -287,11 +287,13 @@ def test_the_menu_and_the_pager_run_as_widgets_too() -> None:
     assert pager_app.return_value is None
 
 
-def test_the_list_runs_inline_on_a_pseudo_terminal_and_returns_the_checked_rows() -> None:
+def test_the_list_runs_inline_on_a_pseudo_terminal_redraws_in_place_on_a_resize_and_returns_the_checked_rows() -> None:
     code = """
-import sys
-from cerebro.checklist import Checklist, Group, Row, ask
+import os, signal, sys
+from cerebro.checklist import Checklist, ChecklistApp, Group, Row, ask
 from cerebro.output import Printer
+# the terminal is resized once the list is drawn, as dragging its window's edge does
+ChecklistApp.on_mount = lambda app: app.call_after_refresh(os.kill, os.getpid(), signal.SIGWINCH)
 lst = Checklist(rows=[Row("Bramblecote Ltd", detail="Named in 2 notes."), Row("Larkspur Mills", checked=False)],
                 groups=[Group("named in your notes", [0, 1], heading="Sample list")], head=["Sample list"])
 print("RESULT", ask(lst, Printer()), file=sys.stderr)
@@ -299,6 +301,7 @@ print("RESULT", ask(lst, Printer()), file=sys.stderr)
     keys = ((b"Approve selected", 1, b"jj "), (b"Approve selected", 2, b"\r"))
     got = on_a_pty(code, {"TERM": "xterm-256color", "COLORFGBG": "15;0"}, keys=keys)
     assert b"RESULT [False, False]" in got, got[-400:]
+    assert b"\x1b[2J" not in got  # no screen clear, which a terminal keeps in its scrollback as a copy of the list
     assert b"\x1b[38;5;39;49m" in got  # the dark accent at its 256-color index, on the terminal's own background
     assert b"\x1b[38;5;43;49m" in got  # the dark success of a checked box
 
