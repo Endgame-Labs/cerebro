@@ -306,12 +306,17 @@ def _admitted(target: str, payload: dict[str, Any]) -> tuple[str, str, str]:
     return f"{collection}/{slug}", collection, title
 
 
-def _refuse_secret(store: Store, id: str) -> None:
-    """Refuse an admit whose article id would hold a value the secrets store keeps."""
+def _refuse_secret(store: Store, id: str, keys: dict[str, list[str]] | None = None) -> None:
+    """Refuse an admit whose article id, or one of whose `keys`, would hold a value the secrets store keeps: the store
+    keeps such a key masked, and a masked key binds every record whose key masks alike."""
     if store.masks is not None and store.masks(slug=_slug)(id) != id:
         raise InputError(f"admit into {id.rpartition('/')[0]}: its name holds a value the secrets store keeps, which "
                          "its article's id would hold, so nothing is admitted: give a name without the value, or "
                          "change the stored value")
+    mask = store.masks() if store.masks is not None and keys else None
+    if mask is not None and (key := next((k for k, vs in (keys or {}).items() if any(mask(v) != v for v in vs)), "")):
+        raise InputError(f"admit into {id.rpartition('/')[0]}: its {key} key holds a value the secrets store keeps, "
+                         "which its article's keys would hold, so nothing is admitted: change the stored value")
 
 
 # -- who may do what ------------------------------------------------------------------------------------------------
